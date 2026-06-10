@@ -64,7 +64,7 @@
 ### Geographic and Market Indicators
 1. **Smart Home and IoT Growth:** Global IoT market projected to reach $1.3 trillion by 2026; growing adoption of smart home devices among consumer segments aligns with weather station adoption
 2. **Climate Awareness:** Increasing public concern about climate change drives interest in personal climate monitoring and data collection
-3. **Telegram Popularity:** Telegram's widespread adoption in Eastern European, Russian, and Middle Eastern markets provides a direct communication channel to users; used extensively by schools for parent/student notifications
+3. **Telegram Popularity:** Telegram's widespread adoption in Eastern European, Ukraine, and Middle Eastern markets provides a direct communication channel to users; used extensively by schools for parent/student notifications
 4. **Microclimate Gardening Communities:** Visible demand in urban gardening, precision agriculture, and hobby farming forums for hyper-local weather data
 
 ### Evidence of Demand
@@ -85,10 +85,10 @@
 ### Regulatory and Legal Constraints
 - **Data Privacy:** Must comply with GDPR (EU), CCPA (US), and local privacy laws when storing user location and environmental data
 - **Telegram API:** Subject to Telegram's Terms of Service; potential geopolitical restrictions in certain countries
-- **Frequency Regulations:** WiFi and wireless communication must comply with local frequency regulations (FCC in US, CE in EU, EAC in Russia/CIS)
+- **Frequency Regulations:** WiFi and wireless communication must comply with local frequency regulations (FCC in US, CE in EU)
 
 ### Market Constraints
-- **Geographic Relevance:** Solution more immediately relevant to regions with significant microclimate variation (mountains, coastal areas) and strong Telegram adoption (Eastern Europe, Russia, Central Asia)
+- **Geographic Relevance:** Solution more immediately relevant to regions with significant microclimate variation (mountains, coastal areas) and strong Telegram adoption (Eastern Europe, Ukraine, Central Asia)
 - **Price Sensitivity:** Price threshold for adoption significantly lower in developing markets; hardware sourcing and shipping costs affect viability
 - **Competition from Giants:** Major tech companies (Apple, Google) have resources to enter smart home weather monitoring; differentiation critical
 
