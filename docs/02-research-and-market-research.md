@@ -110,19 +110,3 @@ Existing solutions create a false choice between expensive professional stations
 
 **The Opportunity:**
 By providing an affordable, easy-to-deploy weather monitoring platform with integrated Telegram notifications, we capture three underserved segments: hobby meteorologists seeking accuracy, educational institutions seeking operational efficiency, and climate-conscious users seeking personal environmental data. The solution leverages existing open-source ecosystems while adding the critical missing layer: ease of use and integration with communication platforms users already rely on.
-
----
-
-## Assumptions and Open Questions
-
-### Assumptions
-- Target users have basic WiFi connectivity at installation sites
-- Hardware components remain stable in cost and availability
-- Telegram remains operational and accessible in target markets
-
-### Open Questions to Explore in Step 3 (Scope/MVP)
-- What is the acceptable range for sensor accuracy for the hobby meteorologist segment?
-- Should the MVP include data storage and historical trending, or only real-time alerts?
-- What is the minimum viable hardware configuration (temperature-only, or full weather suite)?
-- Should educational institutions have a separate feature set, or should they use the standard version?
-- How should we differentiate from the inevitable "DIY kit version" that users could assemble themselves?
