@@ -102,7 +102,7 @@
 Existing solutions create a false choice between expensive professional stations and complex DIY solutions requiring advanced technical skills. No affordable, turnkey solution exists for weather enthusiasts seeking hyper-local data accuracy without the cost or technical overhead of commercial systems or the limitations of DIY. Educational institutions similarly lack an accessible, integrated tool that combines affordable weather monitoring with automated notification delivery (particularly via Telegram, the dominant platform in many regions). Public weather applications, while free, systematically fail to serve these segments due to their 10–50 km geographic distance from users' actual locations.
 
 **Why Now:**
-1. **Accessibility of Components:** ESP32, LoRa, and sensor suites have become commoditized and affordable, bringing hardware costs below critical adoption thresholds
+1. **Accessibility of Components:** Arduino, LoRa, and sensor suites have become commoditized and affordable, bringing hardware costs below critical adoption thresholds
 2. **Telegram's Maturation:** Telegram has become the standard notification platform in Eastern European and Russian-speaking markets; APIs are stable and widely adopted by institutions
 3. **Growing Climate Consciousness:** Heightened public awareness of climate and microclimate variations drives demand for personal environmental monitoring
 4. **Education Sector Urgency:** Schools and institutions increasingly seek low-cost, simple-to-deploy communication tools for weather-dependent activities and safety alerts; COVID-era digital adoption has normalized app-based notifications
