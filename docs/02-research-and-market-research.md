@@ -66,12 +66,12 @@ The prototype is built around an Arduino UNO with off-the-shelf modules sourced 
 
 ### Electronics to buy
 
-| Component                          | Purpose                                    | Qty | Unit (₴) | Subtotal (₴)      | Where to buy                                                                                             |
+| Component                          | Purpose                                    | Num | Unit (₴) | Subtotal (₴)      | Where to buy                                                                                             |
 | ---------------------------------- | ------------------------------------------ | --- | -------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
 | Arduino UNO R3 (CH340)             | Main controller board                      | 1   | 299      | 299               | [arduino.ua/prod2610](https://arduino.ua/prod2610-arduino-uno-r3-ch340)                                  |
 | BME280 (I2C)                       | Temperature / humidity / pressure sensor   | 1   | 169      | 169               | [arduino.ua/prod1930](https://arduino.ua/prod1930-bme280-5v-i2c-datchik-temperatyri-vlajnosti-davleniya) |
 | SD-card module (SPI)               | Local data logging                         | 1   | 98       | 98                | [arduino.ua/prod589](https://arduino.ua/prod589-modyl-sd-card-dlya-arduino-spi)                          |
-| RTC clock module (DS1307 + EEPROM) | Timestamps for logged readings             | 1   | 75       | 75                | [arduino.ua](https://arduino.ua) *(confirm exact SKU — "годинник з модулем пам'яті")*                    |
+| RTC clock module (DS1307 + EEPROM) | Timestamps for logged readings             | 1   | 75       | 75                | [arduino.ua](https://arduino.ua)                                                                         |
 | KY-040 rotary encoder              | Wind-vane direction + on-device menu input | 3   | 48       | 144               | [arduino.ua/prod1223](https://arduino.ua/prod1223-modyl-enkoder)                                         |
 | Hall sensor A3144 (digital)        | Anemometer + rain-gauge pulse pickup       | 2   | 40       | 80                | [arduino.ua/prod186](https://arduino.ua/prod186-datchik-holla-a3144-cifrovii)                            |
 | **Electronics subtotal**           |                                            |     |          | **865 ₴ (≈ $21)** |                                                                                                          |
