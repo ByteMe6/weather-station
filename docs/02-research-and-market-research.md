@@ -60,6 +60,34 @@
 
 ---
 
+## Bill of Materials & Cost Estimate
+
+The prototype is built around an Arduino UNO with off-the-shelf modules sourced from a Ukrainian retailer (**arduino.ua**). The mechanical parts — enclosure, anemometer cups, wind vane, and rain-gauge funnel — are **3D-printed in-house**, which keeps the mechanical cost down to filament only.
+
+### Electronics to buy
+
+| Component                          | Purpose                                    | Qty | Unit (₴) | Subtotal (₴)      | Where to buy                                                                                             |
+| ---------------------------------- | ------------------------------------------ | --- | -------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| Arduino UNO R3 (CH340)             | Main controller board                      | 1   | 299      | 299               | [arduino.ua/prod2610](https://arduino.ua/prod2610-arduino-uno-r3-ch340)                                  |
+| BME280 (I2C)                       | Temperature / humidity / pressure sensor   | 1   | 169      | 169               | [arduino.ua/prod1930](https://arduino.ua/prod1930-bme280-5v-i2c-datchik-temperatyri-vlajnosti-davleniya) |
+| SD-card module (SPI)               | Local data logging                         | 1   | 98       | 98                | [arduino.ua/prod589](https://arduino.ua/prod589-modyl-sd-card-dlya-arduino-spi)                          |
+| RTC clock module (DS1307 + EEPROM) | Timestamps for logged readings             | 1   | 75       | 75                | [arduino.ua](https://arduino.ua) *(confirm exact SKU — "годинник з модулем пам'яті")*                    |
+| KY-040 rotary encoder              | Wind-vane direction + on-device menu input | 3   | 48       | 144               | [arduino.ua/prod1223](https://arduino.ua/prod1223-modyl-enkoder)                                         |
+| Hall sensor A3144 (digital)        | Anemometer + rain-gauge pulse pickup       | 2   | 40       | 80                | [arduino.ua/prod186](https://arduino.ua/prod186-datchik-holla-a3144-cifrovii)                            |
+| **Electronics subtotal**           |                                            |     |          | **865 ₴ (≈ $21)** |                                                                                                          |
+
+Prices are the in-cart figures from arduino.ua as of June 2026 (the UNO, RTC, and BME are at promo prices). Quantities reflect the planned design: **two Hall sensors** (one for the anemometer, one for the tipping-bucket rain gauge) and **three encoders** (wind direction plus on-device menu navigation).
+
+### Other costs
+
+| Item                                                                  | Cost |
+| --------------------------------------------------------------------- | ---- |
+| 3D-printed mechanical parts (filament + print time)                   |      |
+| Assembly / manufacturing labour                                       |      |
+| Software & ongoing support (firmware, backend, Telegram bot, hosting) |      |
+
+---
+
 ## Why Build This, and Why Now?
 
-There is a specific and unserved gap between the two existing options: expensive commercial stations with proprietary software, and DIY builds that require embedded engineering skills most users don't have. No affordable, turnkey solution combines accurate local sensor data, a clean setup experience, and automated Telegram notifications in a single package — and that last piece matters more than it sounds, because Telegram is not just a nice-to-have in Eastern European, Ukrainian, and Central Asian markets, it is the communication platform for schools, parent groups, and local institutions. The timing is right because sensor hardware has commoditised to the point where a capable station can be built for under $30, Telegram's Bot API is stable and well-documented, and a post-COVID generation of school administrators now expects app-based communication and is actively looking for tools to automate it. The gap is real, the moment is practical, and no one has closed it yet.
+There is a specific and unserved gap between the two existing options: expensive commercial stations with proprietary software, and DIY builds that require embedded engineering skills most users don't have. No affordable, turnkey solution combines accurate local sensor data, a clean setup experience, and automated Telegram notifications in a single package — and that last piece matters more than it sounds, because Telegram is not just a nice-to-have in Eastern European, Ukrainian, and Central Asian markets, it is the communication platform for schools, parent groups, and local institutions. The timing is right because sensor hardware has commoditised to the point where a capable station can be built at a low parts cost (see the BOM above), Telegram's Bot API is stable and well-documented, and a post-COVID generation of school administrators now expects app-based communication and is actively looking for tools to automate it. The gap is real, the moment is practical, and no one has closed it yet.
