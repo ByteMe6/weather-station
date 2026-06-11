@@ -76,8 +76,6 @@ The prototype is built around an Arduino UNO with off-the-shelf modules sourced 
 | Hall sensor A3144 (digital)        | Anemometer + rain-gauge pulse pickup       | 2   | 40       | 80                | [arduino.ua/prod186](https://arduino.ua/prod186-datchik-holla-a3144-cifrovii)                            |
 | **Electronics subtotal**           |                                            |     |          | **865 ₴ (≈ $21)** |                                                                                                          |
 
-Prices are the in-cart figures from arduino.ua as of June 2026 (the UNO, RTC, and BME are at promo prices). Quantities reflect the planned design: **two Hall sensors** (one for the anemometer, one for the tipping-bucket rain gauge) and **three encoders** (wind direction plus on-device menu navigation).
-
 ### Other costs
 
 | Item                                                                  | Cost |
