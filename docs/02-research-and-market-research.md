@@ -45,14 +45,14 @@
 ## Constraints
 
 **Technical**
-- Consumer-grade sensors (DHT22, BMP280) carry ±1–2°C and ±3–5% RH tolerances — fine for hobby and institutional use, not for certified meteorology.
-- WiFi is required; rural and remote deployments may need LoRa or cellular fallback.
-- Deep-sleep power budgets matter for battery installations; mains power simplifies hardware design significantly.
+- Consumer-grade sensors (BME280) carry ±1–2°C and ±3–5% RH tolerances — fine for hobby and institutional use, not for certified meteorology.
+- WiFi is required; LoRa or cellular fallback is post-MVP.
+- Mains power is assumed for the prototype; battery/deep-sleep optimisation is post-MVP.
 
 **Legal and Regulatory**
-- User location data and environmental readings stored server-side trigger GDPR (EU/Ukraine) and potentially CCPA; must handle consent and data minimisation from day one.
+- The MVP collects no personal data (no user accounts, no location data stored server-side), so GDPR/CCPA obligations do not apply to the initial release. If user accounts are introduced in a later phase, consent flows and data minimisation must be designed in from that point.
 - Telegram Bot API usage is subject to Telegram's ToS; restricted or blocked in some jurisdictions (Russia, Iran) — relevant to the target market's edges.
-- WiFi RF emissions must comply with CE (EU), FCC (US), or local equivalents depending on where hardware ships.
+- WiFi RF emissions must comply with CE (EU), FCC (US), or local equivalents depending on where hardware ships. ESP32 modules with pre-certified RF front-ends simplify this.
 
 **Market**
 - Price sensitivity is high in the primary target markets (Ukraine, Eastern Europe); hardware BOM and shipping costs must stay well below $50 to be viable.
@@ -62,27 +62,27 @@
 
 ## Bill of Materials & Cost Estimate
 
-The prototype is built around an Arduino UNO with off-the-shelf modules sourced from a Ukrainian retailer (**arduino.ua**). The mechanical parts — enclosure, anemometer cups, wind vane, and rain-gauge funnel — are **3D-printed in-house**, which keeps the mechanical cost down to filament only.
+The prototype is built around an **ESP32** — chosen over Arduino UNO R3 because it includes native WiFi and hardware TLS, enabling direct HTTPS POST to the backend without any additional modules or serial bridge. Mechanical parts — enclosure, anemometer cups, wind vane, and rain-gauge funnel — are **3D-printed in-house**, keeping mechanical cost down to filament only. During development, components are assembled on a **breadboard** (no soldering); final assembly is soldered onto a **perfboard**.
 
 ### Electronics to buy
 
-| Component                          | Purpose                                    | Num | Unit (₴) | Subtotal (₴)      | Where to buy                                                                                             |
-| ---------------------------------- | ------------------------------------------ | --- | -------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
-| Arduino UNO R3 (CH340)             | Main controller board                      | 1   | 299      | 299               | [arduino.ua/prod2610](https://arduino.ua/prod2610-arduino-uno-r3-ch340)                                  |
-| BME280 (I2C)                       | Temperature / humidity / pressure sensor   | 1   | 169      | 169               | [arduino.ua/prod1930](https://arduino.ua/prod1930-bme280-5v-i2c-datchik-temperatyri-vlajnosti-davleniya) |
-| SD-card module (SPI)               | Local data logging                         | 1   | 98       | 98                | [arduino.ua/prod589](https://arduino.ua/prod589-modyl-sd-card-dlya-arduino-spi)                          |
-| RTC clock module (DS1307 + EEPROM) | Timestamps for logged readings             | 1   | 75       | 75                | [arduino.ua](https://arduino.ua)                                                                         |
-| KY-040 rotary encoder              | Wind-vane direction + on-device menu input | 3   | 48       | 144               | [arduino.ua/prod1223](https://arduino.ua/prod1223-modyl-enkoder)                                         |
-| Hall sensor A3144 (digital)        | Anemometer + rain-gauge pulse pickup       | 2   | 40       | 80                | [arduino.ua/prod186](https://arduino.ua/prod186-datchik-holla-a3144-cifrovii)                            |
-| **Electronics subtotal**           |                                            |     |          | **865 ₴ (≈ $21)** |                                                                                                          |
+| Component                   | Purpose                               | Num | Unit (₴) | Subtotal (₴)      | Where to buy                                                                                             |
+| --------------------------- | ------------------------------------- | --- | -------- | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| ESP32 Dev Board             | Main controller — WiFi + TLS built-in | 1   | 250      | 250               | [arduino.ua](https://arduino.ua)                                                                         |
+| BME280 (I2C)                | Temperature / humidity / pressure     | 1   | 169      | 169               | [arduino.ua/prod1930](https://arduino.ua/prod1930-bme280-5v-i2c-datchik-temperatyri-vlajnosti-davleniya) |
+| KY-040 rotary encoder       | Wind vane direction                   | 1   | 48       | 48                | [arduino.ua/prod1223](https://arduino.ua/prod1223-modyl-enkoder)                                         |
+| Hall sensor A3144 (digital) | Anemometer + rain-gauge pulse pickup  | 2   | 40       | 80                | [arduino.ua/prod186](https://arduino.ua/prod186-datchik-holla-a3144-cifrovii)                            |
+| **Electronics subtotal**    |                                       |     |          | **547 ₴ (≈ $13)** |                                                                                                          |
+
+> **Removed from original BOM:** Arduino UNO R3, SD-card module, RTC DS1307. The ESP32 obtains timestamps via NTP over WiFi, removing the need for a hardware RTC. Local SD logging is not required — readings are sent directly to the backend over HTTPS.
 
 ### Other costs
 
 | Item                                                                  | Cost |
 | --------------------------------------------------------------------- | ---- |
-| 3D-printed mechanical parts (filament + print time)                   |      |
-| Assembly / manufacturing labour                                       |      |
-| Software & ongoing support (firmware, backend, Telegram bot, hosting) |      |
+| 3D-printed mechanical parts (filament + print time)                   | TBD  |
+| Assembly / manufacturing labour                                       | TBD  |
+| Software & ongoing support (firmware, backend, Telegram bot, hosting) | TBD  |
 
 ---
 
