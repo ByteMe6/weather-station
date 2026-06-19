@@ -50,7 +50,7 @@
 - Mains power is assumed for the prototype; battery/deep-sleep optimisation is post-MVP.
 
 **Legal and Regulatory**
-- The MVP collects no personal data (no user accounts, no location data stored server-side), so GDPR/CCPA obligations do not apply to the initial release. If user accounts are introduced in a later phase, consent flows and data minimisation must be designed in from that point.
+- The system stores user accounts (Clerk user IDs, Telegram account IDs) and links them to sensor data, which triggers GDPR/CCPA obligations from day one: data minimisation, right to deletion, and clear privacy terms are required.
 - Telegram Bot API usage is subject to Telegram's ToS; restricted or blocked in some jurisdictions (Russia, Iran) — relevant to the target market's edges.
 - WiFi RF emissions must comply with CE (EU), FCC (US), or local equivalents depending on where hardware ships. ESP32 modules with pre-certified RF front-ends simplify this.
 

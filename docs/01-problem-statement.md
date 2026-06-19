@@ -19,8 +19,8 @@ Existing weather applications provide data from the nearest weather station, whi
 ## Solution Statement
 
 We are building a local weather station for weather enthusiasts to collect accurate, real-time meteorological data for their specific location, because public weather applications mask important local climate variations. The system provides access through multiple platforms:
-- Web application for real-time data visualization, historical analysis, and detailed weather reports
-- Telegram bot for instant weather notifications and customizable alerts at scheduled times
+- Web application (Next.js, hosted on Vercel) with user authentication via Clerk — for real-time data visualization, historical analysis, and detailed weather reports
+- Telegram bot with authentication via Telegram account — for instant weather notifications and customizable alerts at scheduled times
 
 ## Data Collection
 
