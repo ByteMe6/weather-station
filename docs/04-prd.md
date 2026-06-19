@@ -79,14 +79,14 @@
 
 ## Success Metrics
 
-| Metric | Target |
-|--------|--------|
-| Data latency | A new reading appears on the dashboard within 15 s of the ESP32 sending it. |
-| Bot response time | `/current` responds within 2 s end-to-end. |
-| Alert timeliness | Scheduled alerts fire within 60 s of the configured time, measured over a 7-day period. |
-| Data isolation | RLS verified: authenticated user A cannot retrieve any row owned by user B. |
-| Onboarding time | A new user with a flashed device can reach live data on the dashboard in under 10 minutes. |
-| Uptime | Backend and web app available ≥ 99% of the time (Vercel SLA). |
+| Metric            | Target                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Data latency      | A new reading appears on the dashboard within 15 s of the ESP32 sending it.                |
+| Bot response time | `/current` responds within 2 s end-to-end.                                                 |
+| Alert timeliness  | Scheduled alerts fire within 60 s of the configured time, measured over a 7-day period.    |
+| Data isolation    | RLS verified: authenticated user A cannot retrieve any row owned by user B.                |
+| Onboarding time   | A new user with a flashed device can reach live data on the dashboard in under 10 minutes. |
+| Uptime            | Backend and web app available ≥ 99% of the time (Vercel SLA).                              |
 
 ---
 
