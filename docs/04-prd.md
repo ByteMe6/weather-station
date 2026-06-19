@@ -2,6 +2,14 @@
 
 ---
 
+## User Quotes
+
+| #   | User                                                   | Quote                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Weather enthusiast (Telegram/Instagram community host) | "Meteostation project is going to be designed to capture live data of pressure, humidity, rain intensity (in milliliters), wind speed and direction. With this data, my severe weather research team that I host on Telegram and Instagram can get live information and compare it to the information that services like Ventusky and others provide for more precise warnings about weather events." |
+
+---
+
 ## Goals
 
 - Deliver accurate, hyperlocal weather data to users whose nearest public station is too far away to be useful.
@@ -135,12 +143,12 @@
 
 ## Open Questions & Assumptions
 
-| # | Question / Assumption |
-|---|----------------------|
-| OQ1 | **How is the device-id assigned?** Assumption: generated once at flash time (e.g. UUID derived from ESP32 chip ID) and printed / stored by the developer. No runtime display or pairing button required for MVP. |
-| OQ2 | **What happens if WiFi goes down on the ESP32?** Assumption: readings are dropped (no local buffering) — this is acceptable for MVP; local SD logging is out of scope. |
+| #   | Question / Assumption                                                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OQ1 | **How is the device-id assigned?** Assumption: generated once at flash time (e.g. UUID derived from ESP32 chip ID) and printed / stored by the developer. No runtime display or pairing button required for MVP.                                                                                                                |
+| OQ2 | **What happens if WiFi goes down on the ESP32?** Assumption: readings are dropped (no local buffering) — this is acceptable for MVP; local SD logging is out of scope.                                                                                                                                                          |
 | OQ3 | **Dual-auth accounts:** a user could register via Clerk on the web *and* via Telegram. Assumption: the same device-id cannot be linked to two different user accounts; a user who wants both interfaces must link once and the system resolves the identity from either auth method. The exact UX for this is an open question. |
-| OQ4 | **Bot deployment:** Railway is the preferred host for the Telegram bot. Assumption: Railway provides sufficient uptime for the alert scheduling use case. VPS is the fallback. |
-| OQ5 | **Reading retention:** How long are sensor readings stored? No policy defined yet — could become a cost driver if readings accumulate at high frequency. Decision needed before launch. |
-| OQ6 | **Sensor sampling rate:** The firmware posting interval is not yet specified. Every 60 s is a reasonable default; this affects database row growth and must align with OQ5. |
-| OQ7 | **MVP alert time zones:** Telegram bot scheduled alerts — do they fire in UTC or in the user's local time zone? The bot has no time-zone context by default. Assumption for MVP: alerts fire in UTC; the user is responsible for offsetting. A time-zone setting is post-MVP. |
+| OQ4 | **Bot deployment:** Railway is the preferred host for the Telegram bot. Assumption: Railway provides sufficient uptime for the alert scheduling use case. VPS is the fallback.                                                                                                                                                  |
+| OQ5 | **Reading retention:** How long are sensor readings stored? No policy defined yet — could become a cost driver if readings accumulate at high frequency. Decision needed before launch.                                                                                                                                         |
+| OQ6 | **Sensor sampling rate:** The firmware posting interval is not yet specified. Every 60 s is a reasonable default; this affects database row growth and must align with OQ5.                                                                                                                                                     |
+| OQ7 | **MVP alert time zones:** Telegram bot scheduled alerts — do they fire in UTC or in the user's local time zone? The bot has no time-zone context by default. Assumption for MVP: alerts fire in UTC; the user is responsible for offsetting. A time-zone setting is post-MVP.                                                   |
