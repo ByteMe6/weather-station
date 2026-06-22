@@ -24,7 +24,6 @@
 ### Infrastructure
 - Monorepo with two apps: `web` (Next.js — frontend + backend), `bot` (TypeScript)
 - Database: Supabase (managed PostgreSQL — no self-hosted DB container)
-- Shared `packages/db` (Prisma + Supabase)
 
 ---
 
