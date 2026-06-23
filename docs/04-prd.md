@@ -65,13 +65,12 @@
 | ID | Requirement |
 |----|-------------|
 | T1 | `/start` — greet the user and explain registration. |
-| T2 | `/register <device-id>` — link the Telegram account to the given device-id. Confirm success or surface errors (already linked, unknown ID). |
-| T3 | `/current` — return the latest reading from the user's registered device within 2 s. |
-| T4 | `/alert add <HH:MM> [Mon-Sun,...]` — schedule a daily alert at the given time on the given days (defaults to every day if days omitted). Multiple alerts per user are allowed. |
-| T5 | `/alert list` — show all configured alert slots. |
-| T6 | `/alert remove <HH:MM>` — remove the matching alert slot. |
-| T7 | Alert messages include: temperature, humidity, pressure, wind speed/direction, precipitation. |
-| T8 | Alerts fire within 60 s of the configured time. |
+| T2 | `/menu` — display inline buttons for main actions: "Current", "Alerts", "Register Device", "About". Via callback queries, user can navigate sub-menus without typing text commands. |
+| T3 | `/register <device-id>` — link the Telegram account to the given device-id. Confirm success or surface errors (already linked, unknown ID). Can also be initiated via `/menu` → "Register Device" button. |
+| T4 | `/current` — return the latest reading from the user's registered device within 2 s. Also accessible via `/menu` → "Current" button. |
+| T5 | Alerts menu (via `/menu` → "Alerts"): inline buttons to add/list/remove alert slots. User selects time via buttons, days via inline keyboard, instead of typing `/alert add <HH:MM> ...`. |
+| T6 | Alert messages include: temperature, humidity, pressure, wind speed/direction, precipitation. |
+| T7 | Alerts fire within 60 s of the configured time. |
 
 ### Database (Supabase)
 
