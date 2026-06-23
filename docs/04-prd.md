@@ -77,7 +77,7 @@
 | ID | Requirement |
 |----|-------------|
 | D1 | `users` table: `id`, `clerk_user_id` (nullable), `telegram_id` (nullable), `created_at`. |
-| D2 | `devices` table: `device_id` (PK), `created_at`. Device ownership is managed via the `device_users` junction table (see D2b). |
+| D2 | `devices` table: `device_id` (PK), `status` (unregistered/registered), `created_at`. All device-ids are logged here at flash time with status=unregistered; upon user registration, status changes to registered and an entry is added to `device_users`. |
 | D2b | `device_users` table (junction): `device_id` (FK → devices), `user_id` (FK → users), `role` (owner/viewer/editor), `added_at`. Allows multiple users to access the same device with different permission levels. |
 | D3 | `readings` table: `id`, `device_id` (FK → devices), `timestamp`, `temperature`, `humidity`, `pressure`, `wind_speed`, `wind_direction`, `precipitation`. |
 | D4 | `schedules` table: `id`, `user_id` (FK → users), `time` (HH:MM), `days` (array or bitmask), `created_at`. |
@@ -145,7 +145,7 @@
 
 | #   | Question / Assumption                                                                                                                                                                                                                                                                                                           |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OQ1 | **How is the device-id assigned?** Assumption: generated once at flash time (e.g. UUID derived from ESP32 chip ID) and printed / stored by the developer. No runtime display or pairing button required for MVP.                                                                                                                |
+| OQ1 | **How is the device-id assigned?** Assumption: generated once at flash time (e.g. UUID derived from ESP32 chip ID), logged to the `devices` table with status=unregistered, and printed on device label. No runtime display or pairing button required for MVP. When user registers, status changes to registered and user is linked via `device_users`.                                                                                                                |
 | OQ2 | **What happens if WiFi goes down on the ESP32?** Assumption: readings are dropped (no local buffering) — this is acceptable for MVP; local SD logging is out of scope.                                                                                                                                                          |
 | OQ3 | **Dual-auth accounts:** a user could register via Clerk on the web *and* via Telegram. Assumption: the same device-id cannot be linked to two different user accounts; a user who wants both interfaces must link once and the system resolves the identity from either auth method. The exact UX for this is an open question. |
 | OQ4 | **Bot deployment:** Railway is the preferred host for the Telegram bot. Assumption: Railway provides sufficient uptime for the alert scheduling use case. VPS is the fallback.                                                                                                                                                  |
