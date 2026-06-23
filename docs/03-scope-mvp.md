@@ -31,10 +31,11 @@
 
 ### Database (Supabase)
 - `users` — linked to Clerk user ID or Telegram account
-- `devices` — maps `device_id` to `user_id`
+- `devices` — stores device metadata
+- `device_users` — junction table: links users to devices with a role (owner/viewer); allows multiple users per device
 - `readings` — sensor data rows, scoped to `device_id`
 - `schedules` — alert time slots per user
-- Row Level Security (RLS) policies: users access only their own device data
+- Row Level Security (RLS) policies: users access only devices they are linked to in `device_users`
 
 ### Infrastructure
 - Monorepo with two apps: `web` (Next.js), `bot` (TypeScript)
@@ -49,9 +50,9 @@
 
 **Key data flow rules:**
 - **Device → Backend → DB**: all sensor writes go through the Next.js backend; the device has no direct DB access.
-- **Web app → Supabase directly** (via Supabase JS client + RLS) for all reads. Sensitive writes (device registration) route through the Next.js backend.
+- **Web app → Supabase directly** (via Supabase JS client + RLS) for all reads. Sensitive writes (device registration, sharing) route through the Next.js backend.
 - **Telegram bot → Supabase directly** (using TG account identity + device id + RLS) for all reads. Registration routes through the Next.js backend.
-- **RLS is the access-control layer** for all direct Supabase access — enforces that each user can only see their own device's data.
+- **RLS is the access-control layer** for all direct Supabase access — enforces that each user can only see devices they have access to via the `device_users` junction table.
 
 ---
 

@@ -46,7 +46,7 @@
 | ID | Requirement |
 |----|-------------|
 | B1 | API endpoint `POST /api/readings` — validate `device-id` against the `devices` table, reject unknown IDs with 401. Persist valid readings to the `readings` table in Supabase. |
-| B2 | Server actions for web app sensitive operations (device registration, account settings changes). No REST API endpoints exposed for the web frontend. |
+| B2 | Server actions for web app sensitive operations: device registration (creates or updates entry in `device_users` with role=owner), device sharing (adds users to `device_users`), account settings changes. No REST API endpoints exposed for the web frontend. |
 | B3 | The backend does **not** serve read endpoints for sensor data. The web app and Telegram bot query Supabase directly via their respective clients; RLS enforces data isolation at the database layer. |
 
 ### Web App (Next.js Frontend — Vercel)
@@ -54,7 +54,7 @@
 | ID | Requirement |
 |----|-------------|
 | W1 | Authentication via Clerk (email/password + OAuth). Unauthenticated users are redirected to sign-in. |
-| W2 | Device registration page: user enters their device-id and confirms via server action; backend links it to their Clerk user-id. |
+| W2 | Device registration page: user enters their device-id and confirms via server action; backend adds them to `device_users` with role=owner. Device sharing: user can add other Clerk user IDs or Telegram IDs to share access; they are added to `device_users` with a configurable role (owner/viewer). |
 | W3 | Dashboard: display the latest reading for all active sensors (temperature, humidity, pressure; wind speed and direction; precipitation). Refresh automatically every 15 s. |
 | W4 | Historical charts: line charts per parameter with time-range selector (24 h / 7 days / 30 days). |
 | W5 | CSV export: user picks a date range and downloads a file containing all readings within that range via server action. |
@@ -78,10 +78,11 @@
 | ID | Requirement |
 |----|-------------|
 | D1 | `users` table: `id`, `clerk_user_id` (nullable), `telegram_id` (nullable), `created_at`. |
-| D2 | `devices` table: `device_id` (PK), `user_id` (FK → users), `registered_at`. |
+| D2 | `devices` table: `device_id` (PK), `created_at`. Device ownership is managed via the `device_users` junction table (see D2b). |
+| D2b | `device_users` table (junction): `device_id` (FK → devices), `user_id` (FK → users), `role` (owner/viewer/editor), `added_at`. Allows multiple users to access the same device with different permission levels. |
 | D3 | `readings` table: `id`, `device_id` (FK → devices), `timestamp`, `temperature`, `humidity`, `pressure`, `wind_speed`, `wind_direction`, `precipitation`. |
 | D4 | `schedules` table: `id`, `user_id` (FK → users), `time` (HH:MM), `days` (array or bitmask), `created_at`. |
-| D5 | Row Level Security policies: both the web app (Clerk identity) and the Telegram bot (TG account identity) read Supabase directly — RLS ensures each client can only access rows where the owning `device_id` maps back to their own `user_id`. |
+| D5 | Row Level Security policies: RLS ensures each user can only access devices they are linked to in `device_users`. Both web app (Clerk identity) and Telegram bot (TG account identity) authenticate via their respective ID; RLS joins to `device_users` to determine access. |
 
 ---
 
