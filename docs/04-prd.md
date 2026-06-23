@@ -41,12 +41,12 @@
 | F6 | POST readings to the backend over HTTPS, including a `device-id` header. Retry on transient failure; drop after 3 retries rather than buffering indefinitely. |
 | F7 | Firmware is configured at flash time with WiFi credentials and a device-id (no runtime pairing screen required). |
 
-### Backend (Next.js API Routes — Vercel)
+### Backend (Next.js — Vercel)
 
 | ID | Requirement |
 |----|-------------|
-| B1 | `POST /api/readings` — validate `device-id` against the `devices` table, reject unknown IDs with 401. Persist valid readings to the `readings` table in Supabase. |
-| B2 | `POST /api/devices/register` — link a `device-id` to a `user-id` (either Clerk or Telegram). Reject if device-id is already linked to another user. |
+| B1 | API endpoint `POST /api/readings` — validate `device-id` against the `devices` table, reject unknown IDs with 401. Persist valid readings to the `readings` table in Supabase. |
+| B2 | Server actions for web app sensitive operations (device registration, account settings changes). No REST API endpoints exposed for the web frontend. |
 | B3 | The backend does **not** serve read endpoints for sensor data. The web app and Telegram bot query Supabase directly via their respective clients; RLS enforces data isolation at the database layer. |
 
 ### Web App (Next.js Frontend — Vercel)
@@ -54,10 +54,10 @@
 | ID | Requirement |
 |----|-------------|
 | W1 | Authentication via Clerk (email/password + OAuth). Unauthenticated users are redirected to sign-in. |
-| W2 | Device registration page: user enters their device-id and confirms; backend links it to their Clerk user-id. |
+| W2 | Device registration page: user enters their device-id and confirms via server action; backend links it to their Clerk user-id. |
 | W3 | Dashboard: display the latest reading for all active sensors (temperature, humidity, pressure; wind speed and direction; precipitation). Refresh automatically every 15 s. |
 | W4 | Historical charts: line charts per parameter with time-range selector (24 h / 7 days / 30 days). |
-| W5 | CSV export: user picks a date range and downloads a file containing all readings within that range. |
+| W5 | CSV export: user picks a date range and downloads a file containing all readings within that range via server action. |
 | W6 | If no device is registered, show a prompt to register one instead of an empty dashboard. |
 
 ### Telegram Bot (TypeScript)
