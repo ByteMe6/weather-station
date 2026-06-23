@@ -55,7 +55,7 @@
 |----|-------------|
 | W1 | Authentication via Clerk (email/password + OAuth). Unauthenticated users are redirected to sign-in. |
 | W2 | Device registration page: user enters their device-id and confirms via server action; backend adds them to `device_users` with role=owner. Device sharing: user can add other Clerk user IDs or Telegram IDs to share access; they are added to `device_users` with a configurable role (owner/viewer). |
-| W3 | Dashboard: display the latest reading for all active sensors (temperature, humidity, pressure; wind speed and direction; precipitation). Refresh automatically every 15 s. |
+| W3 | Dashboard: display the latest reading for all active sensors (temperature, humidity, pressure; wind speed and direction; precipitation). Subscribe to Supabase Realtime channel on `device_id`; new readings appear instantly when device posts data. |
 | W4 | Historical charts: line charts per parameter with time-range selector (24 h / 7 days / 30 days). |
 | W5 | CSV export: user picks a date range and downloads a file containing all readings within that range via server action. |
 | W6 | If no device is registered, show a prompt to register one instead of an empty dashboard. |
@@ -90,7 +90,7 @@
 
 | Metric            | Target                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------ |
-| Data latency      | A new reading appears on the dashboard within 15 s of the ESP32 sending it.                |
+| Data latency      | A new reading appears on the dashboard instantly (< 1 s) after the ESP32 posts it via Supabase Realtime.                |
 | Bot response time | `/current` responds within 2 s end-to-end.                                                 |
 | Alert timeliness  | Scheduled alerts fire within 60 s of the configured time, measured over a 7-day period.    |
 | Data isolation    | RLS verified: authenticated user A cannot retrieve any row owned by user B.                |
@@ -106,7 +106,7 @@
 | Security | All ESP32-to-backend traffic is HTTPS only. `device-id` is validated server-side on every write. Clerk JWTs are validated on every authenticated API call. Supabase RLS is the final data-isolation backstop. |
 | Authentication | Web: Clerk (session token). Bot: Telegram user ID (extracted from incoming update, not user-supplied). Device: opaque device-id header. |
 | Privacy / Compliance | Collect only what is needed (sensor readings, user identifiers). Users can delete their account and all associated data on request (right to erasure). No sensor data is shared publicly. Privacy policy required before launch. |
-| Performance | Dashboard auto-refresh every 15 s (polling, not WebSocket, for MVP). Bot response p95 < 2 s. |
+| Performance | Dashboard uses Supabase Realtime WebSocket subscriptions for instant updates. Bot response p95 < 2 s. |
 | Scale | MVP targets a single device per user, single-region Vercel deployment. Database indexing on `(device_id, timestamp DESC)` for efficient range queries. |
 | Reliability | ESP32 drops readings after 3 failed retries rather than queuing indefinitely. Backend is stateless (Vercel functions); session state lives in Clerk and Supabase. |
 
