@@ -55,20 +55,22 @@
 |----|-------------|
 | W1 | Authentication via Clerk (email/password + OAuth). Unauthenticated users are redirected to sign-in. |
 | W2 | Device registration page: user enters their device-id and confirms via server action; backend adds them to `device_users` with role=owner. Device sharing: user can add other Clerk user IDs or Telegram IDs to share access; they are added to `device_users` with a configurable role (owner/viewer). |
+| W2b | Telegram account linking page: user can link their Telegram ID to their account (optional). Unlinking is always possible. Once linked, Telegram bot can identify the user without `/register` command. |
 | W3 | Dashboard: display the latest reading for all active sensors (temperature, humidity, pressure; wind speed and direction; precipitation). Subscribe to Supabase Realtime channel on `device_id`; new readings appear instantly when device posts data. |
 | W4 | Historical charts: line charts per parameter using Chart.js with time-range selector (24 h / 7 days / 30 days). |
 | W5 | CSV export: user picks a date range and downloads a file containing all readings within that range via server action. |
-| W6 | If no device is registered, show a prompt to register one instead of an empty dashboard. |
+| W6 | Alert management (if Telegram ID is linked): user can create, edit, delete scheduled alerts. Alerts fire at specified times on specified days; managed via web UI instead of (or in addition to) bot commands. |
+| W7 | If no device is registered, show a prompt to register one instead of an empty dashboard. |
 
 ### Telegram Bot (TypeScript)
 
 | ID | Requirement |
 |----|-------------|
 | T1 | `/start` — greet the user and explain registration. |
-| T2 | `/menu` — display inline buttons for main actions: "Current", "Alerts", "Register Device", "About". Via callback queries, user can navigate sub-menus without typing text commands. |
-| T3 | `/register <device-id>` — link the Telegram account to the given device-id. Confirm success or surface errors (already linked, unknown ID). Can also be initiated via `/menu` → "Register Device" button. |
+| T2 | `/menu` — display inline buttons for main actions: "Current", "Alerts", "Register Device", "About" (for users who haven't linked their Telegram ID via the web app). Via callback queries, user can navigate sub-menus without typing text commands. |
+| T3 | `/register <device-id>` — link the Telegram account to the given device-id. Confirm success or surface errors (already linked, unknown ID). Can also be initiated via `/menu` → "Register Device" button. Not needed if Telegram ID is already linked via the web app. |
 | T4 | `/current` — return the latest reading from the user's registered device within 2 s. Also accessible via `/menu` → "Current" button. |
-| T5 | Alerts menu (via `/menu` → "Alerts"): inline buttons to add/list/remove alert slots. User selects time via buttons, days via inline keyboard, instead of typing `/alert add <HH:MM> ...`. |
+| T5 | Alerts menu (via `/menu` → "Alerts"): inline buttons to add/list/remove alert slots — for users managing alerts via bot. Users who linked their Telegram ID via web app can manage alerts there instead, but bot commands remain available. |
 | T6 | Alert messages include: temperature, humidity, pressure, wind speed/direction, precipitation. |
 | T7 | Alerts fire within 60 s of the configured time. |
 

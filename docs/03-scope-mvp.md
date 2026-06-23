@@ -76,7 +76,7 @@ The smallest version that proves the core flow end-to-end:
 1. **ESP32** reads the BME280 (temperature, humidity, pressure — no wind or rain yet) and POSTs readings to the backend over HTTPS with its `device-id`.
 2. **Next.js API route** validates the device-id, stores readings in Supabase.
 3. **Web app** (Next.js + Clerk auth) shows current readings and a 24-hour chart; user must be logged in and have registered their device.
-4. **Telegram bot** responds to `/current` and sends a scheduled daily alert at one configurable time.
+4. **Telegram bot** responds to `/current`, provides `/menu` for quick access, and sends scheduled alerts. Alert management can be done via bot commands or (if Telegram ID is linked in web app) via web UI.
 
 Wind / rain sensors, 7-day / 30-day charts, CSV export, and full multi-slot scheduling are confirmed in scope but deferred to the phase after MVP is working end-to-end.
 
