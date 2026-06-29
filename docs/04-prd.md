@@ -78,7 +78,7 @@
 
 | ID | Requirement |
 |----|-------------|
-| D1 | `users` table: `id`, `clerk_user_id` (nullable), `telegram_id` (nullable), `timezone` (e.g. `Europe/Kyiv`, default UTC), `created_at`. |
+| D1 | `users` table: `id`, `clerk_user_id` (nullable), `telegram_id` (nullable), `created_at`. |
 | D2 | `devices` table: `device_id` (PK), `status` (unregistered/registered), `created_at`. All device-ids are logged here at flash time with status=unregistered; upon user registration, status changes to registered and an entry is added to `device_users`. |
 | D2b | `device_users` table (junction): `device_id` (FK → devices), `user_id` (FK → users), `role` (owner/viewer/editor), `added_at`. Allows multiple users to access the same device with different permission levels. |
 | D3 | `readings` table: `id`, `device_id` (FK → devices), `timestamp`, `temperature`, `humidity`, `pressure`, `wind_speed`, `wind_direction`, `precipitation`. |
@@ -154,4 +154,4 @@
 | OQ4 | **Bot deployment:** Telegram bot is deployed as a lightweight edge function on Supabase (handles `/start`, `/menu`, `/current`, user commands). Alert scheduling is handled via Supabase pg_cron + edge functions (triggered automatically, not by bot polling). Keeps infrastructure simple and consolidated on one platform.                                                                                                                                                  |
 | OQ5 | **Reading retention:** At 10-minute sampling rate, ~5 MB/year per device. Supabase free tier (500 MB total) lasts ~100 years per device — no retention policy needed for MVP. Post-MVP: add configurable retention if multiple devices or higher sampling rates are introduced. |
 | OQ6 | **Sensor sampling rate:** Default 10 minutes (`SEND_INTERVAL_MS = 600000` constant in firmware). Configurable at flash time. At this rate, data feels real-time via Supabase Realtime WebSocket while keeping storage negligible. |
-| OQ7 | **Alert time zones:** Readings are stored as `TIMESTAMPTZ` in Supabase. Users have a `timezone` field in the `users` table (e.g. `Europe/Kyiv`). Scheduled alerts fire in the user's configured timezone. Supabase TIMESTAMPTZ handles conversion automatically. |
+| OQ7 | **Alert time zones:** Readings are stored as `TIMESTAMPTZ` in Supabase (UTC internally). No timezone field needed — the client converts to the user's local timezone on the fly via browser `Intl.DateTimeFormat`. For the Telegram bot, the user's timezone is inferred from their device or set explicitly per alert slot. |
