@@ -38,21 +38,8 @@
 - Row Level Security (RLS) policies: users access only devices they are linked to in `device_users`
 
 ### Infrastructure
-- Monorepo with two apps: `web` (Next.js), `bot` (TypeScript)
-- Shared `packages/db` (Prisma + Supabase)
-- Next.js hosted on Vercel; bot hosted separately (e.g. Railway or VPS)
-
----
-
-## System Architecture Overview
-
-![Architecture diagram](architecture-diagram.png)
-
-**Key data flow rules:**
-- **Device → Backend → DB**: all sensor writes go through the Next.js backend; the device has no direct DB access.
-- **Web app → Supabase directly** (via Supabase JS client + RLS) for all reads. Sensitive writes (device registration, sharing) route through the Next.js backend.
-- **Telegram bot → Supabase directly** (using TG account identity + device id + RLS) for all reads. Registration routes through the Next.js backend.
-- **RLS is the access-control layer** for all direct Supabase access — enforces that each user can only see devices they have access to via the `device_users` junction table.
+- Monorepo with two apps: `web` (Next.js — frontend + backend), `bot` (TypeScript)
+- Database: Supabase (managed PostgreSQL — no self-hosted DB container)
 
 ---
 
