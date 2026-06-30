@@ -57,7 +57,7 @@
 | W2 | Device registration page: user enters their device-id and confirms via server action; backend adds them to `device_users` with role=owner. Device sharing: user can add other Clerk user IDs or Telegram IDs to share access; they are added to `device_users` with a configurable role (owner/viewer). |
 | W2b | Telegram account linking page: user can link their Telegram ID to their account (optional). Unlinking is always possible. Once linked, Telegram bot can identify the user without `/register` command. |
 | W3 | Dashboard: display the latest reading for all active sensors (temperature, humidity, pressure; wind speed and direction; precipitation). Subscribe to Supabase Realtime channel on `device_id`; new readings appear instantly when device posts data. |
-| W4 | Historical charts: line charts per parameter using Chart.js with time-range selector (24 h / 7 days / 30 days). |
+| W4 | Historical charts: line charts per parameter using Recharts with time-range selector (24 h / 7 days / 30 days). |
 | W5 | CSV export: user picks a date range and downloads a file containing all readings within that range via server action. |
 | W6 | Alert management (if Telegram ID is linked): user can create, edit, delete scheduled alerts. Alerts fire at specified times on specified days; managed via web UI instead of (or in addition to) bot commands. |
 | W7 | If no device is registered, show a prompt to register one instead of an empty dashboard. |
