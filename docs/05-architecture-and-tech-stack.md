@@ -93,7 +93,6 @@ mindmap
   root((Weather<br/>Station))
     Firmware
       ESP32 · WiFi on-chip
-      Arduino + PlatformIO
       HTTPS only
     Web + Backend · Vercel
       Next.js App Router
