@@ -1,5 +1,11 @@
 # Step 3 — Scope / MVP
 
+## System Architecture
+
+![architecture.md](architecture.md)
+
+---
+
 ## In Scope
 
 ### ESP32 Firmware
