@@ -12,39 +12,66 @@ The device never talks to the DB directly — its only path is `POST /api/readin
 
 ```mermaid
 flowchart LR
-    Device["Device\nholds: device-id\n(no DB credentials,\nno Supabase keys)"]
+    Device["Device\nholds: device-id + device secret\n(no DB credentials,\nno Supabase keys)"]
     TLS["HTTPS / TLS\nno plaintext traffic"]
-    Validate["Backend validates\ndevice-id against\ndevices table\nunknown → 401"]
+    Sign["Payload signed:\nHMAC-SHA256(secret,\nbody + timestamp)"]
+    Validate["Backend validates\ndevice-id + verifies HMAC\ntimestamp window → no replay\ninvalid → 401"]
     Write["Backend writes via\nserver-side service key\ninsert-only into readings"]
-    RLS["RLS\ndevice-id grants zero\nread access to any data"]
+    RLS["RLS\ndevice grants zero\nread access to any data"]
 
-    Device --> TLS --> Validate --> Write --> RLS
+    Device --> TLS
+    Device --> Sign --> Validate --> Write --> RLS
 ```
 
-- `device-id` is an opaque UUID generated at flash time (derived from the ESP32 chip ID) — effectively a bearer credential, unguessable.
-- The device can only **write**; it cannot read anything back. Even a leaked device-id exposes no user data — worst case is spoofed readings for that one device.
-- Post-MVP hardening (if needed): per-device secret + HMAC signature over the payload, so a sniffed device-id alone is useless.
+- Every device is flashed with two values: a public `device-id` (printed on the label, used for registration) and a **`device_secret`** (never leaves the device, never shown to the user).
+- Each `POST /api/readings` carries an **HMAC-SHA256 signature** of the payload + timestamp, computed with the secret. The backend recomputes and compares; the timestamp window rejects replayed requests.
+- The device-id on the label is therefore **not** a credential — knowing it lets you register the device, but not spoof its readings.
+- The device can only **write**; it cannot read anything back. No Supabase keys on the device — the backend writes server-side.
 
 ---
 
-## Device WiFi Connection (Boot Process)
+## Device WiFi Connection (Provisioning + Boot Process)
 
-WiFi credentials and device-id are baked in at **flash time** — no pairing screen or captive portal in MVP (PRD F7).
+**Hard constraint:** this is a physical device shipped to a customer. Once it leaves us, we cannot re-flash it, and we cannot ask the customer to send it back. Two consequences, both **in MVP**:
+
+1. **WiFi credentials are entered by the customer, not flashed by us** — we don't know their network at manufacture time, and they may change routers later. Setup is a captive portal (WiFiManager-style).
+2. **The very first shipped firmware includes OTA updates** — it's the only way to fix a bug in the field.
+
+Only the identity is flashed at manufacture: `device-id` (printed on the label) + `device_secret`. No network config in firmware.
+
+**Customer setup (first boot, or after WiFi reset):**
+
+1. Customer powers on the device. It has no saved WiFi, so it starts as its own access point: hotspot named `WeatherStation-<id>`.
+2. Customer connects to that hotspot with a phone; the setup page opens automatically (captive portal).
+3. The page lists nearby WiFi networks; customer picks their home network and enters its password.
+4. Device saves the credentials to flash storage (NVS — survives power loss), stops the hotspot, and joins the home network.
+5. Done — from now on every boot goes straight to the normal cycle below. A reset button (hold 5 s) wipes saved WiFi and returns to step 1 (e.g. customer moves or changes router).
+
+**Normal operation (every boot after setup):**
+
+1. Load saved WiFi credentials from NVS; load `device-id` + `device_secret` from firmware.
+2. Join the home network (station mode). On failure — retry with increasing delay (5 s → 10 s → 30 s → 60 s, forever). The device never bricks; readings just pause until WiFi is back.
+3. Sync clock via NTP (needed for reading timestamps and the HMAC anti-replay window).
+4. Check for a signed OTA firmware update; install and reboot if one is published.
+5. Main loop: every 5 minutes read sensors → sign payload → POST over HTTPS. Failed POST retries 3×, then that reading is dropped (no buffering in MVP — PRD OQ2). WiFi lost → back to step 2.
 
 ```mermaid
 flowchart TD
-    Boot["Power on"] --> Cfg["Load flash-time config\nSSID · password · device-id\nSEND_INTERVAL_MS"]
-    Cfg --> Conn{"Connect\nto WiFi"}
-    Conn -->|fail| Retry["retry with backoff"] --> Conn
-    Conn -->|ok| NTP["NTP sync\n(timestamps)"]
-    NTP --> Loop["Read sensors\nevery 5 min"]
-    Loop --> Send{"POST reading\nover HTTPS"}
-    Send -->|ok| Loop
-    Send -->|fail ×3| Drop["drop reading\n(no buffering in MVP)"] --> Loop
-    Loop -->|WiFi lost| Conn
-```
+    Boot["Power on"] --> HasCreds{"Saved WiFi\nin NVS?"}
 
-Post-MVP options: captive-portal setup (WiFiManager-style AP) for changing WiFi without reflashing; LittleFS local buffering for offline gaps (PRD OQ2).
+    HasCreds -->|no · first boot or after reset| AP["Start own hotspot\nWeatherStation-&lt;id&gt;"]
+    AP --> Portal["Customer connects with phone\ncaptive portal opens\npicks network + enters password"]
+    Portal --> Save["Save credentials to NVS\nstop hotspot"] --> Conn
+
+    HasCreds -->|yes| Conn{"Join home WiFi\n(station mode)"}
+    Conn -->|fail| Retry["retry: 5s → 10s → 30s → 60s\nforever"] --> Conn
+    Conn -->|connected| NTP["NTP clock sync"]
+    NTP --> OTA["Check signed OTA update\ninstall + reboot if available"]
+    OTA --> Loop["Every 5 min:\nread sensors → sign → POST"]
+    Loop -->|"POST failed 3× → drop reading"| Loop
+    Loop -.->|WiFi lost| Conn
+    Loop -.->|"reset button held 5 s\nwipe WiFi"| AP
+```
 
 ---
 
@@ -66,6 +93,7 @@ erDiagram
     }
     devices {
         text device_id PK
+        text secret "HMAC key, service-role access only"
         text status "unregistered | registered"
         timestamptz created_at
     }
@@ -136,6 +164,8 @@ mindmap
     Firmware
       ESP32 · WiFi on-chip
       HTTPS only
+      WiFiManager · captive portal setup
+      signed OTA updates
     Web + Backend · Vercel
       Next.js App Router
       Clerk auth
