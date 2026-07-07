@@ -6,6 +6,48 @@
 
 ---
 
+## Device → DB: Security
+
+The device never talks to the DB directly — its only path is `POST /api/readings` on the backend.
+
+```mermaid
+flowchart LR
+    Device["Device\nholds: device-id\n(no DB credentials,\nno Supabase keys)"]
+    TLS["HTTPS / TLS\nno plaintext traffic"]
+    Validate["Backend validates\ndevice-id against\ndevices table\nunknown → 401"]
+    Write["Backend writes via\nserver-side service key\ninsert-only into readings"]
+    RLS["RLS\ndevice-id grants zero\nread access to any data"]
+
+    Device --> TLS --> Validate --> Write --> RLS
+```
+
+- `device-id` is an opaque UUID generated at flash time (derived from the ESP32 chip ID) — effectively a bearer credential, unguessable.
+- The device can only **write**; it cannot read anything back. Even a leaked device-id exposes no user data — worst case is spoofed readings for that one device.
+- Post-MVP hardening (if needed): per-device secret + HMAC signature over the payload, so a sniffed device-id alone is useless.
+
+---
+
+## Device WiFi Connection (Boot Process)
+
+WiFi credentials and device-id are baked in at **flash time** — no pairing screen or captive portal in MVP (PRD F7).
+
+```mermaid
+flowchart TD
+    Boot["Power on"] --> Cfg["Load flash-time config\nSSID · password · device-id\nSEND_INTERVAL_MS"]
+    Cfg --> Conn{"Connect\nto WiFi"}
+    Conn -->|fail| Retry["retry with backoff"] --> Conn
+    Conn -->|ok| NTP["NTP sync\n(timestamps)"]
+    NTP --> Loop["Read sensors\nevery 5 min"]
+    Loop --> Send{"POST reading\nover HTTPS"}
+    Send -->|ok| Loop
+    Send -->|fail ×3| Drop["drop reading\n(no buffering in MVP)"] --> Loop
+    Loop -->|WiFi lost| Conn
+```
+
+Post-MVP options: captive-portal setup (WiFiManager-style AP) for changing WiFi without reflashing; LittleFS local buffering for offline gaps (PRD OQ2).
+
+---
+
 ## Data Model
 
 ```mermaid
