@@ -1,0 +1,15 @@
+{
+  "name": "weather-station",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "dev:web": "yarn workspace web dev",
+    "dev:bot": "yarn workspace bot dev",
+    "build": "yarn workspaces run build",
+    "lint": "yarn workspaces run lint",
+    "typecheck": "yarn workspaces run typecheck"
+  }
+}

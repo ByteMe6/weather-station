@@ -1,2 +1,26 @@
 .claude
 .obsidian
+CLAUDE.md
+AGENTS.md
+
+# dependencies
+node_modules
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.pnp.*
+
+# Next.js
+.next
+out
+
+# build
+dist
+
+# env
+.env
+.env.local
+.env*.local
+
+# system
+.DS_Store
