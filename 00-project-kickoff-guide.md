@@ -9,6 +9,7 @@ draft, not something locked.
 
 ---
 
+
 ## Step 1 — Problem statement & idea
 
 Before anything else, start with the *problem*, not the solution. It's easy to get attached
