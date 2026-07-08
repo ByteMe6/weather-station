@@ -445,6 +445,21 @@ rows (PRD success metric).
 8. **Tests** — unit + integration + pgTAP as applicable
 9. **Verify** — `yarn lint && yarn check-types && yarn test:unit && yarn build`
 
+## Claude Code Harness
+
+Team-shared agent config lives in `.claude/` (committed):
+
+- **Hooks**: every Edit/Write is auto-formatted with prettier; edits to
+  `.env*` / `firmware/secrets.ini` are blocked (templates `.env.example` /
+  `secrets.ini.example` stay editable)
+- **Skills**: `/verify` (area-specific end-to-end verification),
+  `/new-migration` (Supabase migration workflow)
+- **Agents**: `rls-reviewer` (run after any migration/RLS change),
+  `data-path-reviewer` (run after web data features)
+- **`.mcp.json`**: ships the context7 docs-lookup server for the whole team
+
+Personal overrides belong in `.claude/settings.local.json` (gitignored).
+
 ## Environment Variables
 
 | Variable                               | Scope         | Description                         |
