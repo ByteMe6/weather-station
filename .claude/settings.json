@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(yarn lint)",
+      "Bash(yarn lint:*)",
+      "Bash(yarn check-types)",
+      "Bash(yarn test:unit)",
+      "Bash(yarn build)",
+      "Bash(yarn format)",
+      "Bash(yarn format:check)",
+      "Bash(yarn install)",
+      "Bash(yarn workspace *)",
+      "Bash(corepack enable)",
+      "Bash(corepack yarn *)",
+      "Bash(deno check *)",
+      "Bash(deno lint *)",
+      "Bash(deno fmt --check *)",
+      "Bash(pio run)",
+      "Bash(pio run *)",
+      "Bash(npx prettier *)",
+      "Bash(npx supabase migration list *)",
+      "Bash(npx supabase gen types *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./apps/web/.env.local)",
+      "Read(./infra/supabase-db/supabase/functions/.env)",
+      "Read(./firmware/secrets.ini)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/protect-secrets.sh",
+            "timeout": 10,
+            "statusMessage": "Checking secrets protection"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/format-file.sh",
+            "timeout": 30,
+            "statusMessage": "Formatting with prettier"
+          }
+        ]
+      }
+    ]
+  }
+}

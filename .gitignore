@@ -1,2 +1,47 @@
-.claude
+# editors / assistants — .claude/ itself is committed (team harness:
+# settings, hooks, skills, agents); only personal overrides stay local
+.claude/settings.local.json
 .obsidian
+.idea/
+.vscode/
+
+# dependencies
+node_modules/
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Next.js
+.next/
+out/
+
+# build
+dist/
+*.tsbuildinfo
+
+# testing
+coverage/
+
+# turbo
+.turbo/
+
+# env — .env.example files stay committed
+.env
+.env.local
+.env*.local
+
+# firmware
+firmware/.pio/
+firmware/secrets.ini
+
+# supabase local state
+infra/supabase-db/supabase/.temp/
+infra/supabase-db/supabase/.branches/
+
+# system
+.DS_Store
+*.log

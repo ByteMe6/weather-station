@@ -1,0 +1,33 @@
+project_id = "weather-station"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+# Web auth is Clerk (PRD W1), integrated via Supabase third-party auth.
+# The Clerk domain gets filled in by the auth ticket:
+# [auth.third_party.clerk]
+# enabled = true
+# domain = "<your-app>.clerk.accounts.dev"
+[auth]
+enabled = true
+
+[storage]
+enabled = false
+
+# Telegram calls the webhook directly and carries no Supabase JWT, so the
+# gateway must not reject it; the function authenticates every update itself
+# via grammY's webhook secret token (BOT_WEBHOOK_SECRET).
+[functions.telegram-bot]
+verify_jwt = false
