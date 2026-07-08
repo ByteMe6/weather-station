@@ -1,26 +1,46 @@
+# editors / assistants
 .claude
 .obsidian
-CLAUDE.md
-AGENTS.md
+.idea/
+.vscode/
 
 # dependencies
-node_modules
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
+node_modules/
 .pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
 
 # Next.js
-.next
-out
+.next/
+out/
 
 # build
-dist
+dist/
+*.tsbuildinfo
 
-# env
+# testing
+coverage/
+
+# turbo
+.turbo/
+
+# env — .env.example files stay committed
 .env
 .env.local
 .env*.local
 
+# firmware
+firmware/.pio/
+firmware/secrets.ini
+
+# supabase local state
+infra/supabase-db/supabase/.temp/
+infra/supabase-db/supabase/.branches/
+
 # system
 .DS_Store
+*.log

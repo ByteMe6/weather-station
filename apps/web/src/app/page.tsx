@@ -1,3 +1,5 @@
-export default function Home() {
-  return <div>Weather Station</div>;
-}
+import type { ReactElement } from 'react'
+
+const Home = (): ReactElement => <div>Weather Station</div>
+
+export default Home

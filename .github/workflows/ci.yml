@@ -1,33 +1,91 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint-typecheck:
-    name: Lint & Typecheck
+  checks:
+    name: Lint · Types · Tests · Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # corepack must be active before setup-node resolves the Yarn 4 cache dir
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: yarn
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
-      - name: Typecheck web
-        run: yarn workspace web typecheck
+      - name: Format check
+        run: yarn format:check
 
-      - name: Typecheck bot
-        run: yarn workspace bot typecheck
+      - name: Lint
+        run: yarn lint
 
-      - name: Lint web
-        run: yarn workspace web lint
+      - name: Typecheck
+        run: yarn check-types
 
-      - name: Lint bot
-        run: yarn workspace bot lint
+      - name: Unit tests
+        run: yarn test:unit
+
+      - name: Build
+        run: yarn build
+
+  edge-functions:
+    name: Edge Functions (Deno)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/supabase-db/supabase/functions/telegram-bot
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Typecheck
+        run: deno check index.ts
+
+      - name: Lint
+        run: deno lint
+
+  firmware:
+    name: Firmware (PlatformIO)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pipx install platformio
+
+      - name: Build
+        run: |
+          cp secrets.ini.example secrets.ini
+          pio run

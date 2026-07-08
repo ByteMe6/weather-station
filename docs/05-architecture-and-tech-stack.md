@@ -163,6 +163,7 @@ mindmap
   root((Weather<br/>Station))
     Firmware
       ESP32 · WiFi on-chip
+      PlatformIO · Arduino core
       HTTPS only
       WiFiManager · captive portal setup
       signed OTA updates
@@ -180,6 +181,6 @@ mindmap
       Supabase Edge Functions
       webhook mode
     Repo
-      Monorepo · npm workspaces
-      web / bot / firmware
+      Monorepo · Yarn 4 workspaces + turbo
+      apps / packages / infra / firmware
 ```
