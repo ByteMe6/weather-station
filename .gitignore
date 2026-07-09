@@ -1,6 +1,4 @@
-# editors / assistants — .claude/ itself is committed (team harness:
-# settings, hooks, skills, agents); only personal overrides stay local
-.claude/settings.local.json
+# editors
 .obsidian
 .idea/
 .vscode/
