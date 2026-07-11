@@ -30,7 +30,7 @@ create table public.device_users (
   primary key (device_id, user_id)
 );
 
-create index if not exists device_users_user_id_idx on public.device_users (user_id);
+create index device_users_user_id_idx on public.device_users (user_id);
 
 alter table public.device_users enable row level security;
 
@@ -47,7 +47,10 @@ create table public.readings (
   precipitation numeric
 );
 
-create index if not exists readings_device_id_timestamp_idx
+-- Unique, not just indexed: firmware retries (PRD F6) can re-send an
+-- already-ingested reading within the HMAC replay window (freshness-only,
+-- not a dedup check). The ingest route treats 23505 as a successful no-op.
+create unique index readings_device_id_timestamp_idx
   on public.readings (device_id, timestamp desc);
 
 alter table public.readings enable row level security;
@@ -57,34 +60,80 @@ create table public.schedules (
   id bigint generated always as identity primary key,
   user_id uuid not null references public.users (id) on delete cascade,
   time time not null,
-  days smallint[] not null,
+  -- IANA name (PRD OQ7: alerts fire in the user's timezone, inferred from
+  -- their device or set explicitly per slot); defaulted to UTC so existing
+  -- rows never end up with an ambiguous stored time.
+  timezone text not null default 'UTC',
+  -- ISO weekday numbers, 1 = Monday ... 7 = Sunday (matches AlertSchedule.days
+  -- in @ws/shared). Client-writable, so constrained here since no app-layer
+  -- validation exists yet.
+  days smallint[] not null check (days <@ array[1, 2, 3, 4, 5, 6, 7]::smallint[] and cardinality(days) > 0),
   created_at timestamptz not null default now()
 );
 
-create index if not exists schedules_user_id_idx on public.schedules (user_id);
+create index schedules_user_id_idx on public.schedules (user_id);
 
 alter table public.schedules enable row level security;
 
+-- Self-contained privilege posture: don't rely on whichever Supabase CLI
+-- version initialized the stack (older CLIs auto-grant ALL, including
+-- RLS-exempt TRUNCATE, to anon/authenticated/service_role on every new
+-- table). Revoke everything up front; the grants below are the sole surface.
+revoke all on all tables in schema public from anon, authenticated, service_role;
+revoke all on all sequences in schema public from anon, authenticated, service_role;
+
 -- current_app_user_id(): maps the Clerk JWT `sub` claim to the internal
--- users.id (uuid). No-arg + STABLE so the planner evaluates it once per
--- query instead of per row. SECURITY DEFINER lets it read `users` even
--- though `users` itself has RLS enabled above.
+-- users.id (uuid). SECURITY DEFINER lets it read `users` even though `users`
+-- itself has RLS enabled above; search_path is pinned empty with every
+-- identifier schema-qualified, so it can't be hijacked by a search-path
+-- change. STABLE only *permits* once-per-statement evaluation — it does not
+-- force it for a SECURITY DEFINER function, so every policy below wraps the
+-- call as `(select public.current_app_user_id())` to force a single
+-- InitPlan instead of one evaluation per row (Supabase lint 0003_auth_rls_initplan).
 create or replace function public.current_app_user_id()
 returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = ''
 as $$
-  select id from public.users where clerk_user_id = (auth.jwt() ->> 'sub') limit 1;
+  select id from public.users where clerk_user_id = (auth.jwt() ->> 'sub');
 $$;
+
+revoke execute on function public.current_app_user_id() from public, anon;
+grant execute on function public.current_app_user_id() to authenticated, service_role;
+
+-- Keeps devices.status in sync with the D2 invariant
+-- status='registered' <=> has at least one device_users row: without this,
+-- removing the last member stranded a device as permanently 'registered'
+-- (unclaimable, invisible to every user, yet still accepting ingest writes).
+create or replace function public.maintain_device_status()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from public.device_users where device_id = old.device_id
+  ) then
+    update public.devices set status = 'unregistered' where device_id = old.device_id;
+  end if;
+  return old;
+end;
+$$;
+
+create trigger device_users_after_delete
+  after delete on public.device_users
+  for each row
+  execute function public.maintain_device_status();
 
 -- users policies
 create policy "users can view own profile"
   on public.users
   for select
   to authenticated
-  using (id = public.current_app_user_id());
+  using (id = (select public.current_app_user_id()));
 
 -- No client-path UPDATE policy: `clerk_user_id`/`telegram_id` are identity
 -- linkage columns. Letting a client update its own row would let a user
@@ -96,7 +145,10 @@ grant select on public.users to authenticated;
 -- devices.secret (HMAC key) must never be readable by any user-facing
 -- policy — service-role only. The RLS policy below governs which rows are
 -- visible, but column-level grants are what actually keep `secret` out of
--- reach, since row policies don't hide individual columns.
+-- reach, since row policies don't hide individual columns. IMPORTANT: any
+-- future migration must keep granting SELECT on an explicit column list for
+-- `devices` — a blanket `grant select on public.devices to authenticated`
+-- would silently re-expose `secret` to every device member.
 create policy "device members can view their devices"
   on public.devices
   for select
@@ -106,11 +158,10 @@ create policy "device members can view their devices"
       select 1
       from public.device_users du
       where du.device_id = devices.device_id
-        and du.user_id = public.current_app_user_id()
+        and du.user_id = (select public.current_app_user_id())
     )
   );
 
-revoke select on public.devices from authenticated, anon;
 grant select (device_id, status, created_at) on public.devices to authenticated;
 
 -- device_users policies
@@ -118,7 +169,7 @@ create policy "users can view their own device links"
   on public.device_users
   for select
   to authenticated
-  using (user_id = public.current_app_user_id());
+  using (user_id = (select public.current_app_user_id()));
 
 grant select on public.device_users to authenticated;
 
@@ -128,11 +179,10 @@ create policy "device members can view readings"
   for select
   to authenticated
   using (
-    exists (
-      select 1
+    device_id in (
+      select du.device_id
       from public.device_users du
-      where du.device_id = readings.device_id
-        and du.user_id = public.current_app_user_id()
+      where du.user_id = (select public.current_app_user_id())
     )
   );
 
@@ -143,25 +193,36 @@ create policy "users can view own schedules"
   on public.schedules
   for select
   to authenticated
-  using (user_id = public.current_app_user_id());
+  using (user_id = (select public.current_app_user_id()));
 
 create policy "users can insert own schedules"
   on public.schedules
   for insert
   to authenticated
-  with check (user_id = public.current_app_user_id());
+  with check (user_id = (select public.current_app_user_id()));
 
 create policy "users can update own schedules"
   on public.schedules
   for update
   to authenticated
-  using (user_id = public.current_app_user_id())
-  with check (user_id = public.current_app_user_id());
+  using (user_id = (select public.current_app_user_id()))
+  with check (user_id = (select public.current_app_user_id()));
 
 create policy "users can delete own schedules"
   on public.schedules
   for delete
   to authenticated
-  using (user_id = public.current_app_user_id());
+  using (user_id = (select public.current_app_user_id()));
 
 grant select, insert, update, delete on public.schedules to authenticated;
+
+-- Identity-column sequences aren't covered by table-level grants — the
+-- inserting role needs explicit USAGE or `insert into schedules` 42501s.
+grant usage, select on all sequences in schema public to authenticated;
+
+-- service_role (server actions, device ingest, Telegram bot) bypasses RLS
+-- but NOT table grants — BYPASSRLS does not imply privileges. Without this,
+-- every server path (device ingest, registration/sharing, Telegram linking,
+-- CSV export) fails closed with 42501.
+grant all on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;

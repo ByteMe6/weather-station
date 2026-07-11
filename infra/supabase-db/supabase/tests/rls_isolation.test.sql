@@ -1,7 +1,8 @@
--- RLS isolation: user A must never see user B's devices, readings,
--- device_users links, or schedules (PRD D5 success metric).
+-- RLS isolation: user A must never see or write user B's devices, readings,
+-- device_users links, or schedules (PRD D5 success metric). Also proves the
+-- anon-deny posture and that legitimate self-service writes still work.
 begin;
-select plan(13);
+select plan(31);
 
 -- fixtures, inserted as postgres (RLS bypassed)
 insert into public.users (id, clerk_user_id)
@@ -50,9 +51,15 @@ select is(
 );
 
 select is(
-  (select device_id from public.devices limit 1),
-  'device-a',
-  'user A sees device-a, not device-b'
+  (select count(*)::int from public.devices),
+  1,
+  'user A sees exactly one device'
+);
+
+select is(
+  (select count(*)::int from public.devices where device_id = 'device-b'),
+  0,
+  'user A cannot see device-b'
 );
 
 select is(
@@ -80,9 +87,15 @@ set local role authenticated;
 set local request.jwt.claims to '{"sub":"user_b","role":"authenticated"}';
 
 select is(
-  (select device_id from public.devices limit 1),
-  'device-b',
-  'user B sees device-b, not device-a'
+  (select count(*)::int from public.devices where device_id = 'device-b'),
+  1,
+  'user B sees device-b'
+);
+
+select is(
+  (select count(*)::int from public.devices where device_id = 'device-a'),
+  0,
+  'user B cannot see device-a'
 );
 
 select is(
@@ -95,6 +108,30 @@ select is(
   (select count(*)::int from public.schedules where user_id = '11111111-1111-1111-1111-111111111111'),
   0,
   'user B cannot see user A schedules'
+);
+
+select is(
+  (select count(*)::int from public.users),
+  1,
+  'user B sees only their own users row'
+);
+
+select is(
+  (select count(*)::int from public.users where id = '11111111-1111-1111-1111-111111111111'),
+  0,
+  'user B cannot see user A users row'
+);
+
+select is(
+  (select count(*)::int from public.device_users),
+  1,
+  'user B sees only their own device_users row'
+);
+
+select is(
+  (select count(*)::int from public.device_users where user_id = '11111111-1111-1111-1111-111111111111'),
+  0,
+  'user B cannot see user A device_users row'
 );
 
 reset role;
@@ -131,6 +168,92 @@ select is(
   1,
   'user A cannot delete user B schedule'
 );
+
+-- positive path: user A can still manage their own schedule (guards against
+-- an over-strict WITH CHECK silently rejecting all writes)
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"user_a","role":"authenticated"}';
+
+select lives_ok(
+  $$insert into public.schedules (user_id, time, days) values ('11111111-1111-1111-1111-111111111111', '10:00', array[2])$$,
+  'user A can insert their own schedule'
+);
+
+select is(
+  (select count(*)::int from public.schedules where user_id = '11111111-1111-1111-1111-111111111111'),
+  2,
+  'user A now has two schedules after their own insert'
+);
+
+select lives_ok(
+  $$update public.schedules set time = '10:30' where user_id = '11111111-1111-1111-1111-111111111111' and time = '10:00'$$,
+  'user A can update their own schedule'
+);
+
+select is(
+  (select count(*)::int from public.schedules where user_id = '11111111-1111-1111-1111-111111111111' and time = '10:30:00'),
+  1,
+  'user A schedule reflects their own update'
+);
+
+select lives_ok(
+  $$delete from public.schedules where user_id = '11111111-1111-1111-1111-111111111111' and time = '10:30'$$,
+  'user A can delete their own schedule'
+);
+
+select is(
+  (select count(*)::int from public.schedules where user_id = '11111111-1111-1111-1111-111111111111'),
+  1,
+  'user A is back to their original single schedule after their own delete'
+);
+
+select throws_ok(
+  $$update public.schedules set user_id = '22222222-2222-2222-2222-222222222222' where user_id = '11111111-1111-1111-1111-111111111111' and time = '08:00'$$,
+  'new row violates row-level security policy for table "schedules"',
+  'user A cannot reassign their own schedule to user B via WITH CHECK'
+);
+
+reset role;
+
+-- anon: no grants at all, every table should reject with permission denied
+set local role anon;
+
+select throws_ok(
+  $$select 1 from public.users$$,
+  '42501',
+  'permission denied for table users',
+  'anon cannot query users'
+);
+
+select throws_ok(
+  $$select 1 from public.devices$$,
+  '42501',
+  'permission denied for table devices',
+  'anon cannot query devices'
+);
+
+select throws_ok(
+  $$select 1 from public.device_users$$,
+  '42501',
+  'permission denied for table device_users',
+  'anon cannot query device_users'
+);
+
+select throws_ok(
+  $$select 1 from public.readings$$,
+  '42501',
+  'permission denied for table readings',
+  'anon cannot query readings'
+);
+
+select throws_ok(
+  $$select 1 from public.schedules$$,
+  '42501',
+  'permission denied for table schedules',
+  'anon cannot query schedules'
+);
+
+reset role;
 
 select * from finish();
 rollback;

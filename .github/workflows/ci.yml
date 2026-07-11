@@ -48,6 +48,41 @@ jobs:
       - name: Build
         run: yarn build
 
+  database:
+    name: Database (migrations + RLS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/supabase-db
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --immutable
+        working-directory: .
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase stack
+        run: npx supabase start
+
+      - name: Apply migrations
+        run: yarn db-reset:local
+
+      - name: Run pgTAP RLS suite
+        run: yarn test:db
+
   edge-functions:
     name: Edge Functions (Deno)
     runs-on: ubuntu-latest

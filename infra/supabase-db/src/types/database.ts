@@ -116,6 +116,7 @@ export type Database = {
           days: number[]
           id: number
           time: string
+          timezone: string
           user_id: string
         }
         Insert: {
@@ -123,6 +124,7 @@ export type Database = {
           days: number[]
           id?: never
           time: string
+          timezone?: string
           user_id: string
         }
         Update: {
@@ -130,6 +132,7 @@ export type Database = {
           days?: number[]
           id?: never
           time?: string
+          timezone?: string
           user_id?: string
         }
         Relationships: [
