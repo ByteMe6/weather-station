@@ -15,6 +15,9 @@ alter table public.users enable row level security;
 create table public.devices (
   device_id text primary key,
   secret text not null,
+  -- status values mirror DeviceStatus in @ws/shared — keep the two lists in
+  -- sync (generated types widen this to `string`, so the shared union isn't
+  -- enforced across the wire; a mismatch surfaces only as a 23514 at runtime).
   status text not null default 'unregistered' check (status in ('unregistered', 'registered')),
   created_at timestamptz not null default now()
 );
@@ -25,6 +28,7 @@ alter table public.devices enable row level security;
 create table public.device_users (
   device_id text not null references public.devices (device_id) on delete cascade,
   user_id uuid not null references public.users (id) on delete cascade,
+  -- role values mirror DeviceRole in @ws/shared — keep the two lists in sync.
   role text not null check (role in ('owner', 'editor', 'viewer')),
   added_at timestamptz not null default now(),
   primary key (device_id, user_id)
@@ -49,7 +53,8 @@ create table public.readings (
 
 -- Unique, not just indexed: firmware retries (PRD F6) can re-send an
 -- already-ingested reading within the HMAC replay window (freshness-only,
--- not a dedup check). The ingest route treats 23505 as a successful no-op.
+-- not a dedup check). The ingest route must treat 23505 as a successful no-op
+-- (on conflict do nothing) so a retry doesn't burn the device's attempts.
 create unique index readings_device_id_timestamp_idx
   on public.readings (device_id, timestamp desc);
 

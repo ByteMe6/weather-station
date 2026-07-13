@@ -2,7 +2,7 @@
 -- device_users links, or schedules (PRD D5 success metric). Also proves the
 -- anon-deny posture and that legitimate self-service writes still work.
 begin;
-select plan(31);
+select plan(33);
 
 -- fixtures, inserted as postgres (RLS bypassed)
 insert into public.users (id, clerk_user_id)
@@ -254,6 +254,32 @@ select throws_ok(
 );
 
 reset role;
+
+-- device-status trigger (maintain_device_status): devices.status must track
+-- membership per the D2 invariant. Runs as postgres (RLS/grants bypassed) —
+-- the SECURITY DEFINER trigger fires regardless of the acting role.
+insert into public.device_users (device_id, user_id, role)
+values ('device-a', '22222222-2222-2222-2222-222222222222', 'viewer');
+
+delete from public.device_users
+where device_id = 'device-a'
+  and user_id = '22222222-2222-2222-2222-222222222222';
+
+select is(
+  (select status from public.devices where device_id = 'device-a'),
+  'registered',
+  'device stays registered while it still has a member'
+);
+
+delete from public.device_users
+where device_id = 'device-a'
+  and user_id = '11111111-1111-1111-1111-111111111111';
+
+select is(
+  (select status from public.devices where device_id = 'device-a'),
+  'unregistered',
+  'device flips to unregistered when its last member is removed'
+);
 
 select * from finish();
 rollback;
