@@ -26,6 +26,12 @@ enabled = true
 [storage]
 enabled = false
 
+# Disabled: the vector/analytics (logflare) container bind-mounts the host
+# docker socket, which fails under Colima's virtiofs mount type. Not needed
+# for local dev.
+[analytics]
+enabled = false
+
 # Telegram calls the webhook directly and carries no Supabase JWT, so the
 # gateway must not reject it; the function authenticates every update itself
 # via grammY's webhook secret token (BOT_WEBHOOK_SECRET).

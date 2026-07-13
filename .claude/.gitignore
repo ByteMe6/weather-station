@@ -1,0 +1,3 @@
+# Personal Claude Code overrides stay local (CLAUDE.md); the rest of .claude/
+# is team-shared and tracked.
+settings.local.json

@@ -362,8 +362,12 @@ to a device.
 
 - **Function volatility**: RLS helper functions must be `STABLE`; never leave
   functions `VOLATILE` (the default) unless they genuinely modify state
-- **RLS policies**: no per-row function calls — use no-arg `STABLE` functions
-  or `auth.uid()` evaluated once per query
+- **RLS policies**: no per-row function calls — wrap every helper call as
+  `(select public.fn())` to force a single InitPlan per query. `STABLE` only
+  _permits_ once-per-statement evaluation and never forces it for
+  `SECURITY DEFINER` helpers, so the `(select …)` wrap is required, not
+  optional (Supabase lint `0003_auth_rls_initplan`). `auth.uid()` is likewise
+  evaluated once per query only when wrapped this way
 - **Nullable comparisons** in RLS: `IS DISTINCT FROM`, never `!=`/`<>`
 - **Views**: avoid CTEs over `readings` (optimization fences); prefer
   denormalized latest-value columns kept current by `AFTER INSERT` triggers
