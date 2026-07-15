@@ -67,6 +67,22 @@ yarn build
 yarn format        # prettier — CI enforces format:check
 ```
 
+### Provision a device
+
+Every device is flashed with a `DEVICE_ID` (goes on the label) and a
+`DEVICE_SECRET` (never leaves the device). Both are minted ahead of flashing
+and logged in the `devices` table as `unregistered`:
+
+```bash
+cd infra/supabase-db
+cp .env.example .env    # set SUPABASE_URL + SUPABASE_SECRET_KEY (service role)
+yarn provision:device
+```
+
+It prints the pair once — copy them into `firmware/secrets.ini` before
+flashing. The secret is shown only here and is stored nowhere else in
+plaintext, so if you lose it you have to provision a new device.
+
 ### Firmware
 
 See [`firmware/README.md`](firmware/README.md) for toolchain setup, the
