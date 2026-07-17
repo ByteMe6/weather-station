@@ -12,6 +12,12 @@ if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
   )
 }
 
+// Built inline rather than reused from createServiceRoleClient() in
+// @ws/supabase-db: that factory starts with `import 'server-only'` and sits
+// behind the package barrel, neither of which this standalone
+// `node --experimental-strip-types` script should depend on (server-only
+// guards client bundles — a CLI is never bundled). Config is intentionally
+// identical to the canonical factory; keep them in step if it grows options.
 const db = createClient<Database>(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
 const makeDeviceId = () => `ws-${randomUUID().replaceAll('-', '').slice(0, 12)}`
@@ -36,7 +42,8 @@ const registerDevice = async () => {
 
 const { deviceId, secret } = await registerDevice()
 
-// stderr so the secret can't be captured by piping stdout somewhere
+// Write to stderr, not stdout, so a plain `> file` redirect of stdout won't
+// silently capture the secret to disk (an explicit `2>` still would).
 console.error(
   '\nDevice added (unregistered). Put these in secrets.ini before flashing:',
 )

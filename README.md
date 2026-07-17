@@ -79,6 +79,10 @@ cp .env.example .env    # set SUPABASE_URL + SUPABASE_SECRET_KEY (service role)
 yarn provision:device
 ```
 
+Requires **Node ≥ 22.6** — the script runs the TypeScript directly via
+`node --experimental-strip-types`, which older Node (incl. the repo's `>=20.9`
+floor) does not support.
+
 It prints the pair once — copy them into `firmware/secrets.ini` before
 flashing. The secret is shown only here and is stored nowhere else in
 plaintext, so if you lose it you have to provision a new device.
