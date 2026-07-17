@@ -28,8 +28,34 @@ firmware/
   secrets.ini.example   # template for per-device flash-time config
   secrets.ini           # your local copy (gitignored — never commit)
   src/
-    main.cpp            # entry point (setup + loop)
+    main.cpp            # entry point: BMP280 sample + serial log loop
 ```
+
+## Sensors — BMP280 (I2C)
+
+Default ESP32 I2C pins, so no build flags are needed for wiring:
+
+| BMP280 | ESP32  |
+| ------ | ------ |
+| VCC    | 3V3    |
+| GND    | GND    |
+| SCL    | GPIO22 |
+| SDA    | GPIO21 |
+
+Address: firmware tries `0x76`, then `0x77` (`0x76` on most GY-BMP280 boards,
+`0x77` on Adafruit's). `main.cpp` samples every 2 s and logs to serial at
+115200 baud:
+
+```
+temp=23.41 C  pressure=1005.7 hPa  altitude=58.3 m
+```
+
+Altitude is derived from pressure against a fixed sea-level reference
+(1013.25 hPa), not a separate measurement.
+
+> **Note:** the BMP280 has no humidity element. PRD F1 needs humidity, so the
+> production sensor is a BME280 — swapping the driver back is a small change
+> once that hardware is on hand.
 
 ## Flash-time configuration
 
