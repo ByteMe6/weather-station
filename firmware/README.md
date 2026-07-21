@@ -8,7 +8,7 @@ Every library this project depends on lives in the Arduino ecosystem:
 
 | Need                        | Library             | Arduino | ESP-IDF native |
 | --------------------------- | ------------------- | ------- | -------------- |
-| BME280 sensor               | Adafruit BME280     | ✅      | port yourself  |
+| BMP280 sensor               | Adafruit BMP280     | ✅      | port yourself  |
 | WiFi captive portal setup   | WiFiManager (tzapu) | ✅      | port yourself  |
 | OTA firmware updates        | ArduinoOTA / Update | ✅      | port yourself  |
 | HMAC-SHA256 payload signing | Crypto (rweather)   | ✅      | port yourself  |
