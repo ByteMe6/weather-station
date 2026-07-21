@@ -124,3 +124,6 @@ jobs:
         run: |
           cp secrets.ini.example secrets.ini
           pio run
+
+      - name: Unit tests (native)
+        run: pio test -e native

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
+#include <reading.h>
 
 // 0x76 on most GY-BMP280 breakouts, 0x77 on Adafruit boards.
 static const uint8_t BMP_ADDR[] = {0x76, 0x77};
@@ -45,8 +46,7 @@ void loop() {
   float t = bmp.readTemperature();
   float p = bmp.readPressure() / 100.0f;
 
-  // a bus fault returns stale garbage, not NaN, so bound-check before trusting it
-  if (isnan(t) || isnan(p) || t < -40.0f || t > 85.0f || p < 300.0f || p > 1100.0f) {
+  if (!isPlausibleReading(t, p)) {
     Serial.println("BMP280 reading out of range, re-initialising");
     ready = false;
     return;
