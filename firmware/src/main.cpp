@@ -41,20 +41,19 @@ void loop() {
     }
   }
 
-  if (!bmp.takeForcedMeasurement()) {
-    Serial.println("BMP280 read failed");
-    ready = false;
-    return;
-  }
+  bmp.takeForcedMeasurement();
 
   float t = bmp.readTemperature();
   float p = bmp.readPressure() / 100.0f;
-  float alt = bmp.readAltitude(SEA_LEVEL_HPA);
 
-  if (isnan(t) || isnan(p)) {
+  // a bus fault returns stale garbage, not NaN, so bound-check before trusting it
+  if (isnan(t) || isnan(p) || t < -40.0f || t > 85.0f || p < 300.0f || p > 1100.0f) {
+    Serial.println("BMP280 reading out of range, re-initialising");
     ready = false;
     return;
   }
+
+  float alt = bmp.readAltitude(SEA_LEVEL_HPA);
 
   Serial.printf("temp=%.2f C  pressure=%.1f hPa  altitude=%.1f m\n", t, p, alt);
 }
