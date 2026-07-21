@@ -7,9 +7,9 @@ static const uint8_t BMP_ADDR[] = {0x76, 0x77};
 static const uint32_t READ_INTERVAL = 2000;
 static const float SEA_LEVEL_HPA = 1013.25f;  // reference for derived altitude
 
-Adafruit_BMP280 bmp;
-bool ready = false;
-uint32_t lastRead = 0;
+static Adafruit_BMP280 bmp;
+static bool ready = false;
+static uint32_t lastRead = 0;
 
 bool initSensor() {
   if (!bmp.begin(BMP_ADDR[0]) && !bmp.begin(BMP_ADDR[1])) return false;
