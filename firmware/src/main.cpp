@@ -53,7 +53,7 @@ void loop() {
     return;
   }
 
-  float alt = bmp.readAltitude(SEA_LEVEL_HPA);
+  float alt = 44330.0f * (1.0f - powf(p / SEA_LEVEL_HPA, 0.1903f));
 
   Serial.printf("temp=%.2f C  pressure=%.1f hPa  altitude=%.1f m\n", t, p, alt);
 }
