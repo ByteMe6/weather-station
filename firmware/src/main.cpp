@@ -23,7 +23,6 @@ bool initSensor() {
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin();
 
   ready = initSensor();
   if (!ready) Serial.println("BMP280 not found, retrying...");
