@@ -18,14 +18,14 @@ jobs:
     name: Lint · Types · Tests · Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # corepack must be active before setup-node resolves the Yarn 4 cache dir
       - name: Enable corepack (Yarn 4)
         run: corepack enable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: yarn
@@ -55,13 +55,13 @@ jobs:
       run:
         working-directory: infra/supabase-db
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Enable corepack (Yarn 4)
         run: corepack enable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: yarn
@@ -70,7 +70,7 @@ jobs:
         run: yarn install --immutable
         working-directory: .
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: latest
 
@@ -90,7 +90,7 @@ jobs:
       run:
         working-directory: infra/supabase-db/supabase/functions/telegram-bot
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: denoland/setup-deno@v2
         with:
@@ -109,10 +109,10 @@ jobs:
       run:
         working-directory: firmware
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache PlatformIO
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.platformio
           key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
