@@ -32,6 +32,9 @@ coverage/
 .env.local
 .env*.local
 
+# infisical — local project link (contains workspace id, machine-specific)
+.infisical.json
+
 # firmware
 firmware/.pio/
 firmware/secrets.ini

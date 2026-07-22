@@ -466,19 +466,25 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 
 ## Environment Variables
 
-| Variable                               | Scope         | Description                         |
-| -------------------------------------- | ------------- | ----------------------------------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key               |
-| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                    |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                    |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)      |
-| `SUPABASE_URL`                         | Server        | Supabase API URL                    |
-| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS** |
-| `BOT_TOKEN`                            | Edge function | Telegram bot token                  |
-| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token       |
+| Variable                               | Scope         | Description                                         |
+| -------------------------------------- | ------------- | --------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key                               |
+| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                                    |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                                    |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)                      |
+| `SUPABASE_URL`                         | Server        | Supabase API URL                                    |
+| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                 |
+| `BOT_TOKEN`                            | Edge function | Telegram bot token                                  |
+| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                       |
+| `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod) |
 
-Store secrets in `.env`/`.env.local` (gitignored); document new variables in
-the matching `.env.example` without values. Edge function secrets are set via
+Secrets are managed with **Infisical**: inject them at runtime with
+`infisical run -- <command>` (e.g. `infisical run -- yarn workspace @ws/web dev`).
+The repo links to the Infisical project via a gitignored `.infisical.json` —
+run `infisical login` + `infisical init` once. The `test:integration:secrets`
+script already wraps the integration test this way. A local `.env`/`.env.local`
+(gitignored) still works as a fallback; document new variables in the matching
+`.env.example` without values. Edge function secrets are set via
 `npx supabase secrets set`.
 
 ### Local Supabase Ports
