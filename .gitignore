@@ -3,6 +3,10 @@
 .idea/
 .vscode/
 
+# AI agent tooling
+.agents/
+.codex/
+
 # dependencies
 node_modules/
 .pnp.*
@@ -31,6 +35,9 @@ coverage/
 .env
 .env.local
 .env*.local
+
+# infisical — local project link (contains workspace id, machine-specific)
+.infisical.json
 
 # firmware
 firmware/.pio/
