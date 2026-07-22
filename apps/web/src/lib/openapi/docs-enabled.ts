@@ -7,5 +7,8 @@ export const areDocsEnabled = (): boolean => {
   const override = process.env.API_DOCS_ENABLED
   if (override === 'true') return true
   if (override === 'false') return false
-  return process.env.VERCEL_ENV !== 'production'
+
+  const vercelEnv = process.env.VERCEL_ENV
+  if (vercelEnv) return vercelEnv !== 'production'
+  return process.env.NODE_ENV !== 'production'
 }

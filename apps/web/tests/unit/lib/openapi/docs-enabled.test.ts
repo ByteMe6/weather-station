@@ -18,6 +18,13 @@ describe('areDocsEnabled', () => {
     expect(areDocsEnabled()).toBe(false)
   })
 
+  it('is disabled in non-Vercel production', () => {
+    process.env = { ...process.env, NODE_ENV: 'production' }
+    delete process.env.VERCEL_ENV
+    delete process.env.API_DOCS_ENABLED
+    expect(areDocsEnabled()).toBe(false)
+  })
+
   it('is enabled in preview', () => {
     process.env.VERCEL_ENV = 'preview'
     delete process.env.API_DOCS_ENABLED

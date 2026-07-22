@@ -7,9 +7,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
  * The provided signature is lowercase hex.
  *
  * Comparison is constant-time. Returns false — never throws — on a malformed
- * or wrong-length signature (`Buffer.from(_, 'hex')` truncates invalid hex, so
- * a length mismatch catches it) so the caller can treat every failure as one
- * generic 401.
+ * or wrong-length signature so the caller can treat every failure as one
+ * generic 401. Validate the canonical encoding before decoding because
+ * `Buffer.from(_, 'hex')` silently truncates at the first invalid character.
  */
 export const verifySignature = (params: {
   secret: string
@@ -17,6 +17,8 @@ export const verifySignature = (params: {
   rawBody: string
   signature: string
 }): boolean => {
+  if (!/^[0-9a-f]{64}$/.test(params.signature)) return false
+
   const expected = createHmac('sha256', params.secret)
     .update(`${params.timestamp}.${params.rawBody}`)
     .digest()

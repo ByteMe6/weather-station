@@ -69,6 +69,18 @@ describe('verifySignature', () => {
     ).toBe(false)
   })
 
+  it('rejects a valid signature with trailing non-hex characters', () => {
+    const signature = `${sign(SECRET, TIMESTAMP, BODY)}zz`
+    expect(
+      verifySignature({
+        secret: SECRET,
+        timestamp: TIMESTAMP,
+        rawBody: BODY,
+        signature,
+      }),
+    ).toBe(false)
+  })
+
   it('rejects a wrong-length signature', () => {
     expect(
       verifySignature({

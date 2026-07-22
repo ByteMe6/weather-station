@@ -198,4 +198,12 @@ describe('POST /api/v1/readings', () => {
     expect(res.status).toBe(500)
     await expect(res.json()).resolves.toMatchObject({ error: 'internal_error' })
   })
+
+  it('returns 500 when the device-secret lookup fails unexpectedly', async () => {
+    mockFetchSecret.mockRejectedValue(new Error('db unavailable'))
+    const res = await POST(makeRequest({}))
+    expect(res.status).toBe(500)
+    await expect(res.json()).resolves.toEqual({ error: 'internal_error' })
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
 })

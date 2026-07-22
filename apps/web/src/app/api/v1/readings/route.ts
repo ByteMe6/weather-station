@@ -27,6 +27,9 @@ const unauthorized = (): Response =>
 const badPayload = (issues: unknown): Response =>
   Response.json({ error: 'invalid_payload', issues }, { status: 400 })
 
+const internalError = (): Response =>
+  Response.json({ error: 'internal_error' }, { status: 500 })
+
 export const POST = async (request: Request): Promise<Response> => {
   const deviceId = request.headers.get(DEVICE_ID_HEADER)
   const timestamp = request.headers.get(TIMESTAMP_HEADER)
@@ -44,8 +47,14 @@ export const POST = async (request: Request): Promise<Response> => {
 
   const rawBody = await request.text()
 
-  const supabase = createServiceRoleClient()
-  const secret = await fetchDeviceSecret(supabase, { deviceId })
+  let supabase: ReturnType<typeof createServiceRoleClient>
+  let secret: string | null
+  try {
+    supabase = createServiceRoleClient()
+    secret = await fetchDeviceSecret(supabase, { deviceId })
+  } catch {
+    return internalError()
+  }
   if (!secret) return unauthorized()
 
   if (!verifySignature({ secret, timestamp, rawBody, signature })) {
@@ -65,7 +74,7 @@ export const POST = async (request: Request): Promise<Response> => {
   try {
     await insertReading(supabase, { deviceId, payload: parsed.data })
   } catch {
-    return Response.json({ error: 'internal_error' }, { status: 500 })
+    return internalError()
   }
 
   return Response.json({ ok: true }, { status: 201 })
