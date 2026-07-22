@@ -3,6 +3,10 @@
 .idea/
 .vscode/
 
+# AI agent tooling
+.agents/
+.codex/
+
 # dependencies
 node_modules/
 .pnp.*

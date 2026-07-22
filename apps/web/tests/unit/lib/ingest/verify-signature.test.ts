@@ -34,6 +34,18 @@ describe('verifySignature', () => {
     ).toBe(false)
   })
 
+  it('rejects a tampered timestamp (the timestamp is bound into the signature)', () => {
+    const signature = sign(SECRET, TIMESTAMP, BODY)
+    expect(
+      verifySignature({
+        secret: SECRET,
+        timestamp: '9999999999999',
+        rawBody: BODY,
+        signature,
+      }),
+    ).toBe(false)
+  })
+
   it('rejects a signature made with the wrong secret', () => {
     const signature = sign('b'.repeat(64), TIMESTAMP, BODY)
     expect(

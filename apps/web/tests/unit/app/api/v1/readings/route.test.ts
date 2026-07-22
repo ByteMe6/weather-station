@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto'
 
 import {
   DEVICE_ID_HEADER,
+  REPLAY_WINDOW_MS,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
 } from '@ws/shared'
@@ -140,5 +141,61 @@ describe('POST /api/v1/readings', () => {
     mockInsert.mockResolvedValue(undefined) // service swallows conflicts
     const res = await POST(makeRequest({}))
     expect(res.status).toBe(201)
+  })
+
+  it('returns 401 for a future timestamp beyond the window, before any DB lookup', async () => {
+    const future = String(NOW + 400_000)
+    const res = await POST(makeRequest({ timestamp: future }))
+    expect(res.status).toBe(401)
+    expect(mockFetchSecret).not.toHaveBeenCalled()
+  })
+
+  it('accepts a timestamp exactly at the replay-window edge', async () => {
+    const edge = String(NOW - REPLAY_WINDOW_MS)
+    const res = await POST(makeRequest({ timestamp: edge }))
+    expect(res.status).toBe(201)
+  })
+
+  it('returns 401 one millisecond past the replay window', async () => {
+    const justOutside = String(NOW - REPLAY_WINDOW_MS - 1)
+    const res = await POST(makeRequest({ timestamp: justOutside }))
+    expect(res.status).toBe(401)
+    expect(mockFetchSecret).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 for a non-numeric timestamp, before any DB lookup', async () => {
+    const res = await POST(makeRequest({ timestamp: 'not-a-number' }))
+    expect(res.status).toBe(401)
+    expect(mockFetchSecret).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 when the timestamp is altered without re-signing', async () => {
+    // Signature covers NOW; the header carries a different (still-fresh)
+    // timestamp, so the replay check passes but the HMAC no longer matches.
+    // Proves x-timestamp is bound into the signature.
+    const res = await POST(
+      makeRequest({
+        timestamp: String(NOW + 1_000),
+        signature: sign(String(NOW), validBody),
+      }),
+    )
+    expect(res.status).toBe(401)
+    expect(mockFetchSecret).toHaveBeenCalled() // got past the replay check
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 for a full-length but forged signature', async () => {
+    // 64 hex chars (32 bytes) — correct length, wrong value — so this exercises
+    // the constant-time comparison, not the length short-circuit.
+    const res = await POST(makeRequest({ signature: 'a'.repeat(64) }))
+    expect(res.status).toBe(401)
+    expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  it('returns 500 when the insert fails unexpectedly', async () => {
+    mockInsert.mockRejectedValue(new Error('db unavailable'))
+    const res = await POST(makeRequest({}))
+    expect(res.status).toBe(500)
+    await expect(res.json()).resolves.toMatchObject({ error: 'internal_error' })
   })
 })

@@ -6,7 +6,7 @@
 
 **Architecture:** A thin Next.js App Router route handler orchestrates pure helpers (HMAC verify, zod payload validation) and a services-layer function that inserts via the service-role client with `ON CONFLICT DO NOTHING`. The OpenAPI document is generated from the same zod schema used for validation, so docs can't drift. Docs are disabled in production.
 
-**Tech Stack:** Next.js 16 App Router, TypeScript, `node:crypto`, zod 3, `@asteasolutions/zod-to-openapi`, `swagger-ui-react`, `@supabase/supabase-js`, Jest + ts-jest, Supabase (Postgres).
+**Tech Stack:** Next.js 16 App Router, TypeScript, `node:crypto`, zod 3, `@asteasolutions/zod-to-openapi`, `@scalar/nextjs-api-reference` (docs UI — swapped from swagger-ui-react during implementation, see Amendments), `@supabase/supabase-js`, Jest + ts-jest, Supabase (Postgres).
 
 ## Global Constraints
 
@@ -1280,3 +1280,29 @@ git commit -m "MRP-12: format/lint fixups after full verification"
 **Placeholder scan:** No TBD/TODO; every code step shows complete code; every run step has an expected result. The one contingency (React 19 / Scalar) is a documented library-risk remediation with concrete steps, not a missing-content placeholder. ✅
 
 **Type consistency:** `verifySignature`, `parseReadingPayload`/`ReadingParseResult`, `fetchDeviceSecret`, `insertReading`, `ServiceError`, `areDocsEnabled`, `buildOpenApiDocument`, `SwaggerDocs({ testId })` names and signatures match across the tasks that define and consume them. Header constants (`DEVICE_ID_HEADER`/`TIMESTAMP_HEADER`/`SIGNATURE_HEADER`) and `REPLAY_WINDOW_MS`/`SENSOR_BOUNDS`/`API_VERSION`/`READINGS_INGEST_PATH` come from `@ws/shared`. ✅
+
+---
+
+## Implementation amendments (2026-07-21)
+
+Recorded after execution. Task 8's step-by-step still shows swagger-ui-react
+plus its React-19 contingency; the contingency fired and Scalar is what shipped.
+
+- **Task 8 → Scalar (contingency triggered).** swagger-ui-react failed at
+  runtime under Turbopack: `OpenApi3_1Element.refract is not a function` (its
+  `apidom` OpenAPI-3.1 resolver). Switched to `@scalar/nextjs-api-reference`.
+  `/api-docs` is a **gated route handler** (`app/api-docs/route.ts`,
+  `export const GET = areDocsEnabled() ? ApiReference({ url })() : 404`) serving
+  Scalar's self-contained HTML — no client hydration. Removed
+  `app/api-docs/page.tsx` + `swagger-ui.client.tsx`; uninstalled
+  `swagger-ui-react` + `@types/swagger-ui-react`; installed
+  `@scalar/nextjs-api-reference`.
+- **Integration env via Infisical (new).** Added `test:integration:secrets` =
+  `infisical run --project-config-dir=../.. -- yarn test:integration` (the
+  monorepo `--project-config-dir` points the `apps/web` script at the root
+  `.infisical.json`). Pure `test:integration` unchanged for CI.
+  `.infisical.json` gitignored; `.env.example` + CLAUDE.md updated.
+- **Tests expanded beyond the plan.** +7 route (future / both boundaries /
+  non-numeric replay, `x-timestamp` tamper, full-length forgery, 500 branch),
+  +1 verify-signature (timestamp binding), +1 integration (value persistence).
+  **Final: 37 unit + 3 integration.**

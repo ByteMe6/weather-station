@@ -70,7 +70,7 @@ alongside it.
 | Test scope | **Unit + integration** |
 | Health depth | **Liveness only** (no DB call) |
 | OpenAPI source | **Derived from zod** (`@asteasolutions/zod-to-openapi`) |
-| Docs UI | **swagger-ui-react**, exposed in **non-production only** |
+| Docs UI | **Scalar** (`@scalar/nextjs-api-reference`), exposed in **non-production only** — see amendments; originally swagger-ui-react |
 | API versioning | All endpoints under **`/api/v1`** (health included, for a uniform surface) |
 
 ## Signing / request contract (firmware contract for MRP-15)
@@ -314,3 +314,32 @@ New wiring: add an `integration` project to `apps/web/jest.config.mjs` and a
 - Malformed/out-of-range values → 400 → zod schema.
 - Unit tests: happy, unknown device, bad signature, replayed timestamp,
   malformed body → §Unit.
+
+## Implementation amendments (2026-07-21)
+
+Recorded after implementation. These supersede the `swagger-ui-react`
+references in the sections above (§9, file layout, deps, testing).
+
+- **Docs UI is Scalar, not swagger-ui-react.** The documented React-19 risk
+  materialized under Turbopack: swagger-ui-react's `apidom` OpenAPI-3.1 resolver
+  throws `OpenApi3_1Element.refract is not a function` at runtime (SSR returns
+  200 but the client never renders). Executed the planned fallback,
+  `@scalar/nextjs-api-reference`. `/api-docs` is now a **gated route handler**
+  (`app/api-docs/route.ts`) returning Scalar's self-contained HTML — no
+  client-side React hydration — behind the same `areDocsEnabled()` gate.
+  `app/api-docs/page.tsx` and `swagger-ui.client.tsx` were removed;
+  `swagger-ui-react` + `@types/swagger-ui-react` uninstalled;
+  `@scalar/nextjs-api-reference` added.
+- **Integration-test env via Infisical.** Secrets inject at runtime with
+  `infisical run`. Added `test:integration:secrets` =
+  `infisical run --project-config-dir=../.. -- yarn test:integration`;
+  `test:integration` stays pure/env-based so CI (machine identity via
+  `INFISICAL_TOKEN`) still works. `.infisical.json` is gitignored;
+  `apps/web/.env.example` and CLAUDE.md document the workflow.
+- **Test coverage expanded beyond the AC minimum.** Added: replay
+  future-timestamp, both window boundaries, and non-numeric timestamp;
+  timestamp-binding (tamper `x-timestamp` without re-signing) at both the
+  `verifySignature` and route levels; a full-length forged signature (exercises
+  the constant-time compare, not the length short-circuit); the
+  500-on-service-error branch; and an integration value-persistence assertion.
+  **Final: 37 unit + 3 integration tests, all green.**

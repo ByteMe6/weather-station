@@ -65,4 +65,39 @@ describe('readings service (integration)', () => {
       .eq('device_id', DEVICE_ID)
     expect(count).toBe(1)
   })
+
+  it('insertReading persists every sensor value', async () => {
+    await seedDevice()
+    const full = {
+      timestamp: '2026-07-21T13:00:00.000Z',
+      temperature: 21.5,
+      humidity: 60,
+      pressure: 1011.3,
+      windSpeed: 12.4,
+      windDirection: 270,
+      precipitation: 3.2,
+    }
+    await insertReading(db, { deviceId: DEVICE_ID, payload: full })
+
+    const { data, error } = await db
+      .from('readings')
+      .select(
+        'temperature, humidity, pressure, windSpeed:wind_speed, windDirection:wind_direction, precipitation, timestamp',
+      )
+      .eq('device_id', DEVICE_ID)
+      .single()
+
+    expect(error).toBeNull()
+    if (!data) throw new Error('expected the inserted reading to be returned')
+    // Postgres `numeric` can come back as a string via PostgREST — coerce.
+    expect(Number(data.temperature)).toBeCloseTo(21.5)
+    expect(Number(data.humidity)).toBeCloseTo(60)
+    expect(Number(data.pressure)).toBeCloseTo(1011.3)
+    expect(Number(data.windSpeed)).toBeCloseTo(12.4)
+    expect(Number(data.windDirection)).toBeCloseTo(270)
+    expect(Number(data.precipitation)).toBeCloseTo(3.2)
+    expect(new Date(data.timestamp).toISOString()).toBe(
+      '2026-07-21T13:00:00.000Z',
+    )
+  })
 })
