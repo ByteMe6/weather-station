@@ -43,7 +43,7 @@ void loop() {
 
   bmp.takeForcedMeasurement();
 
-  float t = bmp.readTemperature();
+  float t = bmp.readTemperature() - 1.1f;
   float p = bmp.readPressure() / 100.0f;
 
   if (!isPlausibleReading(t, p)) {
