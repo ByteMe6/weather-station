@@ -46,7 +46,10 @@ digest = hashlib.sha256(image).digest()
 # Signature covers version + digest so an old image can't be replayed
 # under a newer version number.
 signed_message = version.to_bytes(4, "little") + digest
-key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(env("OTA_SIGNING_KEY")))
+try:
+    key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(env("OTA_SIGNING_KEY")))
+except Exception:
+    die("OTA_SIGNING_KEY is not a valid base64 ed25519 key")
 sig = key.sign(signed_message)
 
 base = env("SUPABASE_URL").rstrip("/") + "/storage/v1"
@@ -54,9 +57,22 @@ auth = {"Authorization": f"Bearer {env('SUPABASE_SECRET_KEY')}"}
 
 r = requests.get(f"{base}/object/public/{BUCKET}/manifest.json", timeout=15)
 if r.ok:
-    published = r.json().get("version", 0)
+    try:
+        manifest_json = r.json()
+        published = manifest_json["version"] if isinstance(manifest_json, dict) else None
+    except ValueError:
+        published = None
+    if not isinstance(published, int):
+        die("existing manifest is not valid json")
     if published >= version:
         die(f"manifest already at v{published}; bump FW_VERSION in src/version.h")
+elif r.status_code not in (400, 404):
+    # Anything other than not-found means we couldn't check the published
+    # version - bail rather than risk re-publishing over a live release.
+    # Supabase Storage returns 404 for a missing object on the public
+    # endpoint; some deployments report it as 400, so both mean "no
+    # manifest yet".
+    die(f"manifest check failed: {r.status_code}")
 
 name = f"weatherstation-{version}.bin"
 r = requests.post(
