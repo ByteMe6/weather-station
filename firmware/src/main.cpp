@@ -244,7 +244,9 @@ static bool installUpdate(const OtaManifest &m) {
     Serial.println("OTA: image fetch failed");
     return false;
   }
-  if (http.getSize() > 0 && (uint32_t)http.getSize() != m.size) {
+  // Chunked responses have no length and would hash the chunk framing;
+  // Supabase always sends Content-Length, so demand one that matches.
+  if (http.getSize() <= 0 || (uint32_t)http.getSize() != m.size) {
     http.end();
     Serial.println("OTA: size mismatch");
     return false;
@@ -261,14 +263,21 @@ static bool installUpdate(const OtaManifest &m) {
   WiFiClient *stream = http.getStreamPtr();
   uint32_t written = 0;
   uint32_t lastData = millis();
-  while (written < m.size && millis() - lastData < 15000) {
+  // Absolute cap on top of the progress timeout so a byte-trickling
+  // server can't wedge the device indefinitely.
+  uint32_t downloadStart = millis();
+  while (written < m.size && millis() - lastData < 15000 &&
+         millis() - downloadStart < 600000) {
     size_t avail = stream->available();
     if (avail == 0) {
       if (!client.connected()) break;
       delay(10);
       continue;
     }
-    size_t n = stream->readBytes(buf, avail < sizeof(buf) ? avail : sizeof(buf));
+    size_t want = avail < sizeof(buf) ? avail : sizeof(buf);
+    // Never read past the image length - trailing bytes would trip Update.write.
+    if (want > m.size - written) want = m.size - written;
+    size_t n = stream->readBytes(buf, want);
     if (n == 0) continue;
     sha.update(buf, n);
     if (Update.write(buf, n) != n) break;
@@ -346,6 +355,9 @@ static void checkForOtaUpdate() {
     return;
   }
   Serial.printf("OTA: v%u available, downloading %s\n", m.version, m.path);
+  // Drop the manifest connection before opening the image one - two TLS
+  // sessions don't fit comfortably in the heap.
+  client.stop();
   installUpdate(m);
 }
 
