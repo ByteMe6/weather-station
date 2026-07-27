@@ -5,7 +5,8 @@
 #include <ArduinoJson.h>
 
 // Parsed manifest.json. sha256 is the digest of the .bin; sig is the
-// Ed25519 signature of that digest.
+// Ed25519 signature over version (4 bytes LE) + that digest, so a replayed
+// old image can't be passed off under a newer version number.
 struct OtaManifest {
   uint32_t version;
   char path[96];

@@ -122,6 +122,57 @@ void base64_decoder_strict(void) {
   TEST_ASSERT_FALSE(decodeBase64("aGVsbG8", five, 5));  // not multiple of 4
   TEST_ASSERT_FALSE(decodeBase64("aG=sbG8=", five, 5)); // pad mid-group
   TEST_ASSERT_FALSE(decodeBase64("", out, 6));
+  // adversarial padding: all pad, pad in position 1, data after pad
+  uint8_t one[1];
+  TEST_ASSERT_FALSE(decodeBase64("====", one, 1));
+  TEST_ASSERT_FALSE(decodeBase64("A===", one, 1));
+  uint8_t two[2];
+  TEST_ASSERT_FALSE(decodeBase64("AB=A", two, 2));
+}
+
+// path[96] holds at most 95 chars + NUL: 95 accepted, 96 rejected.
+void path_length_boundary(void) {
+  char json[512];
+  char path95[96];
+  memset(path95, 'p', 95);
+  path95[95] = '\0';
+  const char *tail =
+      "\",\"size\":1,"
+      "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+      "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
+
+  OtaManifest m;
+  snprintf(json, sizeof(json), "{\"version\":2,\"path\":\"%s%s", path95, tail);
+  TEST_ASSERT_TRUE(parseManifest(json, m));
+  TEST_ASSERT_EQUAL_UINT32(95, (uint32_t)strlen(m.path));
+  TEST_ASSERT_EQUAL_STRING(path95, m.path);
+
+  char path96[97];
+  memset(path96, 'p', 96);
+  path96[96] = '\0';
+  snprintf(json, sizeof(json), "{\"version\":2,\"path\":\"%s%s", path96, tail);
+  TEST_ASSERT_FALSE(parseManifest(json, m));
+}
+
+// Out-of-range / non-integer numbers must not sneak through as uint32.
+void rejects_out_of_range_numbers(void) {
+  OtaManifest m;
+  const char *tail =
+      "\"path\":\"a.bin\",\"size\":1,"
+      "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+      "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
+  char json[512];
+  snprintf(json, sizeof(json), "{\"version\":-1,%s", tail);
+  TEST_ASSERT_FALSE(parseManifest(json, m));
+  snprintf(json, sizeof(json), "{\"version\":2.5,%s", tail);
+  TEST_ASSERT_FALSE(parseManifest(json, m));
+  snprintf(json, sizeof(json), "{\"version\":4294967296,%s", tail);
+  TEST_ASSERT_FALSE(parseManifest(json, m));
+  TEST_ASSERT_FALSE(parseManifest(
+      "{\"version\":2,\"path\":\"a.bin\",\"size\":-1,"
+      "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+      "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}",
+      m));
 }
 
 int main(int, char **) {
@@ -135,5 +186,7 @@ int main(int, char **) {
   RUN_TEST(version_compare_is_strictly_greater);
   RUN_TEST(hex_decoder_roundtrip);
   RUN_TEST(base64_decoder_strict);
+  RUN_TEST(path_length_boundary);
+  RUN_TEST(rejects_out_of_range_numbers);
   return UNITY_END();
 }
