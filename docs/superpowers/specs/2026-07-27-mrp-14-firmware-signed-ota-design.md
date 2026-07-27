@@ -196,6 +196,34 @@ setInsecure rationale, and the crash-rollback limitation.
 4. Cut power mid-download (or kill WiFi) → device continues on the old image
    and retries next boot. (AC: interrupted download doesn't brick.)
 
+## Implementation amendments (2026-07-27)
+
+Recorded during implementation review; these supersede the corresponding
+text above.
+
+- **Signature covers version + digest, not the bare digest.** Review found a
+  downgrade hole: signing only the image digest lets a MITM pair an old,
+  validly signed image with a higher manifest version. The Ed25519 signature
+  now covers a 36-byte message — 4-byte little-endian version followed by the
+  32-byte image SHA-256. Release script, firmware verify, and the native KAT
+  all use this layout. If this key ever signs images for a second product, a
+  product identifier must be added to the signed message first — fielded
+  devices cannot be re-keyed.
+- **Native env accommodations for the Ed25519 KAT.** rweather/Crypto declares
+  arduino-only frameworks, so `[env:native]` sets `lib_compat_mode = off` and
+  includes a `test/support/Arduino.h` stub (chrono-backed millis/micros) to
+  compile `RNG.cpp` on the host. Confined to the native env.
+- **Download path hardening.** Manifest responses are capped at 4 KB and must
+  carry a definite Content-Length matching the manifest size; per-read length
+  is capped to the remaining image bytes; an absolute 10-minute download
+  deadline backs the 15 s no-progress timeout; the manifest's TLS connection
+  is dropped before the image connection opens (two concurrent TLS contexts
+  don't fit comfortably in the heap).
+- **Release script guard rails.** The pre-publish version check dies on any
+  manifest-fetch status other than ok/404/400 instead of silently treating
+  errors as "no manifest yet"; malformed manifest JSON and a malformed
+  `OTA_SIGNING_KEY` die with clear messages (the key value is never echoed).
+
 ## Build sequence
 
 1. Migration: `firmware` bucket.
