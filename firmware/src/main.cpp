@@ -6,6 +6,15 @@
 #include <Adafruit_BMP280.h>
 #include <reading.h>
 #include <wifi_state.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <Update.h>
+#include <SHA256.h>
+#include <Ed25519.h>
+#include <time.h>
+#include <ota_state.h>
+#include "version.h"
+#include "ota_pubkey.h"
 
 // 0x76 on most GY-BMP280 breakouts, 0x77 on Adafruit boards.
 static const uint8_t BMP_ADDR[] = {0x76, 0x77};
@@ -65,6 +74,7 @@ static uint32_t backoffDurationMs = 0;
 static bool backingOff = false;
 static uint32_t resetPressStart = 0;
 static bool resetPressActive = false;
+static bool otaCheckedThisBoot = false;
 
 // Same portal, kept reachable on the LAN once we're connected.
 static WiFiManager webPortal;
@@ -213,12 +223,146 @@ void handleStationConnecting() {
   }
 }
 
+// Anything past 2023 means NTP answered; the RTC starts at the epoch.
+static bool syncClock() {
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  uint32_t start = millis();
+  while (time(nullptr) < 1700000000 && millis() - start < 10000) {
+    delay(250);
+  }
+  return time(nullptr) >= 1700000000;
+}
+
+static bool installUpdate(const OtaManifest &m) {
+  WiFiClientSecure client;
+  client.setInsecure();  // authenticity comes from the image signature, not TLS
+  HTTPClient http;
+  String url = String(OTA_BASE_URL) + "/" + m.path;
+  if (!http.begin(client, url)) return false;
+  if (http.GET() != HTTP_CODE_OK) {
+    http.end();
+    Serial.println("OTA: image fetch failed");
+    return false;
+  }
+  if (http.getSize() > 0 && (uint32_t)http.getSize() != m.size) {
+    http.end();
+    Serial.println("OTA: size mismatch");
+    return false;
+  }
+
+  if (!Update.begin(m.size)) {
+    http.end();
+    Serial.printf("OTA: cannot start update: %s\n", Update.errorString());
+    return false;
+  }
+
+  SHA256 sha;
+  uint8_t buf[1024];
+  WiFiClient *stream = http.getStreamPtr();
+  uint32_t written = 0;
+  uint32_t lastData = millis();
+  while (written < m.size && millis() - lastData < 15000) {
+    size_t avail = stream->available();
+    if (avail == 0) {
+      if (!client.connected()) break;
+      delay(10);
+      continue;
+    }
+    size_t n = stream->readBytes(buf, avail < sizeof(buf) ? avail : sizeof(buf));
+    if (n == 0) continue;
+    sha.update(buf, n);
+    if (Update.write(buf, n) != n) break;
+    written += n;
+    lastData = millis();
+  }
+  http.end();
+
+  if (written != m.size) {
+    Update.abort();
+    Serial.printf("OTA: download incomplete (%u/%u bytes)\n", written, m.size);
+    return false;
+  }
+
+  uint8_t digest[32];
+  sha.finalize(digest, sizeof(digest));
+  if (memcmp(digest, m.sha256, sizeof(digest)) != 0) {
+    Update.abort();
+    Serial.println("OTA: digest mismatch, image rejected");
+    return false;
+  }
+
+  // Signature covers version + digest so an old signed image can't be
+  // replayed under a newer version number.
+  uint8_t signedMsg[36];
+  signedMsg[0] = (uint8_t)m.version;
+  signedMsg[1] = (uint8_t)(m.version >> 8);
+  signedMsg[2] = (uint8_t)(m.version >> 16);
+  signedMsg[3] = (uint8_t)(m.version >> 24);
+  memcpy(signedMsg + 4, digest, sizeof(digest));
+  if (!Ed25519::verify(m.sig, OTA_PUBKEY, signedMsg, sizeof(signedMsg))) {
+    Update.abort();
+    Serial.println("OTA: bad signature, image rejected");
+    return false;
+  }
+
+  // Only now does the boot partition switch.
+  if (!Update.end()) {
+    Serial.printf("OTA: finalize failed: %s\n", Update.errorString());
+    return false;
+  }
+  Serial.printf("OTA: v%u installed, rebooting\n", m.version);
+  ESP.restart();
+  return true;  // unreachable
+}
+
+static void checkForOtaUpdate() {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (!http.begin(client, OTA_BASE_URL "/manifest.json")) return;
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    Serial.printf("OTA: manifest fetch failed (%d)\n", code);
+    return;
+  }
+  // A real manifest is a few hundred bytes; anything big or chunked is wrong.
+  int len = http.getSize();
+  if (len <= 0 || len > 4096) {
+    http.end();
+    Serial.println("OTA: manifest rejected");
+    return;
+  }
+  String body = http.getString();
+  http.end();
+
+  OtaManifest m;
+  if (!parseManifest(body.c_str(), m)) {
+    Serial.println("OTA: manifest rejected");
+    return;
+  }
+  if (!isNewerVersion(FW_VERSION, m.version)) {
+    Serial.printf("OTA: up to date (v%u published, v%u running)\n", m.version, (uint32_t)FW_VERSION);
+    return;
+  }
+  Serial.printf("OTA: v%u available, downloading %s\n", m.version, m.path);
+  installUpdate(m);
+}
+
 void handleStationConnected() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi dropped, reconnecting");
     stopStationWebPortal();
     beginStationConnect();
     return;
+  }
+
+  // One check per boot, right after the first successful connect. Blocks the
+  // loop for the NTP wait + download - fine at boot, nothing else is running.
+  if (!otaCheckedThisBoot) {
+    otaCheckedThisBoot = true;
+    if (!syncClock()) Serial.println("NTP sync timed out, continuing");
+    checkForOtaUpdate();
   }
 
   if (!webPortalRunning) startStationWebPortal();
@@ -280,6 +424,7 @@ void pollResetButton() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.printf("Weather Station fw v%u\n", (uint32_t)FW_VERSION);
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
 
   ready = initSensor();
