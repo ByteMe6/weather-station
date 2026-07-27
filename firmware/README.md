@@ -14,7 +14,7 @@ Every library this project depends on lives in the Arduino ecosystem:
 | HMAC-SHA256 payload signing | Crypto (rweather)   | ✅      | port yourself  |
 | KY-040 rotary encoder       | ESP32Encoder        | ✅      | port yourself  |
 
-PlatformIO on top of Arduino adds: dependency management via `platformio.ini`, build flags for flash-time config injection (`DEVICE_ID`, `DEVICE_SECRET`, `SEND_INTERVAL_MS`, `API_URL`), VS Code integration, and CI-compatible builds without a GUI.
+PlatformIO on top of Arduino adds: dependency management via `platformio.ini`, build flags for flash-time config injection (`DEVICE_ID`, `DEVICE_SECRET`, `SEND_INTERVAL_MS`, `API_URL`, `OTA_BASE_URL`), VS Code integration, and CI-compatible builds without a GUI.
 
 ESP-IDF would give finer RTOS and power control — neither is needed for MVP.
 
@@ -98,6 +98,61 @@ restarts into setup mode (the access point above) as soon as the button is
 released. The release step matters: GPIO0 is an ESP32 strap pin, so the
 firmware deliberately waits for release before restarting.
 
+## OTA updates
+
+Once per boot, after WiFi connects, the device syncs its clock via NTP (up
+to 10 s, non-fatal if it times out) and fetches `manifest.json` from the
+public `firmware` Supabase Storage bucket. If the manifest offers a version
+strictly greater than the running `FW_VERSION`, the image is downloaded to
+the inactive app partition and installed only after two checks pass: the
+SHA-256 digest matches the manifest, and the Ed25519 signature verifies
+against the public key baked into the firmware. The signature covers the
+version number + digest, so an old signed image can't be replayed as a
+newer version.
+
+Any failure — bad signature, interrupted download, unreachable bucket —
+leaves the running firmware untouched. Worst case the device just doesn't
+update until its next boot.
+
+**Manifest format** (written by `scripts/ota_release.py`):
+
+```json
+{
+  "version": 2,
+  "path": "weatherstation-2.bin",
+  "size": 1052672,
+  "sha256": "<hex digest of the .bin>",
+  "sig": "<base64 Ed25519 signature>"
+}
+```
+
+**Release process:**
+
+1. Bump `FW_VERSION` in `src/version.h`
+2. `pio run`
+3. Flash the bench device and confirm it boots. There is no crash-rollback
+   — never publish an image that hasn't run on real hardware.
+4. `infisical run -- python3 scripts/ota_release.py` — needs
+   `OTA_SIGNING_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`; host deps are
+   python3 with `cryptography` and `requests`
+5. Devices pick it up on their next boot
+
+**Key management:** the private key lives only in Infisical as
+`OTA_SIGNING_KEY`. The public key in `src/ota_pubkey.h` is baked into every
+shipped device — the pair can never be rotated in the field, so losing the
+private key permanently ends OTA for every shipped unit.
+`scripts/ota_keygen.py` is one-shot and refuses to run twice.
+
+**Why the fetch uses `setInsecure()`:** pinning a CA into devices that may
+never be reflashed bricks OTA the day the cert chain rotates. Authenticity
+comes from the Ed25519 signature; TLS is just transport.
+
+**Limitations:**
+
+- No rollback if a verified image boots and then crashes — Arduino's
+  prebuilt bootloader lacks `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`
+- The check runs at boot only; a device that never reboots never updates
+
 ## Flash-time configuration
 
 Per-device identity lives in `secrets.ini` (gitignored), **not** in the tracked `platformio.ini` — a real `DEVICE_SECRET` must never land in git history, since anyone with repo access could use it to forge signed readings for that device.
@@ -105,7 +160,7 @@ Per-device identity lives in `secrets.ini` (gitignored), **not** in the tracked 
 ```bash
 cd firmware
 cp secrets.ini.example secrets.ini
-# edit secrets.ini: set DEVICE_ID, DEVICE_SECRET, API_URL
+# edit secrets.ini: set DEVICE_ID, DEVICE_SECRET, API_URL, OTA_BASE_URL
 ```
 
 `DEVICE_ID` is also printed on the device label. `DEVICE_SECRET` never leaves the device.
