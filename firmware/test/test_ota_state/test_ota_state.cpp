@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <ota_state.h>
 #include <string.h>
+#include <Ed25519.h>
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -175,6 +176,58 @@ void rejects_out_of_range_numbers(void) {
       m));
 }
 
+// Vector from a fixed test key (bytes 0..31), not the production key. The
+// signed message is version (4 bytes LE) + image digest - same layout the
+// device verifies during an update.
+static const uint8_t KAT_PUB[32] = {
+    0x03, 0xa1, 0x07, 0xbf, 0xf3, 0xce, 0x10, 0xbe,
+    0x1d, 0x70, 0xdd, 0x18, 0xe7, 0x4b, 0xc0, 0x99,
+    0x67, 0xe4, 0xd6, 0x30, 0x9b, 0xa5, 0x0d, 0x5f,
+    0x1d, 0xdc, 0x86, 0x64, 0x12, 0x55, 0x31, 0xb8};
+static const uint8_t KAT_DIGEST[32] = {
+    0xd7, 0x49, 0xa7, 0xf7, 0x84, 0x19, 0x8f, 0x8c,
+    0x0a, 0xa9, 0xef, 0x79, 0xba, 0x5c, 0xa5, 0x6c,
+    0xbb, 0xc4, 0x0c, 0x73, 0x10, 0x7a, 0x2b, 0x74,
+    0xd1, 0xfe, 0x41, 0x86, 0x90, 0x1f, 0xd1, 0xe1};
+static const uint8_t KAT_SIG[64] = {
+    0x17, 0x63, 0x00, 0x39, 0x09, 0x5b, 0xab, 0xaa,
+    0x2c, 0x23, 0x07, 0xc2, 0x79, 0xf6, 0x51, 0x39,
+    0xce, 0xcf, 0xb6, 0x71, 0x70, 0xf9, 0xa4, 0xbf,
+    0x67, 0xa9, 0x5a, 0x45, 0x1b, 0x11, 0xf8, 0x3d,
+    0xe6, 0x68, 0xa0, 0x34, 0xa1, 0x18, 0x09, 0x9d,
+    0xb5, 0x28, 0x0f, 0x0c, 0x53, 0x73, 0x87, 0x11,
+    0x0f, 0x52, 0xaf, 0xf7, 0xca, 0xfd, 0x88, 0x7f,
+    0xc4, 0xb3, 0x86, 0x7d, 0x94, 0xcf, 0xbf, 0x02};
+
+static void buildSignedMessage(uint32_t version, const uint8_t digest[32], uint8_t out[36]) {
+  out[0] = (uint8_t)version;
+  out[1] = (uint8_t)(version >> 8);
+  out[2] = (uint8_t)(version >> 16);
+  out[3] = (uint8_t)(version >> 24);
+  memcpy(out + 4, digest, 32);
+}
+
+void ed25519_verifies_known_answer(void) {
+  uint8_t msg[36];
+  buildSignedMessage(2, KAT_DIGEST, msg);
+  TEST_ASSERT_TRUE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
+}
+
+void ed25519_rejects_tampered_digest(void) {
+  uint8_t bad[32];
+  memcpy(bad, KAT_DIGEST, 32);
+  bad[0] ^= 0x01;
+  uint8_t msg[36];
+  buildSignedMessage(2, bad, msg);
+  TEST_ASSERT_FALSE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
+}
+
+void ed25519_rejects_wrong_version(void) {
+  uint8_t msg[36];
+  buildSignedMessage(3, KAT_DIGEST, msg);
+  TEST_ASSERT_FALSE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(parses_good_manifest);
@@ -188,5 +241,8 @@ int main(int, char **) {
   RUN_TEST(base64_decoder_strict);
   RUN_TEST(path_length_boundary);
   RUN_TEST(rejects_out_of_range_numbers);
+  RUN_TEST(ed25519_verifies_known_answer);
+  RUN_TEST(ed25519_rejects_tampered_digest);
+  RUN_TEST(ed25519_rejects_wrong_version);
   return UNITY_END();
 }
