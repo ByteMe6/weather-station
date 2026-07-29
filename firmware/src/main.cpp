@@ -393,7 +393,7 @@ void handleStationConnected() {
 
   bmp.takeForcedMeasurement();
 
-  float t = bmp.readTemperature() - 1.5f;
+  float t = bmp.readTemperature();
   float p = bmp.readPressure() / 100.0f;
 
   if (!isPlausibleReading(t, p)) {
