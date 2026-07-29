@@ -19,7 +19,8 @@
 // 0x76 on most GY-BMP280 breakouts, 0x77 on Adafruit boards.
 static const uint8_t BMP_ADDR[] = {0x76, 0x77};
 static const uint32_t READ_INTERVAL = 2000;
-static const float STATION_ALTITUDE_M = 75.0f;  // Zaporizhzhia install site
+// current sea-level pressure (QNH) — update to local weather report when altitude drifts
+static const float SEA_LEVEL_HPA = 1020.2f;
 
 static Adafruit_BMP280 bmp;
 static bool ready = false;
@@ -402,11 +403,9 @@ void handleStationConnected() {
     return;
   }
 
-  // reduce station pressure to sea level using the known install altitude
-  float slp = p / powf(1.0f - STATION_ALTITUDE_M / 44330.0f, 5.255f);
+  float alt = 44330.0f * (1.0f - powf(p / SEA_LEVEL_HPA, 0.1903f));
 
-  Serial.printf("temp=%.2f C  pressure=%.1f hPa  sea-level=%.1f hPa  altitude=%.1f m\n",
-                t, p, slp, STATION_ALTITUDE_M);
+  Serial.printf("temp=%.2f C  pressure=%.1f hPa  altitude=%.1f m\n", t, p, alt);
 }
 
 void pollResetButton() {
