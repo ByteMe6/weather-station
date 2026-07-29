@@ -28,7 +28,7 @@ firmware/
   secrets.ini.example   # template for per-device flash-time config
   secrets.ini           # your local copy (gitignored — never commit)
   src/
-    main.cpp            # entry point: BMP280 sample + serial log loop
+    main.cpp            # entry point: WiFi provisioning state machine + BMP280 loop
 ```
 
 ## Sensors — BMP280 (I2C)
@@ -56,6 +56,47 @@ Altitude is derived from pressure against a fixed sea-level reference
 > **Note:** the BMP280 has no humidity element. PRD F1 needs humidity, so the
 > production sensor is a BME280 — swapping the driver back is a small change
 > once that hardware is on hand.
+
+## WiFi setup
+
+The device ships with no WiFi configured — only identity (`DEVICE_ID` /
+`DEVICE_SECRET`) is flashed at manufacture time.
+
+**First boot (no saved credentials):** the device starts an access point
+named `WeatherStation-<DEVICE_ID>`. Connecting to it with a phone
+auto-opens a captive portal that lists nearby networks and accepts a
+password. Once submitted, credentials are saved to NVS (flash) and survive
+power loss.
+
+**Subsequent boots:** the device connects directly in station mode using
+the saved credentials — no portal.
+
+**After connecting:** the same portal stays available on the home network at
+the device's IP (printed to serial as `Web portal: http://<ip>/`) — change
+WiFi, view device info, or restart from a browser. Anyone on the LAN can
+reach it; acceptable for MVP.
+
+**Join failure:** the device retries the saved network forever, with
+increasing backoff between attempts. It never falls back to reopening the
+portal on its own:
+
+| Attempt | Backoff before retry |
+| ------- | -------------------- |
+| 1       | 5 s                  |
+| 2       | 10 s                 |
+| 3       | 30 s                 |
+| 4+      | 60 s                 |
+
+**Reset button:**
+
+| Function     | Pin                                     |
+| ------------ | --------------------------------------- |
+| Reset button | GPIO0 (onboard BOOT button, active-low) |
+
+Holding it for 5 seconds wipes the saved WiFi credentials; the device then
+restarts into setup mode (the access point above) as soon as the button is
+released. The release step matters: GPIO0 is an ESP32 strap pin, so the
+firmware deliberately waits for release before restarting.
 
 ## Flash-time configuration
 
