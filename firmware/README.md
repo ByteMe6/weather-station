@@ -50,8 +50,10 @@ Address: firmware tries `0x76`, then `0x77` (`0x76` on most GY-BMP280 boards,
 temp=23.41 C  pressure=1005.7 hPa  altitude=58.3 m
 ```
 
-Altitude is derived from pressure against a fixed sea-level reference
-(1013.25 hPa), not a separate measurement.
+Altitude is derived from pressure against a local sea-level reference
+(`SEA_LEVEL_HPA` at the top of `main.cpp`), not a separate measurement. Set it
+to the current sea-level pressure from a nearby weather report; when the
+altitude readout drifts with the weather, update the constant and re-flash.
 
 > **Note:** the BMP280 has no humidity element. PRD F1 needs humidity, so the
 > production sensor is a BME280 — swapping the driver back is a small change
