@@ -161,17 +161,22 @@ bug; repoint at a Let's Encrypt-backed host (Vercel included) to fix it. This
 is unrelated to the OTA fetch, which uses `setInsecure()` on purpose — see
 "OTA updates" below.
 
-Verifying a certificate needs a correct clock, so a reading is held until NTP
-has synced at least once; a sync that times out is retried the next time a
-window closes, so the device can't go permanently mute over one bad NTP
-lookup.
+Verifying a certificate needs a correct clock: a window that closes before
+NTP has synced is dropped rather than sent — nothing from it is retained, the
+next window builds and sends a fresh average from newly collected samples. A
+sync that times out is retried the next time a window closes, so the device
+can't go permanently mute over one bad NTP lookup.
 
 **Changing the endpoint:** the URL is read from NVS, falling back to the
 flash-time `API_URL` build flag when NVS is empty. To repoint a device
 without reflashing, open the same web portal described above (LAN IP printed
 to serial), click **Setup** (not **Configure WiFi** — that page only holds
 the SSID and password), and set **Backend URL**. Only `https://` values are
-accepted. The active URL is logged to serial at boot and again whenever it's
+accepted, and the field holds at most 128 characters — a longer URL (for
+example a flash-time `API_URL` over that length) is silently truncated when
+the page pre-fills it, and saving the page without editing the field persists
+that truncated value to NVS, breaking uploads until it's typed back in full
+by hand. The active URL is logged to serial at boot and again whenever it's
 changed from the portal.
 
 The Setup page always reports "Saved" (HTTP 200) after a submit, whether or
@@ -182,6 +187,19 @@ active. The one visible tell in the UI: the field snaps back to the active
 URL, so if it shows something other than what you just typed, that submit was
 rejected. The serial log (`Backend URL rejected: must start with https://`)
 is the explicit confirmation.
+
+**Trust model:** the Setup page has no authentication, same as the WiFi
+configuration page above — there is no `setAuth()` call anywhere in the
+firmware. Before this branch that meant anyone on the LAN could change the
+saved WiFi network; now it also means anyone on the LAN can repoint Backend
+URL at a server they control. The only check is the `https://` prefix, and a
+free Let's Encrypt certificate is available for any domain someone owns, so
+that check says nothing about who's actually receiving the readings. A LAN
+client that does this silently redirects all future uploads to their server
+— the real dashboard just goes quiet, with nothing in the system flagging
+the switch. This is an accepted MVP limitation, not a bug with a planned fix:
+anyone with access to the device's LAN is trusted. Treat a device on an
+untrusted or shared network as exposed.
 
 ## OTA updates
 
@@ -248,7 +266,7 @@ cp secrets.ini.example secrets.ini
 # edit secrets.ini: set DEVICE_ID, DEVICE_SECRET, API_URL, OTA_BASE_URL
 ```
 
-`DEVICE_ID` is also printed on the device label. `DEVICE_SECRET` never leaves the device.
+`DEVICE_ID` is also printed on the device label. `DEVICE_SECRET` never leaves the device. Keep `API_URL` to 128 characters or fewer — see "Changing the endpoint" under Uploading readings for why.
 
 ## Local setup
 

@@ -597,14 +597,24 @@ static String readBoundedErrorBody(HTTPClient &http) {
 
 static void attemptUpload() {
   uploadAttempt++;
-  lastAttemptAt = millis();
 
   WiFiClientSecure client;
   client.setCACert(ISRG_ROOT_X1_PEM);
   HTTPClient http;
   http.setTimeout(UPLOAD_TIMEOUT_MS);
 
+  // lastAttemptAt is stamped on the way out, not on the way in: it feeds the
+  // retry back-off in handleStationConnected(), which measures the gap since
+  // the last attempt *finished*. UPLOAD_TIMEOUT_MS (15s) is bigger than the
+  // first retry delay (10s), so a request that fails slowly - a congested
+  // backend timing out near the connect/response deadline instead of an
+  // instant handshake rejection - would already have "used up" the 10s
+  // back-off by the time control returned here, and the next attempt would
+  // fire immediately with no spacing at all. Every exit path below sets this
+  // right before it returns, including the http.begin() failure, so none of
+  // them can leave it stale.
   if (!http.begin(client, apiUrl)) {
+    lastAttemptAt = millis();
     scheduleRetryOrDrop("cannot open the connection");
     return;
   }
@@ -617,14 +627,20 @@ static void attemptUpload() {
 
   if (code >= 200 && code < 300) {
     http.end();
+    lastAttemptAt = millis();
     Serial.printf("Reading uploaded (%d)\n", code);
     uploadPending = false;
     uploadAttempt = 0;
     return;
   }
 
+  // readBoundedErrorBody() can itself block (draining a slow or chunked error
+  // body up to UPLOAD_TIMEOUT_MS), so the stamp goes after it and after
+  // http.end(), not before - otherwise this path would have the exact same
+  // back-off-collapse bug the comment above describes.
   String response = code > 0 ? readBoundedErrorBody(http) : http.errorToString(code);
   http.end();
+  lastAttemptAt = millis();
   Serial.printf("Upload attempt %u returned %d: %s\n", uploadAttempt, code,
                 response.c_str());
 
