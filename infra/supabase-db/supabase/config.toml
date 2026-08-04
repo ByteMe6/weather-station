@@ -23,8 +23,12 @@ port = 54323
 [auth]
 enabled = true
 
+# Required, not optional: 20260727102352_firmware_ota_bucket.sql inserts the
+# OTA bucket into storage.buckets, so with storage off that migration - and
+# therefore every db-reset:local and the CI database job - fails outright with
+# `relation "storage.buckets" does not exist`.
 [storage]
-enabled = false
+enabled = true
 
 # Disabled: the vector/analytics (logflare) container bind-mounts the host
 # docker socket, which fails under Colima's virtiofs mount type. Not needed
