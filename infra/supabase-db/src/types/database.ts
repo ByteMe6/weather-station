@@ -69,7 +69,7 @@ export type Database = {
       readings: {
         Row: {
           device_id: string
-          humidity: number
+          humidity: number | null
           id: number
           precipitation: number | null
           pressure: number
@@ -80,7 +80,7 @@ export type Database = {
         }
         Insert: {
           device_id: string
-          humidity: number
+          humidity?: number | null
           id?: never
           precipitation?: number | null
           pressure: number
@@ -91,7 +91,7 @@ export type Database = {
         }
         Update: {
           device_id?: string
-          humidity?: number
+          humidity?: number | null
           id?: never
           precipitation?: number | null
           pressure?: number

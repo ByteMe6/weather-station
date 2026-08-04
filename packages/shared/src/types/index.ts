@@ -8,15 +8,16 @@ export type DeviceStatus = 'unregistered' | 'registered'
 export type DeviceRole = 'owner' | 'editor' | 'viewer'
 
 /**
- * Sensor values in one reading. MVP ships BME280 only (temperature, humidity,
- * pressure); wind and rain sensors land post-MVP, so their fields are
- * nullable (docs/03-scope-mvp.md).
+ * Sensor values in one reading. Shipped hardware is a BMP280 (temperature,
+ * pressure only), so humidity is nullable until a sensor that can measure it
+ * is fitted; wind and rain sensors land post-MVP, so their fields are
+ * nullable too (docs/03-scope-mvp.md).
  */
 export interface SensorValues {
   /** °C */
   temperature: number
-  /** % relative humidity */
-  humidity: number
+  /** % relative humidity — null on devices with no humidity sensor (BMP280) */
+  humidity: number | null
   /** hPa */
   pressure: number
   /** km/h */

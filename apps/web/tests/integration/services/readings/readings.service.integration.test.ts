@@ -100,4 +100,20 @@ describe('readings service (integration)', () => {
       '2026-07-21T13:00:00.000Z',
     )
   })
+
+  it('persists a reading from a device with no humidity sensor', async () => {
+    await seedDevice()
+    await insertReading(db, {
+      deviceId: DEVICE_ID,
+      payload: { ...payload, humidity: null },
+    })
+
+    const { data } = await db
+      .from('readings')
+      .select('humidity')
+      .eq('device_id', DEVICE_ID)
+      .single()
+
+    expect(data?.humidity).toBeNull()
+  })
 })

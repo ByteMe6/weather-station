@@ -45,9 +45,14 @@ describe('parseReadingPayload', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('accepts a null humidity from a device without a humidity sensor', () => {
+    const result = parseReadingPayload({ ...valid, humidity: null })
+    expect(result.ok).toBe(true)
+  })
+
   it('rejects a missing required field', () => {
     const missing: Record<string, unknown> = { ...valid }
-    delete missing.humidity
+    delete missing.temperature
     const result = parseReadingPayload(missing)
     expect(result.ok).toBe(false)
   })
