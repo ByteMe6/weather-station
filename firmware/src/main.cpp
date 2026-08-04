@@ -330,6 +330,8 @@ void handleStationConnecting() {
 void pollResetButton();
 
 // Anything past 2023 means NTP answered; the RTC starts at the epoch.
+static const time_t CLOCK_SYNCED_EPOCH = 1700000000;
+
 static bool syncClock() {
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   uint32_t start = millis();
@@ -342,20 +344,27 @@ static bool syncClock() {
   // inside the wait is not lost. pollResetButton() only touches the "wifi"
   // NVS namespace and, on a full hold, restarts - neither can call back into
   // syncClock(), so there is no recursion to worry about.
-  while (time(nullptr) < 1700000000 && millis() - start < 10000) {
+  while (time(nullptr) < CLOCK_SYNCED_EPOCH && millis() - start < 10000) {
     pollResetButton();
     delay(250);
   }
-  return time(nullptr) >= 1700000000;
+  return time(nullptr) >= CLOCK_SYNCED_EPOCH;
 }
 
-// syncClock() is allowed to time out, and uploads depend on a valid clock for
-// both the payload timestamp and TLS certificate validity. Retrying on later
-// windows keeps a device that booted before its router had internet from going
-// permanently mute.
+// Uploads depend on a valid clock for both the payload timestamp and TLS
+// certificate validity, and syncClock() is allowed to time out at boot - so a
+// device that came up before its router had internet has to recover somehow.
+//
+// It recovers on its own: configTime() ran at boot, and lwIP's SNTP client
+// keeps retrying in the background after a failed request - 15s, doubling to a
+// 150s ceiling (SNTP_RETRY_TIMEOUT/_MAX/_EXP in sntp_opts.h). That is more
+// often than windows close, so this only has to observe the result. Calling
+// the blocking syncClock() again here would stall loop() - and therefore the
+// web portal and the sensor cadence - for up to 10s every window, and would
+// also restart configTime() and throw away the backoff SNTP had built up.
 static bool ensureClock() {
   if (clockValid) return true;
-  clockValid = syncClock();
+  clockValid = time(nullptr) >= CLOCK_SYNCED_EPOCH;
   return clockValid;
 }
 
