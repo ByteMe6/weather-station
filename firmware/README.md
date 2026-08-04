@@ -100,6 +100,89 @@ restarts into setup mode (the access point above) as soon as the button is
 released. The release step matters: GPIO0 is an ESP32 strap pin, so the
 firmware deliberately waits for release before restarting.
 
+## Uploading readings
+
+Once WiFi is connected, the device averages the 2-second BMP280 samples over
+each `SEND_INTERVAL_MS` window (default `300000`, five minutes — set at flash
+time, see "Flash-time configuration" below) and POSTs the mean temperature and
+pressure. A window that collected no valid samples is skipped rather than
+reported as a zero reading; a window that closes while the previous reading is
+still retrying supersedes it — the older one is dropped, not queued.
+
+The payload is signed the way the ingest route verifies it: HMAC-SHA256 over
+`<timestamp-ms>.<body>`, keyed with `DEVICE_SECRET` used as raw text (never
+hex-decoded). The signature is sent as lowercase hex in `x-signature`,
+alongside `x-device-id` and the same millisecond timestamp in `x-timestamp`.
+
+Pretty-printed here for readability — on the wire it's a single unbroken
+line, since the signature covers these exact bytes. The minified form is
+pinned byte-for-byte in `builds_exact_payload` in
+`test/test_upload/test_upload.cpp`.
+
+```json
+{
+  "timestamp": "2026-08-04T12:00:00Z",
+  "temperature": 21.53,
+  "humidity": null,
+  "pressure": 1013.24,
+  "windSpeed": null,
+  "windDirection": null,
+  "precipitation": null
+}
+```
+
+`humidity` is always null — the BMP280 has no humidity element (see the note
+above). `windSpeed`, `windDirection` and `precipitation` are null because that
+hardware doesn't exist yet. `pressure` is the measured station pressure, not
+normalized to sea level.
+
+**Delivery policy:** a reading gets at most 3 delivery attempts — the initial
+POST plus two retries, spaced 10 s then 30 s — before it's dropped.
+
+| Outcome                              | Behavior                                                                                                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2xx                                  | Success                                                                                                                                                   |
+| Network error, timeout, or 5xx       | Retried, up to the attempt limit above                                                                                                                    |
+| Any other 4xx (401, 400, …)          | Dropped immediately — the request would be rejected identically every time                                                                                |
+| WiFi drops while a reading is queued | The reading (and any samples already collected for the current window) is dropped; the device falls back to the reconnect backoff above without rebooting |
+
+There is no local buffering of undelivered readings — a deliberate MVP
+decision (PRD OQ2), not an oversight.
+
+**TLS:** uploads verify the server certificate against ISRG Root X1, the
+Let's Encrypt trust anchor Vercel issues under, embedded in
+`src/ca_isrg_root_x1.h`. There's no plaintext fallback — a `Backend URL` that
+doesn't start with `https://` is rejected and uploads stay disabled until it's
+fixed. One consequence worth knowing: because that single embedded root is
+Let's Encrypt only, the device will fail TLS verification against _any_ host
+whose certificate isn't issued under Let's Encrypt — a tunnel service, a
+self-signed dev server, a host on a different CA. That's by design, not a
+bug; repoint at a Let's Encrypt-backed host (Vercel included) to fix it. This
+is unrelated to the OTA fetch, which uses `setInsecure()` on purpose — see
+"OTA updates" below.
+
+Verifying a certificate needs a correct clock, so a reading is held until NTP
+has synced at least once; a sync that times out is retried the next time a
+window closes, so the device can't go permanently mute over one bad NTP
+lookup.
+
+**Changing the endpoint:** the URL is read from NVS, falling back to the
+flash-time `API_URL` build flag when NVS is empty. To repoint a device
+without reflashing, open the same web portal described above (LAN IP printed
+to serial), click **Setup** (not **Configure WiFi** — that page only holds
+the SSID and password), and set **Backend URL**. Only `https://` values are
+accepted. The active URL is logged to serial at boot and again whenever it's
+changed from the portal.
+
+The Setup page always reports "Saved" (HTTP 200) after a submit, whether or
+not the URL was actually accepted — WiFiManager renders that confirmation
+unconditionally and doesn't know about the `https://` check. A rejected URL
+is left out of NVS and the device keeps using whatever endpoint was already
+active. The one visible tell in the UI: the field snaps back to the active
+URL, so if it shows something other than what you just typed, that submit was
+rejected. The serial log (`Backend URL rejected: must start with https://`)
+is the explicit confirmation.
+
 ## OTA updates
 
 Once per boot, after WiFi connects, the device syncs its clock via NTP (up
