@@ -15,6 +15,10 @@
 #include <ota_state.h>
 #include "version.h"
 #include "ota_pubkey.h"
+#include <aggregate.h>
+#include <upload.h>
+#include <sys/time.h>
+#include "ca_isrg_root_x1.h"
 
 // 0x76 on most GY-BMP280 breakouts, 0x77 on Adafruit boards.
 static const uint8_t BMP_ADDR[] = {0x76, 0x77};
@@ -81,6 +85,37 @@ static bool otaCheckedThisBoot = false;
 static WiFiManager webPortal;
 static bool webPortalRunning = false;
 
+// Three deliveries per reading in total - the first POST plus two retries -
+// then it is dropped. No buffering: PRD OQ2 chose dropping over a queue that
+// would grow unbounded during a long outage.
+static const uint32_t UPLOAD_MAX_ATTEMPTS = 3;
+static const uint32_t UPLOAD_RETRY_DELAYS_MS[] = {10000, 30000};
+static const uint16_t UPLOAD_TIMEOUT_MS = 15000;
+// Only used for a log line, so a couple hundred bytes is plenty - see
+// readBoundedErrorBody() for why this can't just be http.getString().
+static const size_t UPLOAD_RESPONSE_LOG_CAP = 256;
+
+static SampleAccumulator windowSamples;
+static bool uploadWindowStarted = false;
+static uint32_t windowStart = 0;
+
+static bool uploadPending = false;
+static uint32_t uploadAttempt = 0;
+static uint32_t lastAttemptAt = 0;
+static uint32_t retryDelayMs = 0;
+static char pendingBody[256];
+static char pendingTimestampMs[24];
+static char pendingSignature[65];
+
+static bool clockValid = false;
+
+// Where readings go. NVS wins over the flash-time API_URL so the endpoint can
+// be repointed from the portal without a reflash.
+static Preferences cfgPrefs;
+static String apiUrl;
+static WiFiManagerParameter apiUrlParam("apiurl", "Backend URL", "", 128);
+static bool apiUrlParamAdded = false;
+
 bool initSensor() {
   if (!bmp.begin(BMP_ADDR[0]) && !bmp.begin(BMP_ADDR[1])) return false;
 
@@ -110,6 +145,65 @@ void clearWifiCredentials() {
   wifiPrefs.begin("wifi", false);
   wifiPrefs.clear();
   wifiPrefs.end();
+}
+
+// https is required everywhere the URL can come from, not just the portal
+// field below: the ingest path carries a signature over the device secret,
+// and a plaintext endpoint would put both the signature and the reading on
+// the wire in the clear. secrets.ini predates this check, so the flash-time
+// API_URL fallback is the realistic way an http:// URL gets in here. Warned
+// once - closeUploadWindow() calls this every 5-minute window and a repeat
+// log line for a condition that can't change without a reflash or a portal
+// save is just noise.
+static bool apiUrlWarned = false;
+
+static bool checkApiUrlHttps() {
+  if (apiUrl.startsWith("https://")) return true;
+  if (!apiUrlWarned) {
+    apiUrlWarned = true;
+    Serial.printf("Backend URL is not https, uploads disabled: %s\n", apiUrl.c_str());
+  }
+  return false;
+}
+
+void loadApiUrl() {
+  cfgPrefs.begin("cfg", true);
+  apiUrl = cfgPrefs.getString("apiurl", "");
+  cfgPrefs.end();
+  if (apiUrl.length() == 0) apiUrl = API_URL;
+  checkApiUrlHttps();
+}
+
+bool saveApiUrl(const String &url) {
+  if (!cfgPrefs.begin("cfg", false)) return false;
+  size_t written = cfgPrefs.putString("apiurl", url);
+  cfgPrefs.end();
+  return written == url.length();
+}
+
+// Portal callback for the Backend URL field. https is required: the ingest
+// path carries a signature over the device secret and must never fall back to
+// plaintext, so a http:// entry is refused rather than quietly accepted.
+void syncApiUrlFromPortal() {
+  String url = apiUrlParam.getValue();
+  url.trim();
+  if (url.length() == 0) return;
+  if (!url.startsWith("https://")) {
+    Serial.println("Backend URL rejected: must start with https://");
+    // WiFiManager's save-params page always shows "Saved" no matter what this
+    // callback does, so an operator who enters http:// sees success with no
+    // visible sign it was rejected unless they're watching serial. Put the
+    // field back to what's actually in effect so revisiting the page doesn't
+    // keep showing the rejected value as if it had taken.
+    apiUrlParam.setValue(apiUrl.c_str(), 128);
+    return;
+  }
+  if (saveApiUrl(url)) {
+    apiUrl = url;
+    Serial.printf("Backend URL updated: %s\n", apiUrl.c_str());
+  } else {
+    Serial.println("Failed to save backend URL to NVS");
+  }
 }
 
 void startSetupPortal() {
@@ -177,7 +271,13 @@ void startStationWebPortal() {
   // rejoins the old network.
   webPortal.setCaptivePortalEnable(false);
   webPortal.setSaveConnectTimeout(15);
-  std::vector<const char *> menu = {"wifi", "info", "restart"};
+  apiUrlParam.setValue(apiUrl.c_str(), 128);
+  if (!apiUrlParamAdded) {
+    webPortal.addParameter(&apiUrlParam);
+    apiUrlParamAdded = true;
+  }
+  webPortal.setSaveParamsCallback(syncApiUrlFromPortal);
+  std::vector<const char *> menu = {"wifi", "param", "info", "restart"};
   webPortal.setMenu(menu);
   webPortal.startWebPortal();
   webPortalRunning = true;
@@ -224,14 +324,48 @@ void handleStationConnecting() {
   }
 }
 
+// Forward declaration: pollResetButton() is defined near the bottom of the
+// file (with the rest of the reset-button logic) but syncClock() needs to
+// call back into it below.
+void pollResetButton();
+
 // Anything past 2023 means NTP answered; the RTC starts at the epoch.
+static const time_t CLOCK_SYNCED_EPOCH = 1700000000;
+
 static bool syncClock() {
   configTime(0, 0, "pool.ntp.org", "time.google.com");
   uint32_t start = millis();
-  while (time(nullptr) < 1700000000 && millis() - start < 10000) {
+  // loop()'s own pollResetButton() call has already returned by the time
+  // control reaches here (it runs before the wifiPhase switch, and syncClock()
+  // is only ever reached from inside that switch), so this is a second poll
+  // within the same iteration, not a reentrant call into one that's still on
+  // the stack. It shrinks this function's up-to-10s blind window down to the
+  // 250ms delay granularity, so a tap-and-release that happens entirely
+  // inside the wait is not lost. pollResetButton() only touches the "wifi"
+  // NVS namespace and, on a full hold, restarts - neither can call back into
+  // syncClock(), so there is no recursion to worry about.
+  while (time(nullptr) < CLOCK_SYNCED_EPOCH && millis() - start < 10000) {
+    pollResetButton();
     delay(250);
   }
-  return time(nullptr) >= 1700000000;
+  return time(nullptr) >= CLOCK_SYNCED_EPOCH;
+}
+
+// Uploads depend on a valid clock for both the payload timestamp and TLS
+// certificate validity, and syncClock() is allowed to time out at boot - so a
+// device that came up before its router had internet has to recover somehow.
+//
+// It recovers on its own: configTime() ran at boot, and lwIP's SNTP client
+// keeps retrying in the background after a failed request - 15s, doubling to a
+// 150s ceiling (SNTP_RETRY_TIMEOUT/_MAX/_EXP in sntp_opts.h). That is more
+// often than windows close, so this only has to observe the result. Calling
+// the blocking syncClock() again here would stall loop() - and therefore the
+// web portal and the sensor cadence - for up to 10s every window, and would
+// also restart configTime() and throw away the backoff SNTP had built up.
+static bool ensureClock() {
+  if (clockValid) return true;
+  clockValid = time(nullptr) >= CLOCK_SYNCED_EPOCH;
+  return clockValid;
 }
 
 static bool installUpdate(const OtaManifest &m) {
@@ -362,9 +496,180 @@ static void checkForOtaUpdate() {
   installUpdate(m);
 }
 
+static void dropPendingUpload(const char *reason) {
+  Serial.printf("Reading dropped: %s\n", reason);
+  uploadPending = false;
+  uploadAttempt = 0;
+}
+
+static void scheduleRetryOrDrop(const char *reason) {
+  if (uploadAttempt >= UPLOAD_MAX_ATTEMPTS) {
+    dropPendingUpload(reason);
+    return;
+  }
+  retryDelayMs = UPLOAD_RETRY_DELAYS_MS[uploadAttempt - 1];
+  Serial.printf("Upload failed (%s), attempt %u of %u in %u ms\n", reason,
+                uploadAttempt + 1, UPLOAD_MAX_ATTEMPTS, retryDelayMs);
+}
+
+// Closes the sampling window: takes the mean, stamps it, builds and signs the
+// body. The signed tuple is kept for the retries so every attempt sends an
+// identical request - the server dedups on (device_id, timestamp), so a retry
+// that actually did arrive the first time is a harmless no-op.
+static void closeUploadWindow() {
+  windowStart = millis();
+
+  float meanTemperature = 0.0f;
+  float meanPressure = 0.0f;
+  bool haveMean = accumulatorMean(windowSamples, meanTemperature, meanPressure);
+  accumulatorReset(windowSamples);
+
+  if (!haveMean) {
+    Serial.println("Window closed with no valid samples, nothing to upload");
+    return;
+  }
+  // Checked before the (potentially blocking, up to 10s) clock sync: no point
+  // waiting on NTP for a reading that can't be sent anyway.
+  if (!checkApiUrlHttps()) return;
+  if (!ensureClock()) {
+    Serial.println("Window closed before the clock synced, dropping the reading");
+    return;
+  }
+  if (uploadPending) {
+    dropPendingUpload("superseded by a newer reading");
+  }
+
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  int64_t epochMs = (int64_t)now.tv_sec * 1000 + now.tv_usec / 1000;
+  snprintf(pendingTimestampMs, sizeof(pendingTimestampMs), "%lld", (long long)epochMs);
+
+  char iso[24];
+  if (!formatIso8601Utc(now.tv_sec, iso, sizeof(iso))) {
+    Serial.println("Could not format the timestamp, dropping the reading");
+    return;
+  }
+  if (buildReadingBody(iso, meanTemperature, meanPressure, pendingBody,
+                       sizeof(pendingBody)) == 0) {
+    Serial.println("Could not build the payload, dropping the reading");
+    return;
+  }
+  if (!signPayload(DEVICE_SECRET, pendingTimestampMs, pendingBody,
+                   pendingSignature, sizeof(pendingSignature))) {
+    Serial.println("Could not sign the payload, dropping the reading");
+    return;
+  }
+
+  uploadPending = true;
+  uploadAttempt = 0;
+  retryDelayMs = 0;
+  Serial.printf("Reading ready: %s\n", pendingBody);
+}
+
+// http.getString() has no cap: when the server sends a non-2xx body without a
+// Content-Length (chunked - common for a CDN or reverse-proxy error page),
+// StreamString grows to fit the whole thing, bounded only by free heap. A
+// typo'd API_URL that resolves to some generic 404 HTML page would hit this
+// every 5 minutes forever. checkForOtaUpdate() caps the manifest fetch the
+// same way, for the same reason - this body is only ever used for a log line,
+// so a few hundred bytes is plenty.
+static String readBoundedErrorBody(HTTPClient &http) {
+  int len = http.getSize();
+  if (len >= 0 && (size_t)len <= UPLOAD_RESPONSE_LOG_CAP) return http.getString();
+
+  char buf[UPLOAD_RESPONSE_LOG_CAP + 1];
+  WiFiClient *stream = http.getStreamPtr();
+  size_t got = 0;
+  uint32_t start = millis();
+  while (stream != nullptr && got < UPLOAD_RESPONSE_LOG_CAP &&
+         millis() - start < UPLOAD_TIMEOUT_MS) {
+    size_t avail = stream->available();
+    if (avail == 0) {
+      if (!http.connected()) break;
+      // Small and bounded, but it's still our own wait loop - poll it like
+      // the one in syncClock() so a button tap-and-release during a chunked
+      // error response isn't lost either.
+      pollResetButton();
+      delay(10);
+      continue;
+    }
+    size_t want = avail < (UPLOAD_RESPONSE_LOG_CAP - got) ? avail : (UPLOAD_RESPONSE_LOG_CAP - got);
+    size_t n = stream->readBytes(buf + got, want);
+    if (n == 0) break;
+    got += n;
+  }
+  buf[got] = '\0';
+  // Only claim truncation if the cap is actually what stopped us - a chunked
+  // body that happened to be shorter than the cap was read in full.
+  return got >= UPLOAD_RESPONSE_LOG_CAP ? String(buf) + " (truncated)" : String(buf);
+}
+
+static void attemptUpload() {
+  uploadAttempt++;
+
+  WiFiClientSecure client;
+  client.setCACert(ISRG_ROOT_X1_PEM);
+  HTTPClient http;
+  http.setTimeout(UPLOAD_TIMEOUT_MS);
+
+  // lastAttemptAt is stamped on the way out, not on the way in: it feeds the
+  // retry back-off in handleStationConnected(), which measures the gap since
+  // the last attempt *finished*. UPLOAD_TIMEOUT_MS (15s) is bigger than the
+  // first retry delay (10s), so a request that fails slowly - a congested
+  // backend timing out near the connect/response deadline instead of an
+  // instant handshake rejection - would already have "used up" the 10s
+  // back-off by the time control returned here, and the next attempt would
+  // fire immediately with no spacing at all. Every exit path below sets this
+  // right before it returns, including the http.begin() failure, so none of
+  // them can leave it stale.
+  if (!http.begin(client, apiUrl)) {
+    lastAttemptAt = millis();
+    scheduleRetryOrDrop("cannot open the connection");
+    return;
+  }
+  http.addHeader("content-type", "application/json");
+  http.addHeader("x-device-id", DEVICE_ID);
+  http.addHeader("x-timestamp", pendingTimestampMs);
+  http.addHeader("x-signature", pendingSignature);
+
+  int code = http.POST((uint8_t *)pendingBody, strlen(pendingBody));
+
+  if (code >= 200 && code < 300) {
+    http.end();
+    lastAttemptAt = millis();
+    Serial.printf("Reading uploaded (%d)\n", code);
+    uploadPending = false;
+    uploadAttempt = 0;
+    return;
+  }
+
+  // readBoundedErrorBody() can itself block (draining a slow or chunked error
+  // body up to UPLOAD_TIMEOUT_MS), so the stamp goes after it and after
+  // http.end(), not before - otherwise this path would have the exact same
+  // back-off-collapse bug the comment above describes.
+  String response = code > 0 ? readBoundedErrorBody(http) : http.errorToString(code);
+  http.end();
+  lastAttemptAt = millis();
+  Serial.printf("Upload attempt %u returned %d: %s\n", uploadAttempt, code,
+                response.c_str());
+
+  if (!shouldRetryUpload(code)) {
+    if (code == 401) {
+      dropPendingUpload("401 - check DEVICE_SECRET and the clock");
+    } else {
+      dropPendingUpload("rejected by the server, retrying cannot help");
+    }
+    return;
+  }
+  scheduleRetryOrDrop("transient failure");
+}
+
 void handleStationConnected() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi dropped, reconnecting");
+    if (uploadPending) dropPendingUpload("wifi lost mid-upload");
+    accumulatorReset(windowSamples);
+    uploadWindowStarted = false;
     stopStationWebPortal();
     beginStationConnect();
     return;
@@ -374,12 +679,28 @@ void handleStationConnected() {
   // loop for the NTP wait + download - fine at boot, nothing else is running.
   if (!otaCheckedThisBoot) {
     otaCheckedThisBoot = true;
-    if (!syncClock()) Serial.println("NTP sync timed out, continuing");
+    clockValid = syncClock();
+    if (!clockValid) Serial.println("NTP sync timed out, will retry before the first upload");
     checkForOtaUpdate();
   }
 
   if (!webPortalRunning) startStationWebPortal();
   webPortal.process();
+
+  if (!uploadWindowStarted) {
+    uploadWindowStarted = true;
+    windowStart = millis();
+    accumulatorReset(windowSamples);
+    Serial.printf("Uploading to %s every %u ms\n", apiUrl.c_str(),
+                  (uint32_t)SEND_INTERVAL_MS);
+  }
+
+  if (millis() - windowStart >= (uint32_t)SEND_INTERVAL_MS) closeUploadWindow();
+
+  if (uploadPending &&
+      (uploadAttempt == 0 || millis() - lastAttemptAt >= retryDelayMs)) {
+    attemptUpload();
+  }
 
   if (millis() - lastRead < READ_INTERVAL) return;
   lastRead = millis();
@@ -404,6 +725,8 @@ void handleStationConnected() {
   }
 
   float alt = 44330.0f * (1.0f - powf(p / SEA_LEVEL_HPA, 0.1903f));
+
+  accumulatorAdd(windowSamples, t, p);
 
   Serial.printf("temp=%.2f C  pressure=%.1f hPa  altitude=%.1f m\n", t, p, alt);
 }
@@ -447,6 +770,8 @@ void setup() {
   WiFi.setAutoReconnect(false);
 
   loadWifiCredentials();
+  loadApiUrl();
+  Serial.printf("Backend URL: %s\n", apiUrl.c_str());
   if (savedSsid.length() == 0) {
     startSetupPortal();
   } else {

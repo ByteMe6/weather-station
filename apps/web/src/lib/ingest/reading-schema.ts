@@ -9,7 +9,7 @@ const bounded = (b: { min: number; max: number }) =>
 export const readingSchema = z.object({
   timestamp: z.string().datetime(),
   temperature: bounded(SENSOR_BOUNDS.temperature),
-  humidity: bounded(SENSOR_BOUNDS.humidity),
+  humidity: bounded(SENSOR_BOUNDS.humidity).nullable(),
   pressure: bounded(SENSOR_BOUNDS.pressure),
   windSpeed: bounded(SENSOR_BOUNDS.windSpeed).nullable(),
   windDirection: bounded(SENSOR_BOUNDS.windDirection).nullable(),

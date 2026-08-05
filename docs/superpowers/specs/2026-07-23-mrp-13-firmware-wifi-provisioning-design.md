@@ -175,6 +175,55 @@ Mirrors `test_reading.cpp` exactly in style:
 4. `pio test -e native && pio run`; manual on-device verification per
    §Testing.
 
+## Implementation amendments (2026-07-23)
+
+Recorded during implementation review; these supersede the corresponding
+text above.
+
+- **Portal exit lands in `STATION_CONNECTED`, not `STATION_CONNECTING`.**
+  When `startConfigPortal()` returns true the STA is already associated, so
+  re-running `WiFi.begin()` would be redundant; a drop right after is caught
+  by the connected-phase status check on the next `loop()`.
+- **`nextBackoffMs` takes `uint32_t`** (not `uint8_t`) so a forever-retrying
+  counter can never wrap the schedule; `LAST_INDEX` is derived from
+  `sizeof(SCHEDULE)`.
+- **`isResetHeld` is plain unsigned subtraction** — the defensive
+  `nowMs < pressStartMs` guard was removed as strictly worse: unsigned
+  subtraction already yields true elapsed time across a `millis()` wrap, so
+  a wrap-straddling hold triggers on schedule (pinned by test).
+- **Restart waits for button release.** GPIO0 is a strap pin; restarting
+  while it is still held would drop the ROM into UART download mode. After
+  wiping credentials the firmware blocks until release, then `ESP.restart()`.
+- **Empty-SSID portal race guarded.** `WiFi.SSID()` returns `""` if the AP
+  drops immediately after the portal joins; that would save blank creds and
+  wedge station mode. The portal reopens instead of saving an empty SSID.
+- **`WiFi.setAutoReconnect(false)` at boot.** The core's auto-reconnect
+  would otherwise retry inside the backoff window, making the 5/10/30/60s
+  schedule advisory rather than authoritative. (Verified WiFiManager 2.0.17
+  does not re-enable it on ESP32.)
+
+## Riding along (out-of-AC extras, added at the maintainer's request 2026-07-23)
+
+Beyond the ticket's acceptance criteria, same-branch extras (precedent: MRP-12
+health/docs endpoints):
+
+- **Station-mode web portal.** After connecting, the same WiFiManager portal
+  stays reachable at the device's LAN IP (`wm.startWebPortal()` +
+  `process()` each loop in `STATION_CONNECTED`; stopped on drop). The IP is
+  printed to serial on connect. Menu: wifi / info / restart. Anyone on the
+  home LAN can reach it — accepted for MVP (matches the maintainer's "same
+  page" choice).
+- **NVS sync on portal-initiated network change.** WiFiManager's
+  `setSaveConfigCallback` fires after a successful web-portal reconnect; the
+  handler persists the new SSID/psk to NVS (with the same empty-SSID guard),
+  so reboots follow the newly chosen network. A failed change recovers via
+  the normal state machine using the still-saved old credentials.
+- **Portal restyle.** Shared CSS injected via `setCustomHeadElement` +
+  `setTitle("Weather Station")` for both the setup captive portal and the
+  station-mode portal: system font stack, card layout, single blue accent,
+  rounded inputs/buttons. Deliberately restrained — no gradients or theme
+  gimmicks. WiFiManager markup/logic untouched.
+
 ## Acceptance criteria mapping
 
 - Boots as AP `WeatherStation-<id>` with no saved creds → §State machine,
