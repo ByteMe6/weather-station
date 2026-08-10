@@ -65,9 +65,11 @@ The device ships with no WiFi configured — only its identity, which is
 provisioned into NVS at manufacture time (see **Provisioning identity**).
 
 **First boot (no saved credentials):** the device starts an access point
-named `WeatherStation-<DEVICE_ID>` — or `WeatherStation-unprovisioned` when
-NVS holds no identity yet, which is the SSID to look for on a device that
-still needs its `nvs.bin`. Connecting to it with a phone
+named `WeatherStation-<DEVICE_ID>` — or `WeatherStation-unprov-<xxxx>` when
+NVS holds no identity yet, where `xxxx` is the last two bytes of the MAC. That
+is the SSID to look for on a device that still needs its `nvs.bin`, and the
+MAC suffix is what lets you tell several unprovisioned boards apart on a
+bench. Connecting to it with a phone
 auto-opens a captive portal that lists nearby networks and accepts a
 password. Once submitted, credentials are saved to NVS (flash) and survive
 power loss.

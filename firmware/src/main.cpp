@@ -310,8 +310,22 @@ void startSetupPortal() {
   Serial.println("No saved WiFi - starting setup portal");
   wifiPhase = WifiPhase::SETUP_PORTAL;
 
-  String apName = String("WeatherStation-") +
-                  (deviceId.length() ? deviceId : String("unprovisioned"));
+  // An unprovisioned device has no id to put in the SSID, but it does have a
+  // MAC - and several unprovisioned boards on a bench would otherwise raise
+  // identically named APs with no way to tell which one you are configuring.
+  // Last two MAC bytes are enough to disambiguate a benchful.
+  //
+  // "unprov" rather than "unprovisioned" because the SSID limit is 32 bytes:
+  // the spelled-out form plus the suffix is 33.
+  String apName;
+  if (deviceId.length()) {
+    apName = String("WeatherStation-") + deviceId;
+  } else {
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    mac.toLowerCase();
+    apName = String("WeatherStation-unprov-") + mac.substring(8);
+  }
 
   bool credentialsSaved = false;
   while (!credentialsSaved) {
