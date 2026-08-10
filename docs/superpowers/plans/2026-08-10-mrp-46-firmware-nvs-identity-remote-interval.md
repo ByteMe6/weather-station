@@ -698,7 +698,18 @@ Expected: `error: --interval-ms must be between 60000 and 3600000, got 5`
 Run: `cd firmware && python3 scripts/ota_release.py --help 2>&1 | grep interval`
 Expected: the `--interval-ms` help line.
 
-(Both exit before touching the network or requiring `OTA_SIGNING_KEY`, because argument parsing and the bounds check run first. If instead you get `OTA_SIGNING_KEY is not set`, the `argparse` block was placed after the `env()` calls — move it up, keeping it below `die()`.)
+Both exit before touching the network or requiring `OTA_SIGNING_KEY`, because
+argument parsing and the bounds check run first. If instead you get
+`OTA_SIGNING_KEY is not set`, the `argparse` block was placed after the `env()`
+calls — move it up, keeping it below `die()`.
+
+**Caveat on running these locally.** `ota_release.py` imports `requests` and
+`cryptography` unconditionally at module top, so on a machine without those
+installed both commands fail at the import line before argparse is ever
+reached — which says nothing about whether your change is correct. Either run
+them in a virtualenv that has both, or verify placement by reading the file:
+the parser block must sit after `die()` and before the first `env()` call.
+Do not move the imports to work around this; that is out of scope here.
 
 - [ ] **Step 5: Commit**
 
