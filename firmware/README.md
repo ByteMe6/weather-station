@@ -137,9 +137,21 @@ rather than directly.
 
 **Credentials.** The script writes to the `devices` table, so it needs
 service-role credentials and exits with
-`Set SUPABASE_URL and SUPABASE_SECRET_KEY first` without them. `infisical run --`
-supplies them for production. Against a local stack, pass them explicitly —
-`npx supabase status` prints both:
+`Set SUPABASE_URL and SUPABASE_SECRET_KEY first` without them.
+
+For local work the simplest route is a `.env` — the `provision:device` script
+already runs under `node --env-file-if-exists=.env`, so it is picked up with
+no wrapper at all (that is what the `.env not found. Continuing without it.`
+line is telling you):
+
+```bash
+cd infra/supabase-db
+cp .env.example .env     # fill in SUPABASE_SECRET_KEY from `npx supabase status`
+yarn provision:device --emit-nvs /tmp/nvs.bin
+```
+
+`infisical run --` supplies the same variables for production, per the repo
+convention. Inline also works if you would rather not keep a file:
 
 ```bash
 SUPABASE_URL="http://127.0.0.1:54321" \
