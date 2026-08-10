@@ -5,19 +5,48 @@
 #include <ArduinoJson.h>
 
 // Parsed manifest.json. sha256 is the digest of the .bin; sig is the
-// Ed25519 signature over version (4 bytes LE) + that digest, so a replayed
-// old image can't be passed off under a newer version number.
+// Ed25519 signature over version (4 bytes LE) + that digest + intervalMs
+// (4 bytes LE), so neither a replayed old image nor an altered cadence can
+// be passed off under a newer version number.
 struct OtaManifest {
   uint32_t version;
   char path[96];
   uint32_t size;
   uint8_t sha256[32];
+  uint32_t intervalMs;
   uint8_t sig[64];
 };
 
 // Update only when the offered version is strictly newer.
 inline bool isNewerVersion(uint32_t current, uint32_t offered) {
   return offered > current;
+}
+
+// Bounds on the remotely-set upload cadence. Below the floor the fleet would
+// hammer the backend; above the ceiling data collection quietly stops. Both
+// are one typo away in the release script, so a value outside this range is
+// refused rather than clamped silently to an edge - a refusal is visible in
+// the log, a silent clamp is not.
+static const uint32_t OTA_INTERVAL_MIN_MS = 60000;
+static const uint32_t OTA_INTERVAL_MAX_MS = 3600000;
+
+inline bool isAcceptableInterval(uint32_t ms) {
+  return ms >= OTA_INTERVAL_MIN_MS && ms <= OTA_INTERVAL_MAX_MS;
+}
+
+// The exact bytes ota_release.py signs. Keep the two in lockstep: a
+// disagreement here rejects every image on every device, and the only
+// symptom is "bad signature".
+inline void buildOtaSignedMessage(const OtaManifest &m, uint8_t out[40]) {
+  out[0] = (uint8_t)m.version;
+  out[1] = (uint8_t)(m.version >> 8);
+  out[2] = (uint8_t)(m.version >> 16);
+  out[3] = (uint8_t)(m.version >> 24);
+  memcpy(out + 4, m.sha256, 32);
+  out[36] = (uint8_t)m.intervalMs;
+  out[37] = (uint8_t)(m.intervalMs >> 8);
+  out[38] = (uint8_t)(m.intervalMs >> 16);
+  out[39] = (uint8_t)(m.intervalMs >> 24);
 }
 
 inline int hexNibble(char c) {
@@ -89,10 +118,11 @@ inline bool parseManifest(const char *json, OtaManifest &out) {
 
   if (!doc["version"].is<uint32_t>() || !doc["path"].is<const char *>() ||
       !doc["size"].is<uint32_t>() || !doc["sha256"].is<const char *>() ||
-      !doc["sig"].is<const char *>())
+      !doc["intervalMs"].is<uint32_t>() || !doc["sig"].is<const char *>())
     return false;
 
   out.version = doc["version"].as<uint32_t>();
+  out.intervalMs = doc["intervalMs"].as<uint32_t>();
   out.size = doc["size"].as<uint32_t>();
   if (out.size == 0) return false;
 

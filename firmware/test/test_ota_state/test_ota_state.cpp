@@ -10,6 +10,7 @@ void tearDown(void) {}
 static const char GOOD[] =
     "{\"version\":2,\"path\":\"weatherstation-2.bin\",\"size\":1052672,"
     "\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11\","
+    "\"intervalMs\":300000,"
     "\"sig\":\"" // 64 bytes of 0x00 in base64
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
 
@@ -140,6 +141,7 @@ void path_length_boundary(void) {
   const char *tail =
       "\",\"size\":1,"
       "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
 
   OtaManifest m;
@@ -228,6 +230,74 @@ void ed25519_rejects_wrong_version(void) {
   TEST_ASSERT_FALSE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
 }
 
+// intervalMs is required: the signed message covers it, so a manifest
+// without one cannot be verified at all.
+static const char NO_INTERVAL[] =
+    "{\"version\":2,\"path\":\"weatherstation-2.bin\",\"size\":1052672,"
+    "\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11\","
+    "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
+
+static const char WITH_INTERVAL[] =
+    "{\"version\":2,\"path\":\"weatherstation-2.bin\",\"size\":1052672,"
+    "\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11\","
+    "\"intervalMs\":600000,"
+    "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
+
+static const char INTERVAL_NOT_A_NUMBER[] =
+    "{\"version\":2,\"path\":\"weatherstation-2.bin\",\"size\":1052672,"
+    "\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa11\","
+    "\"intervalMs\":\"600000\","
+    "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
+
+void rejects_manifest_without_interval(void) {
+  OtaManifest m;
+  TEST_ASSERT_FALSE(parseManifest(NO_INTERVAL, m));
+}
+
+void rejects_non_numeric_interval(void) {
+  OtaManifest m;
+  TEST_ASSERT_FALSE(parseManifest(INTERVAL_NOT_A_NUMBER, m));
+}
+
+void parses_interval(void) {
+  OtaManifest m;
+  TEST_ASSERT_TRUE(parseManifest(WITH_INTERVAL, m));
+  TEST_ASSERT_EQUAL_UINT32(600000, m.intervalMs);
+}
+
+void interval_bounds(void) {
+  TEST_ASSERT_FALSE(isAcceptableInterval(59999));
+  TEST_ASSERT_TRUE(isAcceptableInterval(60000));
+  TEST_ASSERT_TRUE(isAcceptableInterval(300000));
+  TEST_ASSERT_TRUE(isAcceptableInterval(3600000));
+  TEST_ASSERT_FALSE(isAcceptableInterval(3600001));
+  TEST_ASSERT_FALSE(isAcceptableInterval(0));
+}
+
+// Layout is load-bearing: the release script signs these exact bytes, so a
+// disagreement here means every device rejects every image.
+void signed_message_layout(void) {
+  OtaManifest m;
+  TEST_ASSERT_TRUE(parseManifest(WITH_INTERVAL, m));
+
+  uint8_t msg[40];
+  buildOtaSignedMessage(m, msg);
+
+  // version = 2, little endian
+  TEST_ASSERT_EQUAL_UINT8(0x02, msg[0]);
+  TEST_ASSERT_EQUAL_UINT8(0x00, msg[1]);
+  TEST_ASSERT_EQUAL_UINT8(0x00, msg[2]);
+  TEST_ASSERT_EQUAL_UINT8(0x00, msg[3]);
+  // digest
+  TEST_ASSERT_EQUAL_UINT8(0xaa, msg[4]);
+  TEST_ASSERT_EQUAL_UINT8(0x11, msg[35]);
+  // intervalMs = 600000 = 0x000927C0, little endian
+  TEST_ASSERT_EQUAL_UINT8(0xC0, msg[36]);
+  TEST_ASSERT_EQUAL_UINT8(0x27, msg[37]);
+  TEST_ASSERT_EQUAL_UINT8(0x09, msg[38]);
+  TEST_ASSERT_EQUAL_UINT8(0x00, msg[39]);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(parses_good_manifest);
@@ -244,5 +314,10 @@ int main(int, char **) {
   RUN_TEST(ed25519_verifies_known_answer);
   RUN_TEST(ed25519_rejects_tampered_digest);
   RUN_TEST(ed25519_rejects_wrong_version);
+  RUN_TEST(rejects_manifest_without_interval);
+  RUN_TEST(rejects_non_numeric_interval);
+  RUN_TEST(parses_interval);
+  RUN_TEST(interval_bounds);
+  RUN_TEST(signed_message_layout);
   return UNITY_END();
 }
