@@ -112,6 +112,27 @@ credentials and sends it back to the setup portal. So identity provisioning
 is a clean-device operation, and the README must say so next to the
 provisioning steps.
 
+### Two operations that now destroy identity
+
+Both are deliberate acts rather than accidents, but both change meaning with
+this design and need to be written down.
+
+**`pio run -t erase`.** A full-chip erase takes NVS with it. Today that is
+harmless: `DEVICE_ID` lives in the binary and survives, so an erase costs only
+the WiFi credentials. After this change an erase leaves the device with no
+identity at all and it must be re-provisioned over USB before it can upload
+again. The README's troubleshooting section currently presents erase as a
+routine reset — that has to be re-worded.
+
+**Changing the partition table.** The layout is the stock one, `nvs` at
+`0x9000` sized `0x5000`. Moving those boundaries destroys NVS contents on
+every device that receives the new table, which after this change means
+destroying fleet identity. This is not hypothetical: `app0` is already 84.4%
+full, so a future feature could plausibly force a larger app partition. Such a
+migration has to be planned as its own exercise — at minimum, reading identity
+out before the change and writing it back after — and cannot ride along in an
+ordinary release.
+
 ## 2. Missing identity
 
 `checkIdentity()`, modelled on `checkApiUrlScheme()`: warn once, return false,
@@ -229,10 +250,12 @@ to receive a correcting update over the air.
 
 ## Risks
 
-| Risk                                        | Mitigation                                    |
-| ------------------------------------------- | --------------------------------------------- |
-| Re-provisioning a configured device wipes WiFi | README warning; clean-device-only operation     |
-| Manifest published before devices updated    | Documented rollout order                       |
-| Bad `intervalMs` in a release                | Clamped range, logged rejection                |
-| Device provisioned with no identity          | Refusal path keeps OTA alive for recovery      |
-| Secret readable from a recovered device      | Unchanged from today — it is in flash either way |
+| Risk                                            | Mitigation                                       |
+| ----------------------------------------------- | ------------------------------------------------ |
+| Re-provisioning a configured device wipes WiFi   | README warning; clean-device-only operation       |
+| `pio run -t erase` now costs identity, not just WiFi | Re-word the README troubleshooting section    |
+| A future partition-table change wipes fleet identity | Flagged as its own migration, never a release rider |
+| Manifest published before devices updated        | Documented rollout order                          |
+| Bad `intervalMs` in a release                    | Clamped range, logged rejection                   |
+| Device provisioned with no identity              | Refusal path keeps OTA alive for recovery         |
+| Secret readable from a recovered device          | Unchanged from today — it is in flash either way  |
