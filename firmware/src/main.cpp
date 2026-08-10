@@ -79,6 +79,12 @@ static uint32_t backoffDurationMs = 0;
 static bool backingOff = false;
 static uint32_t resetPressStart = 0;
 static bool resetPressActive = false;
+
+// Six hours. The boot-only check meant a device that stayed up never saw a
+// new firmware version at all, and with the interval now arriving in the
+// manifest it would never see a cadence change either.
+static const uint32_t OTA_CHECK_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
+static uint32_t lastOtaCheck = 0;
 static bool otaCheckedThisBoot = false;
 
 // Same portal, kept reachable on the LAN once we're connected.
@@ -872,6 +878,12 @@ void handleStationConnected() {
     otaCheckedThisBoot = true;
     clockValid = syncClock();
     if (!clockValid) Serial.println("NTP sync timed out, will retry before the first upload");
+    checkForOtaUpdate();
+    lastOtaCheck = millis();
+  } else if (millis() - lastOtaCheck >= OTA_CHECK_INTERVAL_MS) {
+    // No syncClock() here: it blocks for up to 10s and the clock is already
+    // good by now. Only the first check pays that cost.
+    lastOtaCheck = millis();
     checkForOtaUpdate();
   }
 
