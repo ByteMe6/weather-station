@@ -116,6 +116,34 @@ static String apiUrl;
 static WiFiManagerParameter apiUrlParam("apiurl", "Backend URL", "", 128);
 static bool apiUrlParamAdded = false;
 
+// Identity is provisioned into NVS rather than compiled in, so one firmware
+// image is valid for the whole fleet. With it in the binary, the single
+// image OTA publishes would hand every device the same device_id and secret.
+static Preferences idPrefs;
+static String deviceId;
+static String deviceSecret;
+static bool identityWarned = false;
+
+void loadDeviceIdentity() {
+  idPrefs.begin("id", true);
+  deviceId = idPrefs.getString("device_id", "");
+  deviceSecret = idPrefs.getString("secret", "");
+  idPrefs.end();
+}
+
+// Uploads are refused, but WiFi, the portal and the OTA check keep running -
+// that is what lets a mis-provisioned device be recovered without physical
+// access. Warned once: closeUploadWindow() calls this every window and the
+// condition cannot change without a reflash.
+static bool checkIdentity() {
+  if (deviceId.length() > 0 && deviceSecret.length() > 0) return true;
+  if (!identityWarned) {
+    identityWarned = true;
+    Serial.println("No device identity in NVS, uploads disabled - reflash nvs.bin");
+  }
+  return false;
+}
+
 bool initSensor() {
   if (!bmp.begin(BMP_ADDR[0]) && !bmp.begin(BMP_ADDR[1])) return false;
 
@@ -246,7 +274,8 @@ void startSetupPortal() {
   Serial.println("No saved WiFi - starting setup portal");
   wifiPhase = WifiPhase::SETUP_PORTAL;
 
-  String apName = String("WeatherStation-") + DEVICE_ID;
+  String apName = String("WeatherStation-") +
+                  (deviceId.length() ? deviceId : String("unprovisioned"));
 
   bool credentialsSaved = false;
   while (!credentialsSaved) {
@@ -629,6 +658,7 @@ static void closeUploadWindow() {
   // Checked before the (potentially blocking, up to 10s) clock sync: no point
   // waiting on NTP for a reading that can't be sent anyway.
   if (!checkApiUrlScheme()) return;
+  if (!checkIdentity()) return;
   if (!ensureClock()) {
     Serial.println("Window closed before the clock synced, dropping the reading");
     return;
@@ -652,7 +682,7 @@ static void closeUploadWindow() {
     Serial.println("Could not build the payload, dropping the reading");
     return;
   }
-  if (!signPayload(DEVICE_SECRET, pendingTimestampMs, pendingBody,
+  if (!signPayload(deviceSecret.c_str(), pendingTimestampMs, pendingBody,
                    pendingSignature, sizeof(pendingSignature))) {
     Serial.println("Could not sign the payload, dropping the reading");
     return;
@@ -744,7 +774,7 @@ static void attemptUpload() {
     return;
   }
   http.addHeader("content-type", "application/json");
-  http.addHeader("x-device-id", DEVICE_ID);
+  http.addHeader("x-device-id", deviceId.c_str());
   http.addHeader("x-timestamp", pendingTimestampMs);
   http.addHeader("x-signature", pendingSignature);
 
@@ -889,7 +919,9 @@ void setup() {
   WiFi.setAutoReconnect(false);
 
   loadWifiCredentials();
+  loadDeviceIdentity();
   loadApiUrl();
+  Serial.printf("Device ID: %s\n", deviceId.length() ? deviceId.c_str() : "(none)");
   Serial.printf("Backend URL: %s\n", apiUrl.c_str());
   if (savedSsid.length() == 0) {
     startSetupPortal();
