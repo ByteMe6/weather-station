@@ -149,17 +149,26 @@ POST plus two retries, spaced 10 s then 30 s — before it's dropped.
 There is no local buffering of undelivered readings — a deliberate MVP
 decision (PRD OQ2), not an oversight.
 
-**TLS:** uploads verify the server certificate against ISRG Root X1, the
-Let's Encrypt trust anchor Vercel issues under, embedded in
-`src/ca_isrg_root_x1.h`. There's no plaintext fallback — a `Backend URL` that
-doesn't start with `https://` is rejected and uploads stay disabled until it's
-fixed. One consequence worth knowing: because that single embedded root is
-Let's Encrypt only, the device will fail TLS verification against _any_ host
-whose certificate isn't issued under Let's Encrypt — a tunnel service, a
-self-signed dev server, a host on a different CA. That's by design, not a
-bug; repoint at a Let's Encrypt-backed host (Vercel included) to fix it. This
-is unrelated to the OTA fetch, which uses `setInsecure()` on purpose — see
-"OTA updates" below.
+**TLS:** uploads verify the server certificate against a small set of pinned
+trust anchors in `src/ca_bundle.h` — ISRG Root X1 (Let's Encrypt), plus GTS
+Root R1 and GTS Root R4 (Google Trust Services). By default there's no
+plaintext fallback: a `Backend URL` that doesn't start with `https://` is
+rejected and uploads stay disabled until it's fixed (see **Local
+development** for the dev build that also accepts `http://`).
+
+Two Google roots rather than one because the chain a host serves is
+negotiated, not fixed — Google hands back the RSA chain (R1, via the `WR1`
+intermediate) or the ECC one (R4, via `WE1`) depending on what the client
+offers in the handshake.
+
+The consequence worth knowing: this is a **pin**, not the system trust store,
+so the device will fail verification against any host whose certificate
+chains to something else. That's by design rather than a bug — the payload
+carries an HMAC over the device secret, and a permissive store would let any
+CA-issued certificate terminate the connection. A backend that moves to a
+fourth CA needs another anchor added here, and the only symptom until then is
+mbedTLS `-9984` on every upload. This is unrelated to the OTA fetch, which
+uses `setInsecure()` on purpose — see "OTA updates" below.
 
 Verifying a certificate needs a correct clock: a window that closes before
 NTP has synced is dropped rather than sent — nothing from it is retained, the
