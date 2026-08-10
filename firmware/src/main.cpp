@@ -640,6 +640,22 @@ static void checkForOtaUpdate() {
     Serial.println("OTA: manifest rejected");
     return;
   }
+  // parseManifest() only type-checks JSON, and installUpdate()'s verify is
+  // reached only when a newer image is offered - so an interval-only
+  // manifest, which is the main reason config lives here at all, would
+  // otherwise be applied and persisted on no authority whatsoever. Verify
+  // before acting on any field.
+  //
+  // This covers the manifest's claimed digest. installUpdate() verifies
+  // again after downloading, over the digest it computed from the actual
+  // bytes, and refuses the image unless the two match - so the claimed
+  // value being signed here cannot be used to smuggle a different image.
+  uint8_t manifestMsg[40];
+  buildOtaSignedMessage(m, manifestMsg);
+  if (!Ed25519::verify(m.sig, OTA_PUBKEY, manifestMsg, sizeof(manifestMsg))) {
+    Serial.println("OTA: bad manifest signature, ignoring");
+    return;
+  }
   applyManifestInterval(m.intervalMs);
   if (!isNewerVersion(FW_VERSION, m.version)) {
     Serial.printf("OTA: up to date (v%u published, v%u running)\n", m.version, (uint32_t)FW_VERSION);
