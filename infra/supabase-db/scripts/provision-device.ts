@@ -43,9 +43,7 @@ const registerDevice = async () => {
 }
 
 // nvs_partition_gen.py consumes this CSV shape: a namespace row, then one
-// row per key. It ships with the Arduino ESP32 framework package rather than
-// being a project dependency, so the path is resolved at call time and a
-// clear error beats a stack trace when it is missing.
+// row per key.
 const buildNvsCsv = (id: string, secret: string) =>
   [
     'key,type,encoding,value',
@@ -64,17 +62,34 @@ const emitNvsImage = (id: string, secret: string, outPath: string) => {
   const csvPath = `${outPath}.csv`
   writeFileSync(csvPath, buildNvsCsv(id, secret), { mode: 0o600 })
 
-  const gen = process.env.NVS_PARTITION_GEN
-  if (!gen) {
+  const override = process.env.NVS_PARTITION_GEN
+
+  // Default to the PyPI module, not to a path found inside the PlatformIO
+  // Arduino framework package: that package only ships gen_esp32part.py
+  // (the partition *table* generator) and does not contain
+  // nvs_partition_gen.py at all — pointing users there is a dead end.
+  // Espressif publishes the NVS image generator standalone on PyPI as
+  // esp-idf-nvs-partition-gen, so invoke it as a module by default.
+  // NVS_PARTITION_GEN remains an override for anyone who already has a
+  // full ESP-IDF checkout with nvs_partition_gen.py on disk.
+  const args = override
+    ? [override, 'generate', csvPath, outPath, NVS_PARTITION_SIZE]
+    : ['-m', 'esp_idf_nvs_partition_gen', 'generate', csvPath, outPath, NVS_PARTITION_SIZE]
+
+  try {
+    execFileSync('python3', args, { stdio: 'inherit' })
+  } catch (cause) {
+    // Don't try to distinguish every possible failure - just replace the
+    // raw ModuleNotFoundError traceback (the common case: package not
+    // installed) with actionable guidance. An explicit override failing is
+    // left as-is; the user already chose that path.
+    if (override) throw cause
     throw new Error(
-      'Set NVS_PARTITION_GEN to nvs_partition_gen.py, e.g.\n' +
-        '  export NVS_PARTITION_GEN="$(find ~/.platformio/packages/framework-arduinoespressif32 -name nvs_partition_gen.py | head -1)"',
+      'esp_idf_nvs_partition_gen is not installed. Run `pip install esp-idf-nvs-partition-gen`, ' +
+        'or set NVS_PARTITION_GEN to nvs_partition_gen.py from a full ESP-IDF checkout to use that instead.',
+      { cause },
     )
   }
-
-  execFileSync('python3', [gen, 'generate', csvPath, outPath, NVS_PARTITION_SIZE], {
-    stdio: 'inherit',
-  })
 }
 
 const { deviceId, secret } = await registerDevice()
