@@ -110,19 +110,36 @@ firmware deliberately waits for release before restarting.
 `id` NVS namespace, so a single firmware image is valid for every device —
 which is what makes OTA usable on more than one of them.
 
-The script writes to the `devices` table, so it needs service-role credentials
-— it exits with `Set SUPABASE_URL and SUPABASE_SECRET_KEY first` without them.
-Against production, use Infisical the way the rest of the repo does:
+A fresh board needs **two** writes: its identity at `0x9000`, and the firmware
+itself. Neither implies the other — the identity image contains no code, and
+the firmware image contains no identity. That separation is the point.
 
 ```bash
 pip install esp-idf-nvs-partition-gen
+
+# 1. register the device and generate its NVS image
 cd infra/supabase-db
 infisical run -- yarn provision:device --emit-nvs /tmp/nvs.bin
-esptool.py --port /dev/cu.usbserial-10 write_flash 0x9000 /tmp/nvs.bin
+
+# 2. write the identity, then the firmware
+cd ../../firmware
+pio pkg exec -p tool-esptoolpy -- esptool.py \
+  --port /dev/cu.usbserial-10 write_flash 0x9000 /tmp/nvs.bin
+pio run -e esp32dev -t upload
 ```
 
-Against a local stack, pass them explicitly — `npx supabase status` prints
-both:
+Order between the two writes doesn't matter — they land in different
+partitions — but both must happen before the device can upload anything.
+
+Step 2 runs from `firmware/` because `pio pkg exec` resolves the tool inside
+this PlatformIO project. See below for why `esptool.py` is invoked that way
+rather than directly.
+
+**Credentials.** The script writes to the `devices` table, so it needs
+service-role credentials and exits with
+`Set SUPABASE_URL and SUPABASE_SECRET_KEY first` without them. `infisical run --`
+supplies them for production. Against a local stack, pass them explicitly —
+`npx supabase status` prints both:
 
 ```bash
 SUPABASE_URL="http://127.0.0.1:54321" \
@@ -131,8 +148,19 @@ SUPABASE_SECRET_KEY="<SECRET_KEY from supabase status>" \
 ```
 
 Note each run inserts a **new** `devices` row. Re-running it because a later
-step failed leaves an orphan registration behind, so provision once and keep
-the image until it is flashed.
+step failed leaves an orphan registration behind — a device id with a secret
+no board will ever hold — so provision once and keep the image until it is
+flashed.
+
+**Confirm it took.** The device prints its identity at boot, and puts it in
+the setup AP's name:
+
+```
+Device ID: ws-c382fd143277
+*wm:StartAP with SSID:  WeatherStation-ws-c382fd143277
+```
+
+`Device ID: (none)` means the NVS write did not land.
 
 `NVS_PARTITION_GEN` can instead point at `nvs_partition_gen.py` from an
 existing ESP-IDF checkout, for anyone who already has one — the Arduino
