@@ -110,12 +110,29 @@ firmware deliberately waits for release before restarting.
 `id` NVS namespace, so a single firmware image is valid for every device —
 which is what makes OTA usable on more than one of them.
 
+The script writes to the `devices` table, so it needs service-role credentials
+— it exits with `Set SUPABASE_URL and SUPABASE_SECRET_KEY first` without them.
+Against production, use Infisical the way the rest of the repo does:
+
 ```bash
 pip install esp-idf-nvs-partition-gen
 cd infra/supabase-db
-yarn provision:device --emit-nvs /tmp/nvs.bin
+infisical run -- yarn provision:device --emit-nvs /tmp/nvs.bin
 esptool.py --port /dev/cu.usbserial-10 write_flash 0x9000 /tmp/nvs.bin
 ```
+
+Against a local stack, pass them explicitly — `npx supabase status` prints
+both:
+
+```bash
+SUPABASE_URL="http://127.0.0.1:54321" \
+SUPABASE_SECRET_KEY="<SECRET_KEY from supabase status>" \
+  yarn provision:device --emit-nvs /tmp/nvs.bin
+```
+
+Note each run inserts a **new** `devices` row. Re-running it because a later
+step failed leaves an orphan registration behind, so provision once and keep
+the image until it is flashed.
 
 `NVS_PARTITION_GEN` can instead point at `nvs_partition_gen.py` from an
 existing ESP-IDF checkout, for anyone who already has one — the Arduino
