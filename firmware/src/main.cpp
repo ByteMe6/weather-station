@@ -225,6 +225,36 @@ void loadApiUrl() {
   checkApiUrlScheme();
 }
 
+// Upload cadence. NVS wins over the compiled default so the manifest can
+// change it without a reflash; the compiled value is only the fallback for a
+// device that has never seen a manifest.
+static uint32_t uploadIntervalMs = (uint32_t)SEND_INTERVAL_MS;
+
+void loadUploadInterval() {
+  cfgPrefs.begin("cfg", true);
+  uint32_t stored = cfgPrefs.getUInt("interval", 0);
+  cfgPrefs.end();
+  if (isAcceptableInterval(stored)) uploadIntervalMs = stored;
+}
+
+// Applied on every valid manifest, not only on a newer version:
+// isNewerVersion() gates the image download, and gating config the same way
+// would mean a cadence change needed a FW_VERSION bump and a full image
+// republish - exactly what carrying it in the manifest is meant to avoid.
+static void applyManifestInterval(uint32_t offered) {
+  if (!isAcceptableInterval(offered)) {
+    Serial.printf("OTA: interval %u out of range, keeping %u\n", offered, uploadIntervalMs);
+    return;
+  }
+  if (offered == uploadIntervalMs) return;
+
+  cfgPrefs.begin("cfg", false);
+  cfgPrefs.putUInt("interval", offered);
+  cfgPrefs.end();
+  uploadIntervalMs = offered;
+  Serial.printf("Upload interval set to %u ms\n", uploadIntervalMs);
+}
+
 bool saveApiUrl(const String &url) {
   if (!cfgPrefs.begin("cfg", false)) return false;
   size_t written = cfgPrefs.putString("apiurl", url);
@@ -562,14 +592,12 @@ static bool installUpdate(const OtaManifest &m) {
     return false;
   }
 
-  // Signature covers version + digest so an old signed image can't be
-  // replayed under a newer version number.
-  uint8_t signedMsg[36];
-  signedMsg[0] = (uint8_t)m.version;
-  signedMsg[1] = (uint8_t)(m.version >> 8);
-  signedMsg[2] = (uint8_t)(m.version >> 16);
-  signedMsg[3] = (uint8_t)(m.version >> 24);
-  memcpy(signedMsg + 4, digest, sizeof(digest));
+  // Signature covers version + digest + interval so neither an old signed
+  // image nor an altered cadence can be replayed under a newer version.
+  uint8_t signedMsg[40];
+  OtaManifest signedCopy = m;
+  memcpy(signedCopy.sha256, digest, sizeof(digest));
+  buildOtaSignedMessage(signedCopy, signedMsg);
   if (!Ed25519::verify(m.sig, OTA_PUBKEY, signedMsg, sizeof(signedMsg))) {
     Update.abort();
     Serial.println("OTA: bad signature, image rejected");
@@ -612,6 +640,7 @@ static void checkForOtaUpdate() {
     Serial.println("OTA: manifest rejected");
     return;
   }
+  applyManifestInterval(m.intervalMs);
   if (!isNewerVersion(FW_VERSION, m.version)) {
     Serial.printf("OTA: up to date (v%u published, v%u running)\n", m.version, (uint32_t)FW_VERSION);
     return;
@@ -837,11 +866,10 @@ void handleStationConnected() {
     uploadWindowStarted = true;
     windowStart = millis();
     accumulatorReset(windowSamples);
-    Serial.printf("Uploading to %s every %u ms\n", apiUrl.c_str(),
-                  (uint32_t)SEND_INTERVAL_MS);
+    Serial.printf("Uploading to %s every %u ms\n", apiUrl.c_str(), uploadIntervalMs);
   }
 
-  if (millis() - windowStart >= (uint32_t)SEND_INTERVAL_MS) closeUploadWindow();
+  if (millis() - windowStart >= uploadIntervalMs) closeUploadWindow();
 
   if (uploadPending &&
       (uploadAttempt == 0 || millis() - lastAttemptAt >= retryDelayMs)) {
@@ -921,6 +949,7 @@ void setup() {
   loadWifiCredentials();
   loadDeviceIdentity();
   loadApiUrl();
+  loadUploadInterval();
   Serial.printf("Device ID: %s\n", deviceId.length() ? deviceId.c_str() : "(none)");
   Serial.printf("Backend URL: %s\n", apiUrl.c_str());
   if (savedSsid.length() == 0) {
