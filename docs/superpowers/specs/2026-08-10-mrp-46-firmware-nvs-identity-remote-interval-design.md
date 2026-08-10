@@ -89,9 +89,28 @@ reports — confirming the table in use.
 
 **Writing `nvs.bin` erases the entire NVS partition**, including the `wifi`
 namespace (saved credentials) and `cfg` (backend URL, and after this change
-the interval). Identity provisioning is therefore a **clean-device operation
-only**. Doing it to a configured device silently drops it back to the setup
-portal. This goes in the README next to the provisioning steps.
+the interval).
+
+To be precise about when that happens, because it is easy to read as worse
+than it is:
+
+| Operation             | Writes                       | NVS         |
+| --------------------- | ---------------------------- | ----------- |
+| `pio run -t upload`   | `app0` at `0x10000` only     | untouched   |
+| OTA update            | the inactive `ota_0`/`ota_1` | untouched   |
+| Flashing `nvs.bin`    | `0x9000`                     | **erased**  |
+
+Erasure is not a side effect of updating — it only happens because
+provisioning deliberately writes to the NVS offset. Ordinary firmware
+updates, over USB or over the air, leave stored credentials and config alone.
+This is already true today: reflashing during the MRP-16 run left the saved
+WiFi credentials and the portal-set backend URL intact.
+
+The consequence to document is narrower: re-provisioning an **already
+configured** device — to change its identity, say — also drops its WiFi
+credentials and sends it back to the setup portal. So identity provisioning
+is a clean-device operation, and the README must say so next to the
+provisioning steps.
 
 ## 2. Missing identity
 
@@ -212,7 +231,7 @@ to receive a correcting update over the air.
 
 | Risk                                        | Mitigation                                    |
 | ------------------------------------------- | --------------------------------------------- |
-| `nvs.bin` flashed to a configured device     | README warning; clean-device-only operation    |
+| Re-provisioning a configured device wipes WiFi | README warning; clean-device-only operation     |
 | Manifest published before devices updated    | Documented rollout order                       |
 | Bad `intervalMs` in a release                | Clamped range, logged rejection                |
 | Device provisioned with no identity          | Refusal path keeps OTA alive for recovery      |
