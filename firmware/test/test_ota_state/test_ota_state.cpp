@@ -33,19 +33,21 @@ void rejects_garbage_json(void) {
   TEST_ASSERT_FALSE(parseManifest("{}", m));
 }
 
-// Each required field missing -> reject.
+// Each required field missing -> reject. Every fixture below carries a valid
+// intervalMs: without one they would all be rejected by the intervalMs guard
+// before reaching the defect each case is written to catch.
 void rejects_missing_fields(void) {
   OtaManifest m;
   TEST_ASSERT_FALSE(parseManifest(
-      "{\"path\":\"a.bin\",\"size\":1,\"sha256\":\"00\",\"sig\":\"AA==\"}", m));
+      "{\"path\":\"a.bin\",\"size\":1,\"sha256\":\"00\",\"intervalMs\":300000,\"sig\":\"AA==\"}", m));
   TEST_ASSERT_FALSE(parseManifest(
-      "{\"version\":2,\"size\":1,\"sha256\":\"00\",\"sig\":\"AA==\"}", m));
+      "{\"version\":2,\"size\":1,\"sha256\":\"00\",\"intervalMs\":300000,\"sig\":\"AA==\"}", m));
   TEST_ASSERT_FALSE(parseManifest(
-      "{\"version\":2,\"path\":\"a.bin\",\"sha256\":\"00\",\"sig\":\"AA==\"}", m));
+      "{\"version\":2,\"path\":\"a.bin\",\"sha256\":\"00\",\"intervalMs\":300000,\"sig\":\"AA==\"}", m));
   TEST_ASSERT_FALSE(parseManifest(
-      "{\"version\":2,\"path\":\"a.bin\",\"size\":1,\"sig\":\"AA==\"}", m));
+      "{\"version\":2,\"path\":\"a.bin\",\"size\":1,\"intervalMs\":300000,\"sig\":\"AA==\"}", m));
   TEST_ASSERT_FALSE(parseManifest(
-      "{\"version\":2,\"path\":\"a.bin\",\"size\":1,\"sha256\":\"00\"}", m));
+      "{\"version\":2,\"path\":\"a.bin\",\"size\":1,\"sha256\":\"00\",\"intervalMs\":300000}", m));
 }
 
 void rejects_wrong_types_and_values(void) {
@@ -54,16 +56,19 @@ void rejects_wrong_types_and_values(void) {
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":\"2\",\"path\":\"a.bin\",\"size\":1,"
       "\"sha256\":\"" "0000000000000000000000000000000000000000000000000000000000000000" "\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}", m));
   // zero size
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":2,\"path\":\"a.bin\",\"size\":0,"
       "\"sha256\":\"" "0000000000000000000000000000000000000000000000000000000000000000" "\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}", m));
   // empty path
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":2,\"path\":\"\",\"size\":1,"
       "\"sha256\":\"" "0000000000000000000000000000000000000000000000000000000000000000" "\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}", m));
 }
 
@@ -71,11 +76,12 @@ void rejects_bad_sha256(void) {
   OtaManifest m;
   // too short (2 chars), and right length but non-hex
   TEST_ASSERT_FALSE(parseManifest(
-      "{\"version\":2,\"path\":\"a.bin\",\"size\":1,\"sha256\":\"00\","
+      "{\"version\":2,\"path\":\"a.bin\",\"size\":1,\"sha256\":\"00\",\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}", m));
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":2,\"path\":\"a.bin\",\"size\":1,"
       "\"sha256\":\"" "zz00000000000000000000000000000000000000000000000000000000000000" "\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}", m));
 }
 
@@ -85,11 +91,13 @@ void rejects_bad_sig(void) {
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":2,\"path\":\"a.bin\",\"size\":1,"
       "\"sha256\":\"" "0000000000000000000000000000000000000000000000000000000000000000" "\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAA\"}", m));
   // invalid base64 character
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":2,\"path\":\"a.bin\",\"size\":1,"
       "\"sha256\":\"" "0000000000000000000000000000000000000000000000000000000000000000" "\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"!!AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}", m));
 }
 
@@ -163,6 +171,7 @@ void rejects_out_of_range_numbers(void) {
   const char *tail =
       "\"path\":\"a.bin\",\"size\":1,"
       "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}";
   char json[512];
   snprintf(json, sizeof(json), "{\"version\":-1,%s", tail);
@@ -174,13 +183,17 @@ void rejects_out_of_range_numbers(void) {
   TEST_ASSERT_FALSE(parseManifest(
       "{\"version\":2,\"path\":\"a.bin\",\"size\":-1,"
       "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+      "\"intervalMs\":300000,"
       "\"sig\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}",
       m));
 }
 
-// Vector from a fixed test key (bytes 0..31), not the production key. The
-// signed message is version (4 bytes LE) + image digest - same layout the
-// device verifies during an update.
+// Vector from a fixed test key (bytes 0..31), not the production key, signed
+// over version 2 + KAT_DIGEST + KAT_INTERVAL. The message is assembled by
+// buildOtaSignedMessage() rather than a local copy of the layout, so a change
+// to the production layout breaks these tests instead of quietly leaving them
+// verifying bytes no device ever sees.
+static const uint32_t KAT_INTERVAL = 300000;
 static const uint8_t KAT_PUB[32] = {
     0x03, 0xa1, 0x07, 0xbf, 0xf3, 0xce, 0x10, 0xbe,
     0x1d, 0x70, 0xdd, 0x18, 0xe7, 0x4b, 0xc0, 0x99,
@@ -192,26 +205,27 @@ static const uint8_t KAT_DIGEST[32] = {
     0xbb, 0xc4, 0x0c, 0x73, 0x10, 0x7a, 0x2b, 0x74,
     0xd1, 0xfe, 0x41, 0x86, 0x90, 0x1f, 0xd1, 0xe1};
 static const uint8_t KAT_SIG[64] = {
-    0x17, 0x63, 0x00, 0x39, 0x09, 0x5b, 0xab, 0xaa,
-    0x2c, 0x23, 0x07, 0xc2, 0x79, 0xf6, 0x51, 0x39,
-    0xce, 0xcf, 0xb6, 0x71, 0x70, 0xf9, 0xa4, 0xbf,
-    0x67, 0xa9, 0x5a, 0x45, 0x1b, 0x11, 0xf8, 0x3d,
-    0xe6, 0x68, 0xa0, 0x34, 0xa1, 0x18, 0x09, 0x9d,
-    0xb5, 0x28, 0x0f, 0x0c, 0x53, 0x73, 0x87, 0x11,
-    0x0f, 0x52, 0xaf, 0xf7, 0xca, 0xfd, 0x88, 0x7f,
-    0xc4, 0xb3, 0x86, 0x7d, 0x94, 0xcf, 0xbf, 0x02};
+    0xce, 0xbb, 0xd9, 0xa0, 0x12, 0x5e, 0x83, 0xb7,
+    0xcd, 0x62, 0x85, 0x37, 0x3b, 0x72, 0xc6, 0x39,
+    0x2c, 0x5a, 0x25, 0x29, 0xac, 0x13, 0x60, 0x9c,
+    0x7f, 0xf9, 0x4b, 0x34, 0xca, 0x91, 0x4f, 0xf9,
+    0x6b, 0xc8, 0x00, 0x0c, 0x53, 0x28, 0xd5, 0xc0,
+    0xce, 0x2c, 0x91, 0x44, 0x2a, 0x7c, 0xbd, 0xcb,
+    0x24, 0x45, 0xbe, 0x45, 0xbd, 0x34, 0x6c, 0xe2,
+    0xd1, 0x0a, 0x59, 0x8e, 0x6c, 0x4e, 0x7b, 0x00};
 
-static void buildSignedMessage(uint32_t version, const uint8_t digest[32], uint8_t out[36]) {
-  out[0] = (uint8_t)version;
-  out[1] = (uint8_t)(version >> 8);
-  out[2] = (uint8_t)(version >> 16);
-  out[3] = (uint8_t)(version >> 24);
-  memcpy(out + 4, digest, 32);
+static void buildKatMessage(uint32_t version, const uint8_t digest[32],
+                            uint32_t intervalMs, uint8_t out[40]) {
+  OtaManifest m;
+  m.version = version;
+  memcpy(m.sha256, digest, 32);
+  m.intervalMs = intervalMs;
+  buildOtaSignedMessage(m, out);
 }
 
 void ed25519_verifies_known_answer(void) {
-  uint8_t msg[36];
-  buildSignedMessage(2, KAT_DIGEST, msg);
+  uint8_t msg[40];
+  buildKatMessage(2, KAT_DIGEST, KAT_INTERVAL, msg);
   TEST_ASSERT_TRUE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
 }
 
@@ -219,14 +233,23 @@ void ed25519_rejects_tampered_digest(void) {
   uint8_t bad[32];
   memcpy(bad, KAT_DIGEST, 32);
   bad[0] ^= 0x01;
-  uint8_t msg[36];
-  buildSignedMessage(2, bad, msg);
+  uint8_t msg[40];
+  buildKatMessage(2, bad, KAT_INTERVAL, msg);
   TEST_ASSERT_FALSE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
 }
 
 void ed25519_rejects_wrong_version(void) {
-  uint8_t msg[36];
-  buildSignedMessage(3, KAT_DIGEST, msg);
+  uint8_t msg[40];
+  buildKatMessage(3, KAT_DIGEST, KAT_INTERVAL, msg);
+  TEST_ASSERT_FALSE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
+}
+
+// The cadence is inside the signature, so a manifest that keeps the version
+// and digest but swaps the interval must not verify - that is what stops a
+// captured manifest being replayed with a different upload rate.
+void ed25519_rejects_tampered_interval(void) {
+  uint8_t msg[40];
+  buildKatMessage(2, KAT_DIGEST, KAT_INTERVAL + 1, msg);
   TEST_ASSERT_FALSE(Ed25519::verify(KAT_SIG, KAT_PUB, msg, sizeof(msg)));
 }
 
@@ -314,6 +337,7 @@ int main(int, char **) {
   RUN_TEST(ed25519_verifies_known_answer);
   RUN_TEST(ed25519_rejects_tampered_digest);
   RUN_TEST(ed25519_rejects_wrong_version);
+  RUN_TEST(ed25519_rejects_tampered_interval);
   RUN_TEST(rejects_manifest_without_interval);
   RUN_TEST(rejects_non_numeric_interval);
   RUN_TEST(parses_interval);
