@@ -155,10 +155,26 @@ void clearWifiCredentials() {
 // once - closeUploadWindow() calls this every 5-minute window and a repeat
 // log line for a condition that can't change without a reflash or a portal
 // save is just noise.
+//
+// ALLOW_INSECURE_API_URL relaxes this to also accept http://, for developing
+// against a server on the LAN where a publicly trusted certificate is not
+// practical to stand up. It is set only by the esp32dev-local build env, never
+// from secrets.ini: that file is per-device and gets copied between them, so a
+// flag living there would eventually reach a device shipping real readings.
+// Choosing a different build target is a deliberate act; copying a config file
+// is not.
 static bool apiUrlWarned = false;
 
-static bool checkApiUrlHttps() {
+static bool apiUrlSchemeAllowed() {
   if (apiUrl.startsWith("https://")) return true;
+#ifdef ALLOW_INSECURE_API_URL
+  if (apiUrl.startsWith("http://")) return true;
+#endif
+  return false;
+}
+
+static bool checkApiUrlScheme() {
+  if (apiUrlSchemeAllowed()) return true;
   if (!apiUrlWarned) {
     apiUrlWarned = true;
     Serial.printf("Backend URL is not https, uploads disabled: %s\n", apiUrl.c_str());
@@ -171,7 +187,14 @@ void loadApiUrl() {
   apiUrl = cfgPrefs.getString("apiurl", "");
   cfgPrefs.end();
   if (apiUrl.length() == 0) apiUrl = API_URL;
-  checkApiUrlHttps();
+#ifdef ALLOW_INSECURE_API_URL
+  // Loud on every boot, not warn-once: this build will happily put a signed
+  // reading on the wire in plaintext, and the log is the only place that says
+  // so. If this line shows up on a device that is meant to be in the field,
+  // it was built from the wrong target.
+  Serial.println("*** ALLOW_INSECURE_API_URL build - http:// backends accepted, DEV ONLY ***");
+#endif
+  checkApiUrlScheme();
 }
 
 bool saveApiUrl(const String &url) {
@@ -183,13 +206,26 @@ bool saveApiUrl(const String &url) {
 
 // Portal callback for the Backend URL field. https is required: the ingest
 // path carries a signature over the device secret and must never fall back to
-// plaintext, so a http:// entry is refused rather than quietly accepted.
+// plaintext, so a http:// entry is refused rather than quietly accepted -
+// unless this is an ALLOW_INSECURE_API_URL dev build, which accepts both.
+// The check is deliberately the same predicate the upload path uses, so the
+// portal can never store a URL that closeUploadWindow() would then refuse.
 void syncApiUrlFromPortal() {
   String url = apiUrlParam.getValue();
   url.trim();
   if (url.length() == 0) return;
-  if (!url.startsWith("https://")) {
+
+  const String saved = apiUrl;
+  apiUrl = url;
+  const bool accepted = apiUrlSchemeAllowed();
+  apiUrl = saved;
+
+  if (!accepted) {
+#ifdef ALLOW_INSECURE_API_URL
+    Serial.println("Backend URL rejected: must start with https:// or http://");
+#else
     Serial.println("Backend URL rejected: must start with https://");
+#endif
     // WiFiManager's save-params page always shows "Saved" no matter what this
     // callback does, so an operator who enters http:// sees success with no
     // visible sign it was rejected unless they're watching serial. Put the
@@ -592,7 +628,7 @@ static void closeUploadWindow() {
   }
   // Checked before the (potentially blocking, up to 10s) clock sync: no point
   // waiting on NTP for a reading that can't be sent anyway.
-  if (!checkApiUrlHttps()) return;
+  if (!checkApiUrlScheme()) return;
   if (!ensureClock()) {
     Serial.println("Window closed before the clock synced, dropping the reading");
     return;
@@ -669,8 +705,26 @@ static String readBoundedErrorBody(HTTPClient &http) {
 static void attemptUpload() {
   uploadAttempt++;
 
-  WiFiClientSecure client;
-  client.setCACert(UPLOAD_CA_BUNDLE_PEM);
+  // Both clients are declared here so whichever one is used outlives the
+  // HTTPClient below - it keeps a reference, not a copy. Picking the transport
+  // from the URL rather than always using the TLS client matters: HTTPClient
+  // given a WiFiClientSecure and an http:// URL still attempts a handshake, on
+  // port 80, against a server that is not speaking TLS. That fails in a way
+  // that looks like a network fault rather than a configuration mistake.
+  //
+  // checkApiUrlScheme() has already run by the time a reading is pending, so a
+  // plaintext URL can only reach this point in an ALLOW_INSECURE_API_URL
+  // build; in a production build the else-branch is unreachable.
+  WiFiClientSecure secureClient;
+  WiFiClient plainClient;
+  WiFiClient *client;
+  if (apiUrl.startsWith("https://")) {
+    secureClient.setCACert(UPLOAD_CA_BUNDLE_PEM);
+    client = &secureClient;
+  } else {
+    client = &plainClient;
+  }
+
   HTTPClient http;
   http.setTimeout(UPLOAD_TIMEOUT_MS);
 
@@ -684,7 +738,7 @@ static void attemptUpload() {
   // fire immediately with no spacing at all. Every exit path below sets this
   // right before it returns, including the http.begin() failure, so none of
   // them can leave it stale.
-  if (!http.begin(client, apiUrl)) {
+  if (!http.begin(*client, apiUrl)) {
     lastAttemptAt = millis();
     scheduleRetryOrDrop("cannot open the connection");
     return;

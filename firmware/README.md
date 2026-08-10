@@ -172,7 +172,8 @@ flash-time `API_URL` build flag when NVS is empty. To repoint a device
 without reflashing, open the same web portal described above (LAN IP printed
 to serial), click **Setup** (not **Configure WiFi** — that page only holds
 the SSID and password), and set **Backend URL**. Only `https://` values are
-accepted, and the field holds at most 128 characters — a longer URL (for
+accepted (see **Local development** below for the dev build that also takes
+`http://`), and the field holds at most 128 characters — a longer URL (for
 example a flash-time `API_URL` over that length) is silently truncated when
 the page pre-fills it, and saving the page without editing the field persists
 that truncated value to NVS, breaking uploads until it's typed back in full
@@ -187,6 +188,40 @@ active. The one visible tell in the UI: the field snaps back to the active
 URL, so if it shows something other than what you just typed, that submit was
 rejected. The serial log (`Backend URL rejected: must start with https://`)
 is the explicit confirmation.
+
+## Local development
+
+The upload path pins CA roots, so a self-signed certificate on a dev machine
+will not validate — and plain `http://` is refused outright. That leaves
+tunnelling a local server through a publicly trusted hostname, which is
+awkward for day-to-day work.
+
+The `esp32dev-local` build env exists for this. It is identical to `esp32dev`
+apart from accepting `http://` backends:
+
+```bash
+pio run -e esp32dev-local -t upload
+```
+
+Then point **Backend URL** at your machine, e.g. `http://192.168.1.50:3000/api/v1/readings`.
+
+A device flashed from this env prints a banner on every boot:
+
+```
+*** ALLOW_INSECURE_API_URL build - http:// backends accepted, DEV ONLY ***
+```
+
+If that line appears on a device that is meant to be in the field, it was
+built from the wrong target — reflash it with `-e esp32dev`.
+
+The flag deliberately lives in `platformio.ini` and not in `secrets.ini`.
+`secrets.ini` is per-device and gets copied between them, so a relaxation
+living there would eventually reach a device sending real readings. Selecting
+a build target is an explicit act; copying a config file is not.
+
+Note this only relaxes the **scheme check**. Over `https://` the CA pinning
+still applies, so a tunnel with a publicly trusted certificate keeps working
+exactly as before.
 
 **Trust model:** the Setup page has no authentication, same as the WiFi
 configuration page above — there is no `setAuth()` call anywhere in the
