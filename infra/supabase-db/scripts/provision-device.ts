@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, unlinkSync, writeFileSync } from 'node:fs'
 
 import { createClient } from '@supabase/supabase-js'
 
@@ -61,6 +61,9 @@ const NVS_PARTITION_SIZE = '0x5000'
 const emitNvsImage = (id: string, secret: string, outPath: string) => {
   const csvPath = `${outPath}.csv`
   writeFileSync(csvPath, buildNvsCsv(id, secret), { mode: 0o600 })
+  // writeFileSync's `mode` is only honoured when it creates the file, so a
+  // leftover csv from an earlier run would keep whatever permissions it had.
+  chmodSync(csvPath, 0o600)
 
   const override = process.env.NVS_PARTITION_GEN
 
@@ -111,12 +114,44 @@ const emitNvsImage = (id: string, secret: string, outPath: string) => {
       // error above, which is the one the user actually needs to see.
     }
   }
+
+  // Only reached when the generator succeeded (both catch branches rethrow).
+  // The image holds the same plaintext secret as the csv, so it gets the same
+  // owner-only permissions instead of whatever the ambient umask allowed.
+  chmodSync(outPath, 0o600)
 }
 
-const { deviceId, secret } = await registerDevice()
+const EMIT_FLAG = '--emit-nvs'
 
-const emitIndex = process.argv.indexOf('--emit-nvs')
-const nvsPath = emitIndex === -1 ? null : process.argv[emitIndex + 1]
+// Both `--emit-nvs <path>` and `--emit-nvs=<path>` work. The equals form used
+// to miss entirely, leaving nvsPath null and printing the plaintext secret to
+// the console - the opposite of what the flag asks for. A flag with no usable
+// path is an error for the same reason: falling back to printing the secret
+// is never the safer guess.
+const resolveNvsPath = (argv: readonly string[]): string | null => {
+  const inline = argv.find((arg) => arg.startsWith(`${EMIT_FLAG}=`))
+  if (inline !== undefined) {
+    const value = inline.slice(EMIT_FLAG.length + 1)
+    if (!value) throw new Error(`${EMIT_FLAG}= needs a path`)
+    return value
+  }
+
+  const index = argv.indexOf(EMIT_FLAG)
+  if (index === -1) return null
+
+  // A following token that looks like a flag means the path was forgotten;
+  // writing the image to a file called `--force` helps nobody.
+  const next = argv[index + 1]
+  if (next === undefined || next.startsWith('-')) {
+    throw new Error(`${EMIT_FLAG} needs a path, e.g. ${EMIT_FLAG} /tmp/nvs.bin`)
+  }
+  return next
+}
+
+// Parsed before the insert so a usage error doesn't leave a devices row behind.
+const nvsPath = resolveNvsPath(process.argv.slice(2))
+
+const { deviceId, secret } = await registerDevice()
 
 console.error('\nDevice added (unregistered).')
 console.error(`  DEVICE_ID = ${deviceId}`)
