@@ -69,23 +69,33 @@ yarn format        # prettier — CI enforces format:check
 
 ### Provision a device
 
-Every device is flashed with a `DEVICE_ID` (goes on the label) and a
-`DEVICE_SECRET` (never leaves the device). Both are minted ahead of flashing
-and logged in the `devices` table as `unregistered`:
+Every device gets a `DEVICE_ID` (goes on the label) and a `DEVICE_SECRET`
+(never leaves the device). Both are minted ahead of flashing and logged in the
+`devices` table as `unregistered`:
 
 ```bash
 cd infra/supabase-db
 cp .env.example .env    # set SUPABASE_URL + SUPABASE_SECRET_KEY (service role)
-yarn provision:device
+yarn provision:device --emit-nvs /tmp/nvs.bin
 ```
 
 Requires **Node ≥ 22.6** — the script runs the TypeScript directly via
 `node --experimental-strip-types`, which older Node (incl. the repo's `>=20.9`
-floor) does not support.
+floor) does not support. `--emit-nvs` additionally needs
+`pip install esp-idf-nvs-partition-gen`.
 
-It prints the pair once — copy them into `firmware/secrets.ini` before
-flashing. The secret is shown only here and is stored nowhere else in
-plaintext, so if you lose it you have to provision a new device.
+`--emit-nvs` writes the pair into a flashable NVS image instead of printing
+the secret. **That is the supported path** — identity lives in the device's
+NVS, not in the firmware binary, so one build serves the whole fleet and OTA
+can target more than one device. Flash it with esptool at `0x9000`, then flash
+the firmware; see **Provisioning identity** in `firmware/README.md` for the
+full sequence.
+
+Without `--emit-nvs` the script prints the pair to stderr instead. That is a
+fallback for inspection only — do **not** put `DEVICE_ID` / `DEVICE_SECRET`
+into `firmware/secrets.ini`, which no longer reads them. Either way the secret
+is stored nowhere else in plaintext, so losing it means provisioning a new
+device.
 
 ### Firmware
 
