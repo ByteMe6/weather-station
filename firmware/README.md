@@ -14,7 +14,7 @@ Every library this project depends on lives in the Arduino ecosystem:
 | HMAC-SHA256 payload signing | Crypto (rweather)   | ✅      | port yourself  |
 | KY-040 rotary encoder       | ESP32Encoder        | ✅      | port yourself  |
 
-PlatformIO on top of Arduino adds: dependency management via `platformio.ini`, build flags for flash-time config injection (`DEVICE_ID`, `DEVICE_SECRET`, `SEND_INTERVAL_MS`, `API_URL`, `OTA_BASE_URL`), VS Code integration, and CI-compatible builds without a GUI.
+PlatformIO on top of Arduino adds: dependency management via `platformio.ini`, build flags for flash-time config injection (`API_URL`, `OTA_BASE_URL`, and the `SEND_INTERVAL_MS` fallback), VS Code integration, and CI-compatible builds without a GUI.
 
 ESP-IDF would give finer RTOS and power control — neither is needed for MVP.
 
@@ -25,7 +25,7 @@ The platform and all libraries are **version-pinned** in `platformio.ini` so eve
 ```
 firmware/
   platformio.ini        # board, framework, pinned dependencies
-  secrets.ini.example   # template for per-device flash-time config
+  secrets.ini.example   # template for fleet-wide flash-time config
   secrets.ini           # your local copy (gitignored — never commit)
   src/
     main.cpp            # entry point: WiFi provisioning state machine + BMP280 loop
@@ -61,8 +61,8 @@ altitude readout drifts with the weather, update the constant and re-flash.
 
 ## WiFi setup
 
-The device ships with no WiFi configured — only identity (`DEVICE_ID` /
-`DEVICE_SECRET`) is flashed at manufacture time.
+The device ships with no WiFi configured — only its identity, which is
+provisioned into NVS at manufacture time (see **Provisioning identity**).
 
 **First boot (no saved credentials):** the device starts an access point
 named `WeatherStation-<DEVICE_ID>`. Connecting to it with a phone
@@ -100,12 +100,68 @@ restarts into setup mode (the access point above) as soon as the button is
 released. The release step matters: GPIO0 is an ESP32 strap pin, so the
 firmware deliberately waits for release before restarting.
 
+## Provisioning identity
+
+`DEVICE_ID` and `DEVICE_SECRET` are **not** build flags. They live in the
+`id` NVS namespace, so a single firmware image is valid for every device —
+which is what makes OTA usable on more than one of them.
+
+```bash
+pip install esp-idf-nvs-partition-gen
+cd infra/supabase-db
+yarn provision:device --emit-nvs /tmp/nvs.bin
+esptool.py --port /dev/cu.usbserial-10 write_flash 0x9000 /tmp/nvs.bin
+```
+
+`NVS_PARTITION_GEN` can instead point at `nvs_partition_gen.py` from an
+existing ESP-IDF checkout, for anyone who already has one — the Arduino
+framework package PlatformIO installs does not ship that script, only
+`gen_esp32part.py` (the partition _table_ generator), so there's nothing to
+find under `~/.platformio`.
+
+The script deletes `/tmp/nvs.bin.csv` itself, on both the success and
+failure path — it's a transient input holding the plaintext secret. Delete
+`/tmp/nvs.bin` by hand once it's flashed; that one has no self-cleanup.
+
+**This is a clean-device operation.** Writing `nvs.bin` erases the whole NVS
+partition, so an already-configured device also loses its saved WiFi
+credentials and its stored backend URL, and returns to the setup portal.
+
+Ordinary updates do not do this:
+
+| Operation           | Writes                       | NVS        |
+| ------------------- | ---------------------------- | ---------- |
+| `pio run -t upload` | `app0` at `0x10000` only     | untouched  |
+| OTA update          | the inactive `ota_0`/`ota_1` | untouched  |
+| Flashing `nvs.bin`  | `0x9000`                     | **erased** |
+
+Two things do destroy identity, and both now cost more than they used to:
+
+- **`pio run -t erase`** wipes the whole chip, NVS included. The device must
+  be re-provisioned over USB before it can upload again.
+- **Changing the partition table.** `nvs` sits at `0x9000` sized `0x5000`;
+  moving those boundaries destroys identity on every device that receives the
+  new table. Plan such a migration separately — it cannot ride along in an
+  ordinary release.
+
+A device with no identity still boots, samples, joins WiFi and serves its
+portal, and still checks for OTA updates — so it can be fixed remotely. It
+just refuses to upload, and says so:
+
+```
+No device identity in NVS, uploads disabled - reflash nvs.bin
+```
+
 ## Uploading readings
 
 Once WiFi is connected, the device averages the 2-second BMP280 samples over
-each `SEND_INTERVAL_MS` window (default `300000`, five minutes — set at flash
-time, see "Flash-time configuration" below) and POSTs the mean temperature and
-pressure. A window that collected no valid samples is skipped rather than
+each upload window and POSTs the mean temperature and pressure. The window
+length comes from the OTA manifest's `intervalMs`, stored in NVS and
+preferred over the compiled `SEND_INTERVAL_MS` default (`300000`, five
+minutes) — so the cadence can be changed for the whole fleet by publishing a
+manifest, with no reflash. Values outside 60 s–60 min are refused and logged.
+
+A window that collected no valid samples is skipped rather than
 reported as a zero reading; a window that closes while the previous reading is
 still retrying supersedes it — the older one is dropped, not queued.
 
@@ -314,15 +370,15 @@ comes from the Ed25519 signature; TLS is just transport.
 
 ## Flash-time configuration
 
-Per-device identity lives in `secrets.ini` (gitignored), **not** in the tracked `platformio.ini` — a real `DEVICE_SECRET` must never land in git history, since anyone with repo access could use it to forge signed readings for that device.
+Fleet-wide config — `API_URL` and `OTA_BASE_URL` — lives in `secrets.ini` (gitignored), **not** in the tracked `platformio.ini`: one firmware image is flashed to every device, so these are the same for all of them. Per-device identity is not here — it's provisioned separately into NVS, see **Provisioning identity** above.
 
 ```bash
 cd firmware
 cp secrets.ini.example secrets.ini
-# edit secrets.ini: set DEVICE_ID, DEVICE_SECRET, API_URL, OTA_BASE_URL
+# edit secrets.ini: set API_URL, OTA_BASE_URL
 ```
 
-`DEVICE_ID` is also printed on the device label. `DEVICE_SECRET` never leaves the device. Keep `API_URL` to 128 characters or fewer — see "Changing the endpoint" under Uploading readings for why.
+Keep `API_URL` to 128 characters or fewer — see "Changing the endpoint" under Uploading readings for why.
 
 ## Local setup
 
