@@ -6,6 +6,7 @@ Usage (from firmware/, after `pio run`):
 
 Env: OTA_SIGNING_KEY (base64 raw key), SUPABASE_URL, SUPABASE_SECRET_KEY.
 """
+import argparse
 import base64
 import hashlib
 import json
@@ -23,6 +24,22 @@ BUCKET = "firmware"
 
 def die(msg):
     sys.exit(f"error: {msg}")
+
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    "--interval-ms",
+    type=int,
+    default=300000,
+    help="upload cadence pushed to the fleet, 60000-3600000 (default: 300000)",
+)
+args = parser.parse_args()
+
+# Same bounds the firmware enforces in isAcceptableInterval(). Checked here
+# too so a bad value fails at publish time rather than being silently
+# refused by every device in the field.
+if not 60000 <= args.interval_ms <= 3600000:
+    die(f"--interval-ms must be between 60000 and 3600000, got {args.interval_ms}")
 
 
 def env(name):
@@ -43,9 +60,16 @@ if not bin_path.exists():
 image = bin_path.read_bytes()
 
 digest = hashlib.sha256(image).digest()
-# Signature covers version + digest so an old image can't be replayed
-# under a newer version number.
-signed_message = version.to_bytes(4, "little") + digest
+# Signature covers version + digest + interval so neither a replayed old
+# image nor an altered cadence can be passed off under a newer version.
+# Layout must match buildOtaSignedMessage() in lib/ota_state/ota_state.h -
+# if the two drift, every device rejects every image and the only symptom
+# is "bad signature".
+signed_message = (
+    version.to_bytes(4, "little")
+    + digest
+    + args.interval_ms.to_bytes(4, "little")
+)
 try:
     key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(env("OTA_SIGNING_KEY")))
 except Exception:
@@ -64,8 +88,14 @@ if r.ok:
         published = None
     if not isinstance(published, int):
         die("existing manifest is not valid json")
-    if published >= version:
-        die(f"manifest already at v{published}; bump FW_VERSION in src/version.h")
+    # A republish at the same version is legitimate when only the interval
+    # changed - that is the point of carrying config in the manifest. Only a
+    # *lower* version is a mistake. The image is re-uploaded either way; it is
+    # byte-identical when the firmware has not changed.
+    if published > version:
+        die(f"manifest is at v{published}, refusing to publish older v{version}")
+    if published == version:
+        print(f"republishing v{version} (interval {args.interval_ms} ms)")
 elif r.status_code not in (400, 404):
     # Anything other than not-found means we couldn't check the published
     # version - bail rather than risk re-publishing over a live release.
@@ -89,6 +119,7 @@ manifest = {
     "path": name,
     "size": len(image),
     "sha256": digest.hex(),
+    "intervalMs": args.interval_ms,
     "sig": base64.b64encode(sig).decode(),
 }
 r = requests.post(
