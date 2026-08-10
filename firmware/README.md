@@ -65,7 +65,9 @@ The device ships with no WiFi configured — only its identity, which is
 provisioned into NVS at manufacture time (see **Provisioning identity**).
 
 **First boot (no saved credentials):** the device starts an access point
-named `WeatherStation-<DEVICE_ID>`. Connecting to it with a phone
+named `WeatherStation-<DEVICE_ID>` — or `WeatherStation-unprovisioned` when
+NVS holds no identity yet, which is the SSID to look for on a device that
+still needs its `nvs.bin`. Connecting to it with a phone
 auto-opens a captive portal that lists nearby networks and accepts a
 password. Once submitted, credentials are saved to NVS (flash) and survive
 power loss.
@@ -118,6 +120,19 @@ existing ESP-IDF checkout, for anyone who already has one — the Arduino
 framework package PlatformIO installs does not ship that script, only
 `gen_esp32part.py` (the partition _table_ generator), so there's nothing to
 find under `~/.platformio`.
+
+`esptool.py` is a separate prerequisite — PlatformIO bundles it
+(`~/.platformio/packages/tool-esptoolpy/esptool.py`) but never puts it on
+`PATH`, and running that copy under the system python fails on a missing
+`pyserial`. Use PlatformIO's own environment for it:
+
+```bash
+pio pkg exec -p tool-esptoolpy -- esptool.py --port /dev/cu.usbserial-10 write_flash 0x9000 /tmp/nvs.bin
+```
+
+Or install it standalone with `pipx install esptool` (plain `pip install`
+fails on modern macOS/Ubuntu, same reason as PlatformIO itself) and call
+`esptool.py` directly, as written above.
 
 The script deletes `/tmp/nvs.bin.csv` itself, on both the success and
 failure path — it's a transient input holding the plaintext secret. Delete
@@ -315,21 +330,36 @@ untrusted or shared network as exposed.
 
 ## OTA updates
 
-Once per boot, after WiFi connects, the device syncs its clock via NTP (up
-to 10 s, non-fatal if it times out) and fetches `manifest.json` from the
-public `firmware` Supabase Storage bucket. If the manifest offers a version
-strictly greater than the running `FW_VERSION`, the image is downloaded to
-the inactive app partition and installed only after two checks pass: the
-SHA-256 digest matches the manifest, and the Ed25519 signature verifies
-against the public key baked into the firmware. The signature covers the
-version number + digest, so an old signed image can't be replayed as a
-newer version.
+The first check runs once WiFi connects, after an NTP clock sync (up to 10 s,
+non-fatal if it times out); after that the device re-checks every **6 hours**
+while it stays connected, so a device that never reboots still updates.
+Periodic checks skip the NTP sync — the clock is already good by then.
+
+Each check fetches `manifest.json` from the public `firmware` Supabase
+Storage bucket and verifies its Ed25519 signature against the public key
+baked into the firmware **before acting on any field**. The signature covers
+version + the image digest + `intervalMs`, so neither an old signed image nor
+an altered cadence can be replayed under a newer version number.
+
+A verified manifest is applied in two steps:
+
+- **`intervalMs`** is applied on every valid manifest, newer version or not —
+  that is the whole point of carrying config here, and it means changing the
+  fleet cadence needs no image at all. Values outside 60 s–60 min are logged
+  and ignored. A changed value is persisted to NVS.
+- **The image** is downloaded only when the manifest's version is strictly
+  greater than the running `FW_VERSION`. It lands in the inactive app
+  partition and is installed only after the SHA-256 computed over the
+  downloaded bytes matches the manifest and the signature verifies again over
+  that computed digest.
 
 Any failure — bad signature, interrupted download, unreachable bucket —
 leaves the running firmware untouched. Worst case the device just doesn't
-update until its next boot.
+update until the next check.
 
-**Manifest format** (written by `scripts/ota_release.py`):
+**Manifest format** (written by `scripts/ota_release.py`). All six fields are
+required; a manifest missing `intervalMs`, or carrying it as a string, is
+rejected outright:
 
 ```json
 {
@@ -337,20 +367,38 @@ update until its next boot.
   "path": "weatherstation-2.bin",
   "size": 1052672,
   "sha256": "<hex digest of the .bin>",
-  "sig": "<base64 Ed25519 signature>"
+  "intervalMs": 300000,
+  "sig": "<base64 Ed25519 signature over version + digest + intervalMs>"
 }
 ```
 
 **Release process:**
 
-1. Bump `FW_VERSION` in `src/version.h`
+1. Bump `FW_VERSION` in `src/version.h` — publishing over an already-published
+   version is refused; the firmware's version check is strictly-greater, so
+   such a release would never reach a device
 2. `pio run`
 3. Flash the bench device and confirm it boots. There is no crash-rollback
    — never publish an image that hasn't run on real hardware.
 4. `infisical run -- python3 scripts/ota_release.py` — needs
    `OTA_SIGNING_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`; host deps are
    python3 with `cryptography` and `requests`
-5. Devices pick it up on their next boot
+5. Devices pick it up within 6 hours, or at their next boot
+
+**Changing only the cadence** — no build, no image upload, version unchanged:
+
+```bash
+infisical run -- python3 scripts/ota_release.py --interval-only --interval-ms 600000
+```
+
+This re-signs a manifest over the already-published `path`, `sha256` and
+`size` with the new interval.
+
+`--interval-ms` is otherwise sticky: an ordinary release that omits it
+carries forward whatever the published manifest already has (falling back to
+300000 only when nothing has been published), so a version bump never resets
+the fleet cadence by accident. The script prints the value it is publishing
+and where it came from.
 
 **Key management:** the private key lives only in Infisical as
 `OTA_SIGNING_KEY`. The public key in `src/ota_pubkey.h` is baked into every
@@ -366,7 +414,10 @@ comes from the Ed25519 signature; TLS is just transport.
 
 - No rollback if a verified image boots and then crashes — Arduino's
   prebuilt bootloader lacks `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`
-- The check runs at boot only; a device that never reboots never updates
+- A check blocks the loop while it runs — the NTP wait on the first one, and
+  the download whenever a newer image is offered — so sampling pauses for it
+- Rollout is fleet-wide: there is one manifest, so a release reaches every
+  device that checks in — there is no staged or per-device targeting
 
 ## Flash-time configuration
 
@@ -377,6 +428,13 @@ cd firmware
 cp secrets.ini.example secrets.ini
 # edit secrets.ini: set API_URL, OTA_BASE_URL
 ```
+
+**Upgrading an existing `secrets.ini`:** delete `DEVICE_ID`, `DEVICE_SECRET`
+and `SEND_INTERVAL_MS` from it. The first two moved to NVS (see
+**Provisioning identity**) and are ignored by the firmware now; the third is
+defined in `platformio.ini`, so leaving it in `secrets.ini` builds with a
+`"SEND_INTERVAL_MS" redefined` warning and your value silently loses to the
+tracked one. `API_URL` and `OTA_BASE_URL` stay exactly as they were.
 
 Keep `API_URL` to 128 characters or fewer — see "Changing the endpoint" under Uploading readings for why.
 

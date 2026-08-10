@@ -852,7 +852,7 @@ static void attemptUpload() {
 
   if (!shouldRetryUpload(code)) {
     if (code == 401) {
-      dropPendingUpload("401 - check DEVICE_SECRET and the clock");
+      dropPendingUpload("401 - NVS identity may not match the devices row, or the clock is off");
     } else {
       dropPendingUpload("rejected by the server, retrying cannot help");
     }
