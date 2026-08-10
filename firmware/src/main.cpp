@@ -18,7 +18,7 @@
 #include <aggregate.h>
 #include <upload.h>
 #include <sys/time.h>
-#include "ca_isrg_root_x1.h"
+#include "ca_bundle.h"
 
 // 0x76 on most GY-BMP280 breakouts, 0x77 on Adafruit boards.
 static const uint8_t BMP_ADDR[] = {0x76, 0x77};
@@ -288,6 +288,68 @@ void stopStationWebPortal() {
   if (!webPortalRunning) return;
   webPortal.stopWebPortal();
   webPortalRunning = false;
+}
+
+// The handful of reasons that actually discriminate the failure modes seen
+// here; anything else prints its bare number (full list: wifi_err_reason_t in
+// esp_wifi_types.h).
+static const char *wifiDisconnectReason(uint8_t reason) {
+  switch (reason) {
+    // 1/3/8 are the ordinary ways a link ends - a clean deassociation on
+    // reboot reports 8, so leaving them unmapped made routine shutdowns read
+    // as anomalies in the log.
+    case WIFI_REASON_UNSPECIFIED:            return "unspecified";
+    case WIFI_REASON_AUTH_LEAVE:             return "AP deauthenticated us";
+    case WIFI_REASON_ASSOC_LEAVE:            return "left the AP (normal on reboot)";
+    case WIFI_REASON_AUTH_EXPIRE:            return "auth expired";
+    case WIFI_REASON_ASSOC_EXPIRE:           return "association expired";
+    case WIFI_REASON_ASSOC_TOOMANY:          return "AP refused - too many clients";
+    case WIFI_REASON_NOT_AUTHED:             return "not authenticated";
+    case WIFI_REASON_NOT_ASSOCED:            return "not associated";
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "4-way handshake timeout - wrong password";
+    case WIFI_REASON_BEACON_TIMEOUT:         return "beacon timeout - out of range";
+    case WIFI_REASON_NO_AP_FOUND:            return "AP not found";
+    case WIFI_REASON_AUTH_FAIL:              return "auth failed";
+    case WIFI_REASON_ASSOC_FAIL:             return "association refused by the AP";
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:      return "handshake timeout";
+    case WIFI_REASON_CONNECTION_FAIL:        return "connection failed";
+    default:                                 return "unmapped";
+  }
+}
+
+// Both join paths swallow the ESP-IDF disconnect reason: WiFiManager reports
+// only "Connect to new AP Failed", and handleStationConnecting() sees nothing
+// but a WL_CONNECTED that never arrives. That cannot tell a wrong password
+// apart from an AP that refuses association outright (a guest network gating
+// on MAC registration, say), which are opposite problems with opposite fixes.
+// The reason code is the one signal that separates them.
+//
+// GOT_IP is logged alongside it because association succeeding and DHCP
+// succeeding are distinct steps, and a captive/gated network commonly passes
+// the first and withholds the second - which looks identical from
+// WiFi.status() alone.
+//
+// Registered once in setup() before any WiFi call, so it covers the setup
+// portal, the station retry loop, and portal-driven network changes alike.
+// Diagnostics only: nothing here changes connection behaviour.
+static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
+      uint8_t reason = info.wifi_sta_disconnected.reason;
+      Serial.printf("WiFi disconnected: reason=%u (%s)\n", reason,
+                    wifiDisconnectReason(reason));
+      break;
+    }
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("WiFi associated, waiting for DHCP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("WiFi got IP: %s\n",
+                    IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+      break;
+    default:
+      break;
+  }
 }
 
 void beginStationConnect() {
@@ -608,7 +670,7 @@ static void attemptUpload() {
   uploadAttempt++;
 
   WiFiClientSecure client;
-  client.setCACert(ISRG_ROOT_X1_PEM);
+  client.setCACert(UPLOAD_CA_BUNDLE_PEM);
   HTTPClient http;
   http.setTimeout(UPLOAD_TIMEOUT_MS);
 
@@ -765,6 +827,9 @@ void setup() {
 
   ready = initSensor();
   if (!ready) Serial.println("BMP280 not found, retrying...");
+
+  // Before any other WiFi call so no early association/disconnect is missed.
+  WiFi.onEvent(onWifiEvent);
 
   // We do our own backoff; the SDK's auto-reconnect just fights it.
   WiFi.setAutoReconnect(false);
