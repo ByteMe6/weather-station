@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { unlinkSync, writeFileSync } from 'node:fs'
 
 import { createClient } from '@supabase/supabase-js'
 
@@ -89,6 +89,20 @@ const emitNvsImage = (id: string, secret: string, outPath: string) => {
         'or set NVS_PARTITION_GEN to nvs_partition_gen.py from a full ESP-IDF checkout to use that instead.',
       { cause },
     )
+  } finally {
+    // The CSV is only ever a transient input to the generator - nobody
+    // needs it afterwards, success or failure - so it is removed
+    // unconditionally here rather than relying on a printed reminder that
+    // only ever ran after a successful generate. The common failure mode
+    // (module not installed) threw before that reminder was reached, which
+    // left the plaintext secret on disk with nothing telling the user it
+    // was there.
+    try {
+      unlinkSync(csvPath)
+    } catch {
+      // Best-effort: a cleanup failure here must not shadow the generator's
+      // error above, which is the one the user actually needs to see.
+    }
   }
 }
 
@@ -113,6 +127,6 @@ if (!nvsPath) {
   )
   console.error(
     'This erases the whole NVS partition, including saved WiFi credentials.\n' +
-      `Delete ${nvsPath} and ${nvsPath}.csv once flashed - both hold the secret.\n`,
+      `Delete ${nvsPath} once flashed - it holds the secret.\n`,
   )
 }
