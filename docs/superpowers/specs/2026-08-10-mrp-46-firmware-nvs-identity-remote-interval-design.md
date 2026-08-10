@@ -70,9 +70,20 @@ sites pass `.c_str()`.
 inserting the row, writes a `nvs.bin`:
 
 1. Emit a CSV in `nvs_partition_gen.py` format holding the `id` namespace.
-2. Invoke `nvs_partition_gen.py` (ships with the Arduino/ESP-IDF framework
-   package) to produce `nvs.bin` sized `0x5000`.
+2. Invoke the generator to produce `nvs.bin` sized `0x5000`.
 3. Print the esptool command, or offer to run it.
+4. Delete the CSV unconditionally — it holds the secret in plaintext and is
+   only transient input to the generator. Cleanup happens on the failure path
+   too, since the most common failure is the generator not being installed.
+
+**The generator is not bundled.** `nvs_partition_gen.py` does *not* ship with
+the Arduino framework package PlatformIO installs — that carries only
+`gen_esp32part.py`, for the partition table. Espressif publishes the NVS
+generator standalone on PyPI as `esp-idf-nvs-partition-gen`, so the default
+invocation is `python3 -m esp_idf_nvs_partition_gen generate <csv> <bin>
+0x5000`, with `NVS_PARTITION_GEN` left as an override for anyone who already
+has a full ESP-IDF checkout. This is a new prerequisite for provisioning and
+belongs in the README.
 
 Flashing writes it at the NVS partition offset. From the default partition
 table for `esp32dev` (`framework-arduinoespressif32/tools/partitions/default.csv`):
