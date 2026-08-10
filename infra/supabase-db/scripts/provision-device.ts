@@ -74,7 +74,14 @@ const emitNvsImage = (id: string, secret: string, outPath: string) => {
   // full ESP-IDF checkout with nvs_partition_gen.py on disk.
   const args = override
     ? [override, 'generate', csvPath, outPath, NVS_PARTITION_SIZE]
-    : ['-m', 'esp_idf_nvs_partition_gen', 'generate', csvPath, outPath, NVS_PARTITION_SIZE]
+    : [
+        '-m',
+        'esp_idf_nvs_partition_gen',
+        'generate',
+        csvPath,
+        outPath,
+        NVS_PARTITION_SIZE,
+      ]
 
   try {
     execFileSync('python3', args, { stdio: 'inherit' })
@@ -118,7 +125,9 @@ if (!nvsPath) {
   // The secret only goes to stderr, never stdout, so a plain `> file`
   // redirect can't silently capture it (an explicit `2>` still would).
   console.error(`  DEVICE_SECRET = ${secret}`)
-  console.error('\nPass --emit-nvs <path> to write a flashable NVS image instead.\n')
+  console.error(
+    '\nPass --emit-nvs <path> to write a flashable NVS image instead.\n',
+  )
 } else {
   emitNvsImage(deviceId, secret, nvsPath)
   console.error(`\nWrote ${nvsPath}. Flash it to a CLEAN device with:`)
