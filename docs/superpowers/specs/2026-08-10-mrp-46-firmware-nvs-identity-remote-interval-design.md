@@ -182,6 +182,16 @@ cover everything the device acts on.
 
 ### Applying it
 
+- **Verify the signature before acting on any field.** `parseManifest()` only
+  type-checks JSON. The image-install path verifies too, but it is reached
+  only when a newer version is offered — so an interval-only manifest at the
+  same version, which is the main reason config lives here at all, would
+  otherwise be applied and persisted on no authority beyond well-formed JSON.
+  That would defeat the entire purpose of extending the signed message. The
+  manifest-level check covers the *claimed* digest; the install path checks
+  again over the digest computed from the bytes actually downloaded, and
+  refuses the image unless the two match, so the claimed value cannot smuggle
+  a different image.
 - Clamp to **60 000 … 3 600 000 ms**. Outside that range: ignore, keep the
   current value, log it. An unclamped value either hammers the backend or
   silently stops data collection, and both are one typo away in the release

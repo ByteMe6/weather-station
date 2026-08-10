@@ -99,7 +99,23 @@ Parse and validate the new field, and expose the clamp as a pure function. Firmw
   - `void buildOtaSignedMessage(const OtaManifest &m, uint8_t out[40])`
   - `parseManifest()` now rejects a manifest with no `intervalMs`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Update the fixtures that describe a valid manifest**
+
+Making `intervalMs` required means every existing fixture that is *supposed to
+parse* now describes an invalid manifest. Two of them do, and both must gain
+the field or their tests break for the wrong reason.
+
+In `firmware/test/test_ota_state/test_ota_state.cpp`, add `"intervalMs":300000,`
+between the `sha256` and `sig` entries of:
+
+- the `GOOD` constant near the top of the file
+- the `tail` string inside `path_length_boundary()`
+
+Change only the JSON, not the assertions. Leave every fixture that is meant to
+*fail* parsing exactly as it is — adding the field to those could mask the
+rejection path each one is checking.
+
+- [ ] **Step 2: Write the failing tests**
 
 Append to `firmware/test/test_ota_state/test_ota_state.cpp`, and add the new names to the `RUN_TEST` list at the bottom of the file:
 
@@ -183,12 +199,12 @@ Register them in `main()` at the bottom of the same file, alongside the existing
   RUN_TEST(signed_message_layout);
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [ ] **Step 3: Run to verify they fail**
 
 Run: `cd firmware && pio test -e native -f test_ota_state`
 Expected: FAIL — `'isAcceptableInterval' was not declared in this scope`, `'buildOtaSignedMessage' was not declared in this scope`, and `'struct OtaManifest' has no member named 'intervalMs'`.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 4: Implement**
 
 In `firmware/lib/ota_state/ota_state.h`, add `intervalMs` to the struct and update its comment:
 
@@ -247,12 +263,12 @@ In `parseManifest()`, add `intervalMs` to the type guard and read it:
   out.size = doc["size"].as<uint32_t>();
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [ ] **Step 5: Run to verify they pass**
 
 Run: `cd firmware && pio test -e native -f test_ota_state`
 Expected: PASS, all tests including the pre-existing ones.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add firmware/lib/ota_state/ota_state.h firmware/test/test_ota_state/test_ota_state.cpp
