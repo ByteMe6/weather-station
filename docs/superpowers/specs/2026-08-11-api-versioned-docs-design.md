@@ -136,7 +136,7 @@ export const buildOpenApiDocument = (version: ApiVersion) => {
 
 Two mechanisms, each covering the other's weakness:
 
-- **Per-version route** `/api/{version}/docs` — a permanent, bookmarkable URL that
+- **Per-version route** `/api/{version}/reference` — a permanent, bookmarkable URL that
   shares its version's lifecycle. Retiring v1 is `rm -rf app/api/v1`, which takes
   its docs with it.
 - **Scalar `sources` dropdown** — so a reader who lands on v1 docs can discover
@@ -177,7 +177,7 @@ The dropdown label surfaces the spec semver (`v1 · 1.0.1`) — this is where th
 patch axis becomes visible to readers.
 
 ```ts
-// apps/web/src/app/api/v1/docs/route.ts
+// apps/web/src/app/api/v1/reference/route.ts
 import { areDocsEnabled } from '@/lib/openapi/docs-enabled'
 import { createVersionedReference } from '@/lib/openapi/reference'
 
@@ -203,7 +203,7 @@ export const GET = (request: Request): Response => {
   if (!areDocsEnabled()) return new Response('Not Found', { status: 404 })
   // Absolute URL required — the Web `Response.redirect` rejects relative paths.
   return Response.redirect(
-    new URL(`/api/${LATEST_API_VERSION}/docs`, request.url),
+    new URL(`/api/${LATEST_API_VERSION}/reference`, request.url),
     308,
   )
 }
@@ -224,8 +224,8 @@ apps/web/src/lib/openapi/
   docs-enabled.ts                          unchanged
 apps/web/src/app/
   api/v1/openapi.json/route.ts             buildOpenApiDocument('v1')
-  api/v1/docs/route.ts                     createVersionedReference('v1')
-  api-docs/route.ts                        308 → /api/{LATEST}/docs
+  api/v1/reference/route.ts                     createVersionedReference('v1')
+  api-docs/route.ts                        308 → /api/{LATEST}/reference
 ```
 
 ## Adding a version later
@@ -262,11 +262,11 @@ Deliberately excluded to keep this focused on the docs layer:
 | ----------------------------------------------- | ----------------------------------------------------------- |
 | `tests/unit/lib/openapi/document.test.ts`       | `buildOpenApiDocument('v1')` → `servers[0].url === '/api/v1'`, `info.version === API_VERSION_META.v1.specVersion` |
 | `tests/unit/lib/openapi/reference.test.ts`      | `createVersionedReference` emits one source per `API_VERSIONS` entry, exactly one `default: true`, matching the argument |
-| `tests/unit/app/api/v1/docs/route.test.ts`      | 200 + HTML when docs enabled; 404 when disabled              |
+| `tests/unit/app/api/v1/reference/route.test.ts`      | 200 + HTML when docs enabled; 404 when disabled              |
 | `tests/unit/app/api-docs/route.test.ts`         | 308 to `/api/{LATEST_API_VERSION}/docs`; 404 when disabled   |
 | existing `app/api/v1/openapi.json/route.test.ts`| still green (already asserts `servers[0].url === '/api/v1'`) |
 
-Manual: `yarn dev`, then confirm `/api-docs` redirects, `/api/v1/docs` renders,
+Manual: `yarn dev`, then confirm `/api-docs` redirects, `/api/v1/reference` renders,
 and the dropdown lists every entry in `API_VERSIONS`.
 
 ## Documentation & harness updates
@@ -275,7 +275,7 @@ These make the convention stick for future work rather than living only here.
 
 | File | Change |
 | ---- | ------ |
-| `CLAUDE.md` | New "API versioning" subsection under *Device Ingest*: the two-axis table, docs at `/api/{version}/docs`, and the add-a-version checklist. Fix stale `/api/readings` → `/api/v1/readings` at lines 95 and 342. |
+| `CLAUDE.md` | New "API versioning" subsection under *Device Ingest*: the two-axis table, docs at `/api/{version}/reference`, and the add-a-version checklist. Fix stale `/api/readings` → `/api/v1/readings` at lines 95 and 342. |
 | `docs/05-architecture-and-tech-stack.md` | Fix stale `/api/readings` → `/api/v1/readings` (lines 11, 27); state the path-version-on-breaking-change-only policy. |
 | `.claude/skills/verify/SKILL.md` | Line 22–25: correct the path to `/api/v1/readings`; add — when API versions change, curl every `/api/{v}/openapi.json` and `/api/{v}/docs`, plus assert the `/api-docs` 308. |
 | `.claude/skills/new-api-version/SKILL.md` | **New skill**, modelled on `new-migration`: the numbered "Adding a version later" checklist above, with the "never edit a shipped `registerVxPaths`" and "never put semver in the path" rules stated explicitly. This is the mechanism that makes agents follow the convention next time. |

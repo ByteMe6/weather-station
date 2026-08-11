@@ -1,4 +1,4 @@
-import { GET } from '@/app/api/v1/docs/route'
+import { GET } from '@/app/api/v1/reference/route'
 import { createVersionedReference } from '@/lib/openapi/reference'
 
 // Scalar's renderer is ESM-only and cannot load under the CommonJS transform.
@@ -14,7 +14,7 @@ jest.mock('@/lib/openapi/reference', () => ({
   ),
 }))
 
-describe('GET /api/v1/docs', () => {
+describe('GET /api/v1/reference', () => {
   const original = { ...process.env }
   afterEach(() => {
     process.env = { ...original }

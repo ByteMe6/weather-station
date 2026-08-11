@@ -1,6 +1,6 @@
 ---
 name: new-api-version
-description: Add or change an HTTP API version the project way — major-only path versions, semver in OpenAPI info.version, a frozen path registrar per version, and versioned docs at /api/{version}/docs.
+description: Add or change an HTTP API version the project way — major-only path versions, semver in OpenAPI info.version, a frozen path registrar per version, and versioned docs at /api/{version}/reference.
 ---
 
 # Adding or changing an API version
@@ -44,11 +44,11 @@ Creating `app/api/v2/<endpoint>/route.ts` gives you a working endpoint and
 nothing else. The docs are **not** discovered from the filesystem — they need a
 spec semver, a status, and OpenAPI operation definitions, none of which a folder
 carries. Skip the registration below and you get a live endpoint, a 404 at
-`/api/v2/docs`, and no error explaining why.
+`/api/v2/reference`, and no error explaining why.
 
 `tests/unit/app/api/versions.test.ts` catches this: it fails when a `/api/v*`
 folder is missing from `API_VERSIONS`, or when a registered version has no
-`docs/route.ts` or `openapi.json/route.ts`. If it fails, work the list below.
+`reference/route.ts` or `openapi.json/route.ts`. If it fails, work the list below.
 
 ## Breaking change — a new path version
 
@@ -71,7 +71,7 @@ folder is missing from `API_VERSIONS`, or when a registered version has no
 4. **Add the routes** under `apps/web/src/app/api/v2/` — each is a few lines:
 
    ```ts
-   // app/api/v2/docs/route.ts
+   // app/api/v2/reference/route.ts
    const reference = createVersionedReference('v2') // ← must match the folder
    ```
 
@@ -90,7 +90,7 @@ folder is missing from `API_VERSIONS`, or when a registered version has no
 6. **Tests.** The suites in `apps/web/tests/unit/lib/openapi/` and
    `packages/shared/tests/unit/constants.test.ts` iterate `API_VERSIONS`, so
    they cover a new version automatically. Add a
-   `tests/unit/app/api/v2/docs/route.test.ts` asserting the version binding.
+   `tests/unit/app/api/v2/reference/route.test.ts` asserting the version binding.
 
 7. **Docs.** Update `firmware/secrets.ini.example` and `firmware/README.md`
    only if devices are being migrated — an existing fleet stays pinned to its
@@ -115,5 +115,5 @@ curl -s localhost:3000/api/v1/openapi.json | jq '.info.version, .servers[0].url'
 curl -sI localhost:3000/api-docs | head -3   # expect 308 → /api/{latest}/docs
 ```
 
-Open `/api/{version}/docs` in a browser and confirm the version dropdown lists
+Open `/api/{version}/reference` in a browser and confirm the version dropdown lists
 every entry in `API_VERSIONS` and defaults to the page's own version.

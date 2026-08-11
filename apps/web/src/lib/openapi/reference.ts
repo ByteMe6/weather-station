@@ -8,7 +8,7 @@ import { API_VERSION_META } from '@/lib/openapi/versions'
  * A Scalar reference page scoped to `current`, listing every served version in
  * its document dropdown.
  *
- * Each version keeps a permanent URL at `/api/{version}/docs` (bookmarkable,
+ * Each version keeps a permanent URL at `/api/{version}/reference` (bookmarkable,
  * and deleted along with the version when it retires), while the dropdown means
  * a reader who lands on an old version can still reach the current one. The
  * label carries the spec semver, so a `1.0.1` patch of v1 is visible even

@@ -366,14 +366,14 @@ in `API_VERSION_META` and leaves `/api/v1` alone.
 - `buildOpenApiDocument(version)` builds one document per version.
   `PATH_REGISTRARS` maps each version to its own `registerVxPaths` function;
   **a shipped registrar is never edited** for a breaking change — add a new one.
-- Docs live at `/api/{version}/docs`, beside the spec they document, so they
+- Docs live at `/api/{version}/reference`, beside the spec they document, so they
   retire with their version. Each page renders a Scalar `sources` dropdown over
   all of `API_VERSIONS`, so any docs URL can reach any version. `/api-docs`
   308-redirects to `LATEST_API_VERSION`.
 - **A route folder is not a version.** Adding `app/api/v2/<endpoint>/route.ts`
   gives a working endpoint but no docs — versions are registered in code, not
   discovered from the filesystem. `tests/unit/app/api/versions.test.ts` fails on
-  that drift rather than letting `/api/v2/docs` 404 unexplained.
+  that drift rather than letting `/api/v2/reference` 404 unexplained.
 - `status` is `current` (exactly one, always `LATEST_API_VERSION`), `preview`
   (served and documented, not yet the recommended target), or `deprecated`
   (still served, carries a `sunset`).

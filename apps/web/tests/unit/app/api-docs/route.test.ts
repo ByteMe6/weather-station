@@ -16,7 +16,7 @@ describe('GET /api-docs', () => {
     const res = GET(request())
     expect(res.status).toBe(308)
     expect(new URL(res.headers.get('location') ?? '').pathname).toBe(
-      `/api/${LATEST_API_VERSION}/docs`,
+      `/api/${LATEST_API_VERSION}/reference`,
     )
   })
 

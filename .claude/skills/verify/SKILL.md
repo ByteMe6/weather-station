@@ -28,11 +28,11 @@ behavior:
 
    ```bash
    curl -s localhost:3000/api/$v/openapi.json | jq '.info.version, .servers[0].url'
-   curl -sI localhost:3000/api/$v/docs | head -1
+   curl -sI localhost:3000/api/$v/reference | head -1
    curl -sI localhost:3000/api-docs | head -3   # expect 308 → /api/{latest}/docs
    ```
 
-   Then open one `/api/{version}/docs` in a browser: the version dropdown must
+   Then open one `/api/{version}/reference` in a browser: the version dropdown must
    list every `API_VERSIONS` entry and default to that page's own version.
    Rendering is the part typecheck cannot prove.
 

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 /**
  * Legacy entry point. The reference pages now live beside the spec they
- * document, at `/api/{version}/docs`, so each version's docs retire with it.
+ * document, at `/api/{version}/reference`, so each version's docs retire with it.
  * This keeps existing links working by forwarding to the current version —
  * 308 rather than 302 so the method is preserved and clients may cache it.
  */
@@ -15,7 +15,7 @@ export const GET = (request: Request): Response => {
 
   // `Response.redirect` rejects relative URLs; resolve against the request.
   return Response.redirect(
-    new URL(`/api/${LATEST_API_VERSION}/docs`, request.url),
+    new URL(`/api/${LATEST_API_VERSION}/reference`, request.url),
     308,
   )
 }
