@@ -25,7 +25,8 @@ skill exists to prevent.
 2. **Never edit a shipped `registerVxPaths`** for a breaking change. Add a new
    registrar instead. Devices still calling v1 must keep getting the v1
    contract, and a frozen function is what guarantees that — not test coverage
-   and not discipline.
+   and not discipline. The freeze applies from the moment a version becomes the
+   recommended target; a `preview` registrar is still editable.
 
 ## Backwards-compatible change to a live version
 
@@ -37,14 +38,31 @@ A new optional field, a new documented response, a corrected description:
    `apps/web/src/lib/openapi/document.ts` — allowed here, since nothing breaks.
 3. Nothing else moves. The path, the routes, and the firmware URL stay put.
 
+## A route folder is not a version
+
+Creating `app/api/v2/<endpoint>/route.ts` gives you a working endpoint and
+nothing else. The docs are **not** discovered from the filesystem — they need a
+spec semver, a status, and OpenAPI operation definitions, none of which a folder
+carries. Skip the registration below and you get a live endpoint, a 404 at
+`/api/v2/docs`, and no error explaining why.
+
+`tests/unit/app/api/versions.test.ts` catches this: it fails when a `/api/v*`
+folder is missing from `API_VERSIONS`, or when a registered version has no
+`docs/route.ts` or `openapi.json/route.ts`. If it fails, work the list below.
+
 ## Breaking change — a new path version
 
 1. **Register the version** in `packages/shared/src/constants/index.ts`:
    append to `API_VERSIONS`, and point `LATEST_API_VERSION` at it.
 
 2. **Add its doc metadata** in `apps/web/src/lib/openapi/versions.ts` — a new
-   `API_VERSION_META` entry with `specVersion` and `status: 'current'`. Flip the
-   previous version to `status: 'deprecated'` and give it a `sunset` date.
+   `API_VERSION_META` entry with `specVersion` and a `status`:
+   - `preview` while the contract is incomplete. Leave `LATEST_API_VERSION` on
+     the older version — the new one is served and documented, but `/api-docs`
+     keeps sending readers to the contract devices actually speak.
+   - `current` once it is the recommended target. Exactly one version holds
+     this, and it must match `LATEST_API_VERSION`. Flip the previous version to
+     `deprecated` with a `sunset` date at the same time.
 
 3. **Add a path registrar** in `apps/web/src/lib/openapi/document.ts`: a new
    `registerV2Paths`, plus its `PATH_REGISTRARS` entry. Leave the older

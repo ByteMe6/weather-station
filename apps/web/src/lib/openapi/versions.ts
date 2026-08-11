@@ -13,11 +13,21 @@ import type { ApiVersion } from '@ws/shared'
 export type ApiVersionMeta = {
   /** OpenAPI `info.version` — bumped for any change to this version's surface. */
   specVersion: string
-  status: 'current' | 'deprecated'
+  /**
+   * `current` is the contract new clients should target and always matches
+   * `LATEST_API_VERSION`. `preview` is served and documented but not yet the
+   * recommended target — an incomplete contract still being built out.
+   * `deprecated` is still served for existing devices and carries a `sunset`.
+   */
+  status: 'current' | 'preview' | 'deprecated'
   /** RFC 8594 sunset date (ISO), set when a version is deprecated. */
   sunset?: string
 }
 
 export const API_VERSION_META: Record<ApiVersion, ApiVersionMeta> = {
   v1: { specVersion: '1.0.0', status: 'current' },
+  // Preview: only /health exists so far. It stays out of LATEST_API_VERSION
+  // until it carries the full ingest contract, so /api-docs keeps sending
+  // readers to v1 — the version the deployed fleet actually speaks.
+  v2: { specVersion: '2.0.0-preview', status: 'preview' },
 }

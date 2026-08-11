@@ -23,7 +23,7 @@ export const createVersionedReference = (current: ApiVersion) =>
   ApiReference({
     sources: API_VERSIONS.map((version) => {
       const { specVersion, status } = API_VERSION_META[version]
-      const suffix = status === 'deprecated' ? ' — deprecated' : ''
+      const suffix = status === 'current' ? '' : ` — ${status}`
 
       return {
         url: `/api/${version}/openapi.json`,

@@ -28,11 +28,15 @@ export const REPLAY_WINDOW_MS = 300_000
  * Backwards-compatible changes are published through the OpenAPI `info.version`
  * semver instead (see `API_VERSION_META` in apps/web).
  */
-export const API_VERSIONS = ['v1'] as const
+export const API_VERSIONS = ['v1', 'v2'] as const
 
 export type ApiVersion = (typeof API_VERSIONS)[number]
 
-/** The version new clients should target. */
+/**
+ * The version new clients should target — not necessarily the newest one that
+ * exists. A version can be served and documented while still being a preview,
+ * so this stays pinned to the contract devices are actually expected to use.
+ */
 export const LATEST_API_VERSION: ApiVersion = 'v1'
 
 /**
