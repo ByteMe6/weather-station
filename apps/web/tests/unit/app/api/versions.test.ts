@@ -9,8 +9,9 @@ import { API_VERSIONS } from '@ws/shared'
  * Adding `app/api/v2/<endpoint>/route.ts` gives you a working endpoint but does
  * NOT create a documented version — the docs need a spec semver, a status, and
  * OpenAPI operation definitions, none of which the filesystem carries. Without
- * this test that mismatch is silent: the endpoint answers, `/api/v2/reference` 404s,
- * and nothing explains why. These assertions turn it into a named failure.
+ * this test that mismatch is silent: the endpoint answers while the version is
+ * missing from `/reference`, and nothing explains why. These assertions turn it
+ * into a named failure.
  */
 const API_DIR = join(__dirname, '../../../../src/app/api')
 
@@ -33,10 +34,10 @@ describe('API version registration', () => {
     expect(API_VERSIONS.filter((v) => !versionDirs.includes(v))).toEqual([])
   })
 
-  it.each(API_VERSIONS)('exposes a docs page and a spec for %s', (version) => {
-    expect(existsSync(join(API_DIR, version, 'reference', 'route.ts'))).toBe(
-      true,
-    )
+  // The reference page is NOT per-version — it is a single /reference route
+  // over every spec. But each version must serve its own openapi.json, or its
+  // entry in the switcher points at a 404.
+  it.each(API_VERSIONS)('serves an openapi.json for %s', (version) => {
     expect(existsSync(join(API_DIR, version, 'openapi.json', 'route.ts'))).toBe(
       true,
     )

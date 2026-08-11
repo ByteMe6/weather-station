@@ -27,14 +27,15 @@ behavior:
    served version, not just the latest — for each entry in `API_VERSIONS`:
 
    ```bash
+   # one spec per version; a single reference page covers them all
    curl -s localhost:3000/api/$v/openapi.json | jq '.info.version, .servers[0].url'
-   curl -sI localhost:3000/api/$v/reference | head -1
-   curl -sI localhost:3000/api-docs | head -3   # expect 308 → /api/{latest}/docs
+   curl -sI localhost:3000/reference | head -1
+   curl -sI localhost:3000/api-docs | head -3   # expect 308 → /reference
    ```
 
-   Then open one `/api/{version}/reference` in a browser: the version dropdown must
-   list every `API_VERSIONS` entry and default to that page's own version.
-   Rendering is the part typecheck cannot prove.
+   Then open `/reference` in a browser: the dropdown must list every
+   `API_VERSIONS` entry and open on `LATEST_API_VERSION`. Rendering is the part
+   typecheck cannot prove.
 
 ## packages/shared
 

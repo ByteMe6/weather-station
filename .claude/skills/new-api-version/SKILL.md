@@ -1,6 +1,6 @@
 ---
 name: new-api-version
-description: Add or change an HTTP API version the project way — major-only path versions, semver in OpenAPI info.version, a frozen path registrar per version, and versioned docs at /api/{version}/reference.
+description: Add or change an HTTP API version the project way — major-only path versions, semver in OpenAPI info.version, a frozen path registrar per version, and one /reference page whose dropdown covers every version.
 ---
 
 # Adding or changing an API version
@@ -43,12 +43,24 @@ A new optional field, a new documented response, a corrected description:
 Creating `app/api/v2/<endpoint>/route.ts` gives you a working endpoint and
 nothing else. The docs are **not** discovered from the filesystem — they need a
 spec semver, a status, and OpenAPI operation definitions, none of which a folder
-carries. Skip the registration below and you get a live endpoint, a 404 at
-`/api/v2/reference`, and no error explaining why.
+carries. Skip the registration below and you get a live endpoint that never
+appears in `/reference`, with no error explaining why.
 
 `tests/unit/app/api/versions.test.ts` catches this: it fails when a `/api/v*`
 folder is missing from `API_VERSIONS`, or when a registered version has no
-`reference/route.ts` or `openapi.json/route.ts`. If it fails, work the list below.
+`openapi.json/route.ts`. If it fails, work the list below.
+
+## One reference page, many specs
+
+`openapi.json` is per-version — it _is_ the versioned artifact. The reference is
+a UI that reads all of them, so it has no version: a single `/reference` route
+(Scalar's documented layout) renders a `sources` dropdown over every entry in
+`API_VERSIONS` and opens on `LATEST_API_VERSION`.
+
+**Never add `app/api/{version}/reference/route.ts`.** It would render the same
+page again with a different default, and reintroduce the stale-argument bug that
+having one page eliminates. A new version appears in the dropdown automatically
+once it is registered.
 
 ## Breaking change — a new path version
 
@@ -58,8 +70,8 @@ folder is missing from `API_VERSIONS`, or when a registered version has no
 2. **Add its doc metadata** in `apps/web/src/lib/openapi/versions.ts` — a new
    `API_VERSION_META` entry with `specVersion` and a `status`:
    - `preview` while the contract is incomplete. Leave `LATEST_API_VERSION` on
-     the older version — the new one is served and documented, but `/api-docs`
-     keeps sending readers to the contract devices actually speak.
+     the older version — the new one is served and listed in the dropdown, but
+     `/reference` still opens on the contract devices actually speak.
    - `current` once it is the recommended target. Exactly one version holds
      this, and it must match `LATEST_API_VERSION`. Flip the previous version to
      `deprecated` with a `sunset` date at the same time.
@@ -68,29 +80,25 @@ folder is missing from `API_VERSIONS`, or when a registered version has no
    `registerV2Paths`, plus its `PATH_REGISTRARS` entry. Leave the older
    registrars untouched.
 
-4. **Add the routes** under `apps/web/src/app/api/v2/` — each is a few lines:
+4. **Add the spec route** — `apps/web/src/app/api/v2/openapi.json/route.ts`,
+   three lines:
 
    ```ts
-   // app/api/v2/reference/route.ts
-   const reference = createVersionedReference('v2') // ← must match the folder
-   ```
-
-   ```ts
-   // app/api/v2/openapi.json/route.ts
    return Response.json(buildOpenApiDocument('v2')) // ← must match the folder
    ```
 
-   Both arguments are the classic copy-paste bug: a stale `'v1'` here serves v1
-   content at a v2 URL. The route tests assert this binding — keep them.
+   That argument is the classic copy-paste bug: a stale `'v1'` serves v1 content
+   at the v2 URL. No reference route is needed — `/reference` picks the version
+   up from `API_VERSIONS`.
 
 5. **Endpoint handlers** for the version's actual operations. Contract-shaped
    code (zod schema, response bodies) is per-version; mechanism (HMAC verify,
    replay window, service-role insert) is shared — do not fork it.
 
-6. **Tests.** The suites in `apps/web/tests/unit/lib/openapi/` and
-   `packages/shared/tests/unit/constants.test.ts` iterate `API_VERSIONS`, so
-   they cover a new version automatically. Add a
-   `tests/unit/app/api/v2/reference/route.test.ts` asserting the version binding.
+6. **Tests.** The suites in `apps/web/tests/unit/lib/openapi/`,
+   `apps/web/tests/unit/app/api/versions.test.ts`, and
+   `packages/shared/tests/unit/constants.test.ts` all iterate `API_VERSIONS`,
+   so they cover a new version automatically. Nothing new to write.
 
 7. **Docs.** Update `firmware/secrets.ini.example` and `firmware/README.md`
    only if devices are being migrated — an existing fleet stays pinned to its
@@ -99,8 +107,8 @@ folder is missing from `API_VERSIONS`, or when a registered version has no
 ## Retiring a version
 
 Only once telemetry shows no traffic on it. Then delete `app/api/{version}/`,
-its registrar, its `API_VERSION_META` entry, and its `API_VERSIONS` entry — the
-docs page goes with the folder.
+its registrar, its `API_VERSION_META` entry, and its `API_VERSIONS` entry. It
+disappears from the `/reference` dropdown automatically.
 
 ## Verify
 
@@ -111,9 +119,10 @@ yarn lint && yarn check-types && yarn test:unit && yarn build
 Then exercise it — a green pipeline does not prove the docs render:
 
 ```bash
+# one spec per version — check every entry in API_VERSIONS
 curl -s localhost:3000/api/v1/openapi.json | jq '.info.version, .servers[0].url'
-curl -sI localhost:3000/api-docs | head -3   # expect 308 → /api/{latest}/docs
+curl -sI localhost:3000/api-docs | head -3   # expect 308 → /reference
 ```
 
-Open `/api/{version}/reference` in a browser and confirm the version dropdown lists
-every entry in `API_VERSIONS` and defaults to the page's own version.
+Open `/reference` in a browser and confirm the dropdown lists every entry in
+`API_VERSIONS` and opens on `LATEST_API_VERSION`.

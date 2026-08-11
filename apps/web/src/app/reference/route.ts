@@ -1,9 +1,11 @@
 import { areDocsEnabled } from '@/lib/openapi/docs-enabled'
-import { createVersionedReference } from '@/lib/openapi/reference'
+import { createReference } from '@/lib/openapi/reference'
 
 export const dynamic = 'force-dynamic'
 
-const reference = createVersionedReference('v1')
+// Top-level, matching Scalar's documented `app/reference/route.ts` layout. It
+// covers every version at once via the document dropdown — see createReference.
+const reference = createReference()
 
 export const GET = (): Response | Promise<Response> => {
   if (!areDocsEnabled()) return new Response('Not Found', { status: 404 })

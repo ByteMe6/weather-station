@@ -366,14 +366,17 @@ in `API_VERSION_META` and leaves `/api/v1` alone.
 - `buildOpenApiDocument(version)` builds one document per version.
   `PATH_REGISTRARS` maps each version to its own `registerVxPaths` function;
   **a shipped registrar is never edited** for a breaking change — add a new one.
-- Docs live at `/api/{version}/reference`, beside the spec they document, so they
-  retire with their version. Each page renders a Scalar `sources` dropdown over
-  all of `API_VERSIONS`, so any docs URL can reach any version. `/api-docs`
-  308-redirects to `LATEST_API_VERSION`.
+- **`openapi.json` is per-version; the reference page is not.** Each version
+  serves `/api/{version}/openapi.json` — that is the versioned artifact. The
+  reference is a single `/reference` route (Scalar's documented layout) whose
+  `sources` dropdown covers every entry in `API_VERSIONS` and opens on
+  `LATEST_API_VERSION`. Do **not** add a per-version reference route: it would
+  duplicate the same page N times and reintroduce the stale-argument bug.
+  `/api-docs` 308-redirects to `/reference`.
 - **A route folder is not a version.** Adding `app/api/v2/<endpoint>/route.ts`
   gives a working endpoint but no docs — versions are registered in code, not
   discovered from the filesystem. `tests/unit/app/api/versions.test.ts` fails on
-  that drift rather than letting `/api/v2/reference` 404 unexplained.
+  that drift rather than letting the version go silently undocumented.
 - `status` is `current` (exactly one, always `LATEST_API_VERSION`), `preview`
   (served and documented, not yet the recommended target), or `deprecated`
   (still served, carries a `sunset`).

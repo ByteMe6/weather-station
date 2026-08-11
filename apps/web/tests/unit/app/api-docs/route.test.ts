@@ -1,5 +1,3 @@
-import { LATEST_API_VERSION } from '@ws/shared'
-
 import { GET } from '@/app/api-docs/route'
 
 describe('GET /api-docs', () => {
@@ -10,13 +8,13 @@ describe('GET /api-docs', () => {
 
   const request = () => new Request('http://localhost:3000/api-docs')
 
-  it('permanently redirects to the current version docs', () => {
+  it('permanently redirects to the reference page', () => {
     delete process.env.VERCEL_ENV
     delete process.env.API_DOCS_ENABLED
     const res = GET(request())
     expect(res.status).toBe(308)
     expect(new URL(res.headers.get('location') ?? '').pathname).toBe(
-      `/api/${LATEST_API_VERSION}/reference`,
+      '/reference',
     )
   })
 

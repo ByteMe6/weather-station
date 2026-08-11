@@ -296,3 +296,52 @@ a version-specific path.
 - **A one-entry dropdown** is what ships initially (only v1 exists). That is
   correct and self-resolving, but should be eyeballed so it does not render as a
   broken control.
+
+---
+
+## Amendments (during implementation)
+
+The sections above record the design as approved. These changed while building
+it; the code is the source of truth where they differ.
+
+1. **One `/reference` page, not one per version.** The design put a reference
+   route under every version (`/api/{version}/reference`), each rendering the
+   same `sources` dropdown with a different `default`. That is N near-identical
+   pages, and it carries a stale-argument bug — a route cloned for v2 keeping
+   `createVersionedReference('v1')`.
+
+   The distinction that resolves it: **`openapi.json` is the versioned
+   artifact; the reference is a UI that reads all of them and has no version of
+   its own.** So there is a single top-level `app/reference/route.ts` — also
+   Scalar's own documented layout — whose dropdown covers every `API_VERSIONS`
+   entry and opens on `LATEST_API_VERSION`. `createVersionedReference(current)`
+   became `createReference()` with no argument, deleting that bug class rather
+   than testing for it. `/api-docs` now 308s to `/reference`.
+
+   Checked before committing to this: Scalar routes within the page by URL
+   **hash** (`#tag/...`) unless `pathRouting` is configured, so one route needs
+   no catch-all and cannot 404 on refresh.
+
+2. **Route segment is `reference`, not `docs`.** Scalar's Next.js integration
+   documents `app/reference/route.ts`; the segment name now matches.
+
+3. **`status` gained `preview`.** The design had `current | deprecated` only.
+   A version can be served and documented before it is the recommended target —
+   v2 today has only `/health` — and marking two versions `current` would be
+   wrong. `preview` means served and listed, not yet recommended;
+   `LATEST_API_VERSION` stays on the `current` one.
+
+4. **Drift guard added.** `tests/unit/app/api/versions.test.ts` fails when an
+   `/api/v*` folder is missing from `API_VERSIONS`, or when a registered version
+   has no `openapi.json` route. This came from a real miss: an `app/api/v2/`
+   folder was created without registering v2, which silently produced a working
+   endpoint and no documentation.
+
+### Risk outcomes
+
+- **Scalar `sources` verified by type only** — now resolved. The serialized
+  config was confirmed in the rendered HTML, and the dropdown was confirmed
+  working in a browser.
+- **One-entry dropdown** — no longer applicable; v1 and v2 are both served.
+- **Removing `API_VERSION` / `READINGS_INGEST_PATH`** — landed with no
+  fallout, as predicted.
