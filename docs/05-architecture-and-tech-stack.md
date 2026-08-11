@@ -8,7 +8,7 @@
 
 ## Device → DB: Security
 
-The device never talks to the DB directly — its only path is `POST /api/readings` on the backend.
+The device never talks to the DB directly — its only path is `POST /api/v1/readings` on the backend.
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,8 @@ flowchart LR
 ```
 
 - Every device is flashed with two values: a public `device-id` (printed on the label, used for registration) and a **`device_secret`** (never leaves the device, never shown to the user).
-- Each `POST /api/readings` carries an **HMAC-SHA256 signature** of the payload + timestamp, computed with the secret. The backend recomputes and compares; the timestamp window rejects replayed requests.
+- Each `POST /api/v1/readings` carries an **HMAC-SHA256 signature** of the payload + timestamp, computed with the secret. The backend recomputes and compares; the timestamp window rejects replayed requests.
+- The `v1` in that path is a **major** version and moves only on a breaking contract change. Devices are flashed with the full URL, so backwards-compatible revisions are published as an OpenAPI `info.version` semver bump (`1.0.1`) and never move the path. Docs for each served version live at `/api/{version}/docs`.
 - The device-id on the label is therefore **not** a credential — knowing it lets you register the device, but not spoof its readings.
 - The device can only **write**; it cannot read anything back. No Supabase keys on the device — the backend writes server-side.
 

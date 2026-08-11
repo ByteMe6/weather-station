@@ -40,11 +40,15 @@ mode this spec prevents.
 `v1.0.1` is therefore supported — as `info.version: '1.0.1'` served at
 `/api/v1/openapi.json`, never as a URL segment.
 
-**Why patch versions must never enter the path:** firmware bakes the full ingest
-URL into `secrets.ini` at build time (`firmware/README.md:345`). A device flashed
-against `/api/v1.0.0/readings` would stop ingesting the moment the server moved to
-`v1.0.1`. Patch and minor changes are backwards-compatible by definition, so the
-URL must not move for them.
+**Why patch versions must never enter the path:** each device holds its own full
+ingest URL in NVS, falling back to the flash-time `API_URL` build flag
+(`firmware/secrets.ini.example:7`; see "Changing the endpoint" in
+`firmware/README.md`). A device pinned to `/api/v1.0.0/readings` would stop
+ingesting the moment the server moved to `v1.0.1`, and recovering it means
+repointing that device individually — reflashing it, or hand-editing the URL in
+its LAN setup portal, a field the README documents as silently truncating past
+128 characters. There is no fleet-wide URL push. Patch and minor changes are
+backwards-compatible by definition, so the URL must not move for them.
 
 Only the **current** spec per major version is served. Historical patch specs live
 in git, not on a URL.
@@ -275,8 +279,11 @@ These make the convention stick for future work rather than living only here.
 | `docs/05-architecture-and-tech-stack.md` | Fix stale `/api/readings` → `/api/v1/readings` (lines 11, 27); state the path-version-on-breaking-change-only policy. |
 | `.claude/skills/verify/SKILL.md` | Line 22–25: correct the path to `/api/v1/readings`; add — when API versions change, curl every `/api/{v}/openapi.json` and `/api/{v}/docs`, plus assert the `/api-docs` 308. |
 | `.claude/skills/new-api-version/SKILL.md` | **New skill**, modelled on `new-migration`: the numbered "Adding a version later" checklist above, with the "never edit a shipped `registerVxPaths`" and "never put semver in the path" rules stated explicitly. This is the mechanism that makes agents follow the convention next time. |
-| `firmware/README.md` | Note that the flashed `API_URL` pins a path version deliberately, and that patch/minor server changes never move it. |
-| `firmware/secrets.ini.example` | Comment on line 7 (`-DAPI_URL=".../api/v1/readings"`) recording that the `v1` segment is a pinned major version, changed only when migrating a device to a new contract. |
+| `firmware/secrets.ini.example` | Comment on the `-DAPI_URL=".../api/v1/readings"` flag recording that `v1` is a pinned major version, that this flag is only the NVS fallback, and that it changes only when migrating a device to a new contract. |
+
+`firmware/README.md` needs no change — its "Changing the endpoint" section
+already describes the per-device NVS/portal mechanism accurately and never names
+a version-specific path.
 
 ## Risks
 

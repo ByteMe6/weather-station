@@ -17,15 +17,31 @@ export const DEFAULT_SEND_INTERVAL_MS = 300_000
  */
 export const REPLAY_WINDOW_MS = 300_000
 
-/** API version prefix for the device-facing HTTP surface (PRD B1). */
-export const API_VERSION = 'v1'
+/**
+ * Every path version the backend currently serves, oldest first (PRD B1).
+ *
+ * Path versions are **major-only** — `v1`, `v2`, never `v1.0.1`. Each device
+ * holds its own full ingest URL (NVS, falling back to the flash-time `API_URL`
+ * build flag), so a version segment that moved on a patch release would cut
+ * every deployed device off until it was individually repointed — by reflashing
+ * or by hand through its LAN setup portal. There is no fleet-wide URL push.
+ * Backwards-compatible changes are published through the OpenAPI `info.version`
+ * semver instead (see `API_VERSION_META` in apps/web).
+ */
+export const API_VERSIONS = ['v1'] as const
+
+export type ApiVersion = (typeof API_VERSIONS)[number]
+
+/** The version new clients should target. */
+export const LATEST_API_VERSION: ApiVersion = 'v1'
 
 /**
- * Fully-qualified ingest path. Single source of truth for the route handler,
- * the OpenAPI `servers` block, and the firmware upload URL (MRP-15) — keep
- * firmware config in sync when this changes.
+ * Ingest path for a given version. Callers must name the version explicitly —
+ * there is deliberately no unversioned alias, because each deployed device pins
+ * its own version and must never be repointed by a constant bump here.
  */
-export const READINGS_INGEST_PATH = `/api/${API_VERSION}/readings`
+export const readingsIngestPath = (version: ApiVersion): string =>
+  `/api/${version}/readings`
 
 /**
  * Plausible physical ranges for sensor values (PRD B1 basic validation).

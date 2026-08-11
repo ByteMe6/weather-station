@@ -92,7 +92,7 @@ Server paths in this project are exactly (PRD B1/B2, W5):
 
 | Use client path when…                      | Use server path when…                                 |
 | ------------------------------------------ | ----------------------------------------------------- |
-| **All reads** (readings, charts, devices)  | Device ingest `POST /api/readings` (HMAC verify)      |
+| **All reads** (readings, charts, devices)  | Device ingest `POST /api/v1/readings` (HMAC verify)   |
 | **All user-scoped writes** RLS can enforce | Device registration / sharing (`device_users` writes) |
 | Realtime subscriptions (dashboard)         | Telegram account linking, account settings            |
 | Paginated/filtered history queries         | CSV export (server action)                            |
@@ -339,12 +339,40 @@ export const registerDeviceAction = async (params: { deviceId: string }) => {
 
 ### Device Ingest (API route — the other server path)
 
-`POST /api/readings` (`app/api/readings/route.ts`) validates the `x-device-id`
-header against `devices`, recomputes the HMAC-SHA256 signature over
-body + `x-timestamp` with the stored secret, rejects outside the
+`POST /api/v1/readings` (`app/api/v1/readings/route.ts`) validates the
+`x-device-id` header against `devices`, recomputes the HMAC-SHA256 signature
+over body + `x-timestamp` with the stored secret, rejects outside the
 `REPLAY_WINDOW_MS` window (constants in `@ws/shared`), and inserts with the
 service-role client. Devices have **write-only** access — never return data
 to a device.
+
+### API Versioning — two axes, never conflated
+
+| Axis             | Lives in               | Format                  | Bumps when                               |
+| ---------------- | ---------------------- | ----------------------- | ---------------------------------------- |
+| **Path version** | `/api/v1/…`            | major only — `v1`, `v2` | a **breaking** contract change           |
+| **Spec version** | OpenAPI `info.version` | full semver — `1.0.1`   | **any** change to that version's surface |
+
+**Never put semver in the path.** Each device holds its own full ingest URL in
+NVS (falling back to the flash-time `API_URL` build flag), so a path that moved
+on a patch release would strand every deployed device until it was repointed
+one at a time — by reflashing, or by hand through its LAN setup portal. There is
+no fleet-wide URL push. A backwards-compatible change to v1 bumps `specVersion`
+in `API_VERSION_META` and leaves `/api/v1` alone.
+
+- `API_VERSIONS` / `LATEST_API_VERSION` / `readingsIngestPath(version)` live in
+  `@ws/shared`. There is deliberately **no** unversioned path constant — every
+  caller names its version, so no constant bump can repoint a pinned device.
+- `buildOpenApiDocument(version)` builds one document per version.
+  `PATH_REGISTRARS` maps each version to its own `registerVxPaths` function;
+  **a shipped registrar is never edited** for a breaking change — add a new one.
+- Docs live at `/api/{version}/docs`, beside the spec they document, so they
+  retire with their version. Each page renders a Scalar `sources` dropdown over
+  all of `API_VERSIONS`, so any docs URL can reach any version. `/api-docs`
+  308-redirects to `LATEST_API_VERSION`.
+
+Use the `/new-api-version` skill when adding one — it carries the full
+checklist.
 
 ---
 

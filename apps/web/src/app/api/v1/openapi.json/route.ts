@@ -5,5 +5,5 @@ export const dynamic = 'force-dynamic'
 
 export const GET = async (): Promise<Response> => {
   if (!areDocsEnabled()) return new Response('Not Found', { status: 404 })
-  return Response.json(buildOpenApiDocument())
+  return Response.json(buildOpenApiDocument('v1'))
 }
