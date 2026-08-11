@@ -327,7 +327,8 @@ it; the code is the source of truth where they differ.
 
 3. **`status` gained `preview`.** The design had `current | deprecated` only.
    A version can be served and documented before it is the recommended target —
-   v2 today has only `/health` — and marking two versions `current` would be
+   a v2 carrying only `/health` was briefly registered this way — and marking
+   two versions `current` would be
    wrong. `preview` means served and listed, not yet recommended;
    `LATEST_API_VERSION` stays on the `current` one.
 
@@ -342,6 +343,8 @@ it; the code is the source of truth where they differ.
 - **Scalar `sources` verified by type only** — now resolved. The serialized
   config was confirmed in the rendered HTML, and the dropdown was confirmed
   working in a browser.
-- **One-entry dropdown** — no longer applicable; v1 and v2 are both served.
+- **One-entry dropdown** — confirmed working in a browser with two versions
+  registered, then v2 was removed as premature. v1 ships as the only version,
+  so the dropdown is back to one entry; the multi-version path is proven.
 - **Removing `API_VERSION` / `READINGS_INGEST_PATH`** — landed with no
   fallout, as predicted.

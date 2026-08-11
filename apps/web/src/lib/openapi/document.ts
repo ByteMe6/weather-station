@@ -65,27 +65,9 @@ const registerV1Paths = (registry: OpenAPIRegistry): void => {
   })
 }
 
-/**
- * The v2 operation set — preview, still being built out.
- *
- * Only `/health` exists so far; the ingest contract has not been designed yet,
- * which is why v2 is not `LATEST_API_VERSION`. Unlike a shipped registrar this
- * one is still editable — the freeze rule applies from the moment a version
- * becomes the recommended target.
- */
-const registerV2Paths = (registry: OpenAPIRegistry): void => {
-  registry.registerPath({
-    method: 'get',
-    path: '/health',
-    summary: 'Liveness probe',
-    responses: { 200: { description: 'Service is alive' } },
-  })
-}
-
 const PATH_REGISTRARS: Record<ApiVersion, (registry: OpenAPIRegistry) => void> =
   {
     v1: registerV1Paths,
-    v2: registerV2Paths,
   }
 
 /**

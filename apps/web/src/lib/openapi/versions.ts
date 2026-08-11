@@ -26,8 +26,4 @@ export type ApiVersionMeta = {
 
 export const API_VERSION_META: Record<ApiVersion, ApiVersionMeta> = {
   v1: { specVersion: '1.0.0', status: 'current' },
-  // Preview: only /health exists so far. It stays out of LATEST_API_VERSION
-  // until it carries the full ingest contract, so /api-docs keeps sending
-  // readers to v1 — the version the deployed fleet actually speaks.
-  v2: { specVersion: '2.0.0-preview', status: 'preview' },
 }

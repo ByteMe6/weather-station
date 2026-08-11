@@ -28,7 +28,7 @@ export const REPLAY_WINDOW_MS = 300_000
  * Backwards-compatible changes are published through the OpenAPI `info.version`
  * semver instead (see `API_VERSION_META` in apps/web).
  */
-export const API_VERSIONS = ['v1', 'v2'] as const
+export const API_VERSIONS = ['v1'] as const
 
 export type ApiVersion = (typeof API_VERSIONS)[number]
 
