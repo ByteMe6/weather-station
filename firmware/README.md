@@ -156,10 +156,22 @@ plaintext fallback: a `Backend URL` that doesn't start with `https://` is
 rejected and uploads stay disabled until it's fixed (see **Local
 development** for the dev build that also accepts `http://`).
 
-Two Google roots rather than one because the chain a host serves is
-negotiated, not fixed — Google hands back the RSA chain (R1, via the `WR1`
-intermediate) or the ECC one (R4, via `WE1`) depending on what the client
-offers in the handshake.
+Two Google roots rather than one because the hosts this firmware talks to
+chain to different ones — measured, not assumed:
+
+| Host                | Chain                          |
+| ------------------- | ------------------------------ |
+| `vercel.app`        | RSA leaf → `WR1` → GTS Root R1 |
+| `trycloudflare.com` | EC leaf → `WE1` → GTS Root R4  |
+
+R1 covers the production backend; R4 covers the Cloudflare tunnel used for
+local development (see **Local development**). Both are load-bearing — drop
+R4 and a tunnel fails with the same `-9984`.
+
+Note this is a property of each host, not of the handshake: `vercel.app` has
+no EC certificate at all, so an ECDSA-only offer to it returns
+`handshake_failure` rather than an R4 chain. Check what a host actually serves
+before assuming an anchor covers it.
 
 The consequence worth knowing: this is a **pin**, not the system trust store,
 so the device will fail verification against any host whose certificate
