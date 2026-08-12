@@ -16,6 +16,7 @@ jest.mock('@/services/readings/readings.service', () => ({
 }))
 
 import { POST } from '@/app/api/v1/readings/route'
+import { ServiceError } from '@/services/database/types'
 import {
   fetchDeviceSecret,
   insertReading,
@@ -65,9 +66,14 @@ const makeRequest = (opts: {
   })
 }
 
+// Silenced rather than left to print: the 500 tests below deliberately throw,
+// and an un-spied console.error would fill the run with expected stack traces.
+let errorSpy: jest.SpyInstance
+
 beforeEach(() => {
   jest.clearAllMocks()
   jest.spyOn(Date, 'now').mockReturnValue(NOW)
+  errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
   mockFetchSecret.mockResolvedValue(SECRET)
   mockInsert.mockResolvedValue(undefined)
 })
@@ -205,5 +211,60 @@ describe('POST /api/v1/readings', () => {
     expect(res.status).toBe(500)
     await expect(res.json()).resolves.toEqual({ error: 'internal_error' })
     expect(mockInsert).not.toHaveBeenCalled()
+  })
+
+  // Diagnosing a 500 previously meant reproducing the failing query by hand
+  // against the database, which is not possible on a deployed environment.
+  // These pin the cause reaching the log without reaching the device.
+  it('logs the Postgres code and details when the insert fails', async () => {
+    mockInsert.mockRejectedValue(
+      new ServiceError(
+        'Failed to insert reading: null value in column "humidity"',
+        '23502',
+        { column: 'humidity' },
+      ),
+    )
+
+    await POST(makeRequest({}))
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      `[ingest] insert-reading failed for ${DEVICE_ID}`,
+      expect.objectContaining({
+        code: '23502',
+        details: { column: 'humidity' },
+      }),
+    )
+  })
+
+  it('logs a device-lookup failure under its own stage', async () => {
+    mockFetchSecret.mockRejectedValue(new ServiceError('boom', '42P01'))
+
+    await POST(makeRequest({}))
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      `[ingest] device-lookup failed for ${DEVICE_ID}`,
+      expect.objectContaining({ code: '42P01' }),
+    )
+  })
+
+  it('keeps the logged cause out of the response body', async () => {
+    mockInsert.mockRejectedValue(
+      new ServiceError('secret-shaped internal detail', '23502'),
+    )
+
+    const res = await POST(makeRequest({}))
+
+    expect(await res.text()).toBe(JSON.stringify({ error: 'internal_error' }))
+  })
+
+  // The opaque 401 is what stops the endpoint being used to enumerate device
+  // ids; logging on that path would undo it for anyone reading the logs.
+  it('logs nothing when a request is rejected with 401', async () => {
+    mockFetchSecret.mockResolvedValue(null)
+
+    const res = await POST(makeRequest({}))
+
+    expect(res.status).toBe(401)
+    expect(errorSpy).not.toHaveBeenCalled()
   })
 })
