@@ -1,16 +1,16 @@
-import { ApiReference } from '@scalar/nextjs-api-reference'
-
 import { areDocsEnabled } from '@/lib/openapi/docs-enabled'
 
 export const dynamic = 'force-dynamic'
 
-// Scalar renders a self-contained HTML page that fetches the spec at request
-// time — no client-side React hydration, which is why it works here where
-// swagger-ui-react did not (its apidom OpenAPI-3.1 resolver breaks under
-// Turbopack: "OpenApi3_1Element.refract is not a function").
-const reference = ApiReference({ url: '/api/v1/openapi.json' })
-
-export const GET = (): Response | Promise<Response> => {
+/**
+ * Legacy entry point. The reference now lives at `/reference` — one page
+ * covering every version through its document dropdown. This keeps existing
+ * links working: 308 rather than 302, so the method is preserved and clients
+ * may cache it.
+ */
+export const GET = (request: Request): Response => {
   if (!areDocsEnabled()) return new Response('Not Found', { status: 404 })
-  return reference()
+
+  // `Response.redirect` rejects relative URLs; resolve against the request.
+  return Response.redirect(new URL('/reference', request.url), 308)
 }

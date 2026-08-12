@@ -92,7 +92,7 @@ Server paths in this project are exactly (PRD B1/B2, W5):
 
 | Use client path when…                      | Use server path when…                                 |
 | ------------------------------------------ | ----------------------------------------------------- |
-| **All reads** (readings, charts, devices)  | Device ingest `POST /api/readings` (HMAC verify)      |
+| **All reads** (readings, charts, devices)  | Device ingest `POST /api/v1/readings` (HMAC verify)   |
 | **All user-scoped writes** RLS can enforce | Device registration / sharing (`device_users` writes) |
 | Realtime subscriptions (dashboard)         | Telegram account linking, account settings            |
 | Paginated/filtered history queries         | CSV export (server action)                            |
@@ -339,12 +339,50 @@ export const registerDeviceAction = async (params: { deviceId: string }) => {
 
 ### Device Ingest (API route — the other server path)
 
-`POST /api/readings` (`app/api/readings/route.ts`) validates the `x-device-id`
-header against `devices`, recomputes the HMAC-SHA256 signature over
-body + `x-timestamp` with the stored secret, rejects outside the
+`POST /api/v1/readings` (`app/api/v1/readings/route.ts`) validates the
+`x-device-id` header against `devices`, recomputes the HMAC-SHA256 signature
+over body + `x-timestamp` with the stored secret, rejects outside the
 `REPLAY_WINDOW_MS` window (constants in `@ws/shared`), and inserts with the
 service-role client. Devices have **write-only** access — never return data
 to a device.
+
+### API Versioning — two axes, never conflated
+
+| Axis             | Lives in               | Format                  | Bumps when                               |
+| ---------------- | ---------------------- | ----------------------- | ---------------------------------------- |
+| **Path version** | `/api/v1/…`            | major only — `v1`, `v2` | a **breaking** contract change           |
+| **Spec version** | OpenAPI `info.version` | full semver — `1.0.1`   | **any** change to that version's surface |
+
+**Never put semver in the path.** Each device holds its own full ingest URL in
+NVS (falling back to the flash-time `API_URL` build flag), so a path that moved
+on a patch release would strand every deployed device until it was repointed
+one at a time — by reflashing, or by hand through its LAN setup portal. There is
+no fleet-wide URL push. A backwards-compatible change to v1 bumps `specVersion`
+in `API_VERSION_META` and leaves `/api/v1` alone.
+
+- `API_VERSIONS` / `LATEST_API_VERSION` / `readingsIngestPath(version)` live in
+  `@ws/shared`. There is deliberately **no** unversioned path constant — every
+  caller names its version, so no constant bump can repoint a pinned device.
+- `buildOpenApiDocument(version)` builds one document per version.
+  `PATH_REGISTRARS` maps each version to its own `registerVxPaths` function;
+  **a shipped registrar is never edited** for a breaking change — add a new one.
+- **`openapi.json` is per-version; the reference page is not.** Each version
+  serves `/api/{version}/openapi.json` — that is the versioned artifact. The
+  reference is a single `/reference` route (Scalar's documented layout) whose
+  `sources` dropdown covers every entry in `API_VERSIONS` and opens on
+  `LATEST_API_VERSION`. Do **not** add a per-version reference route: it would
+  duplicate the same page N times and reintroduce the stale-argument bug.
+  `/api-docs` 308-redirects to `/reference`.
+- **A route folder is not a version.** Adding `app/api/v2/<endpoint>/route.ts`
+  gives a working endpoint but no docs — versions are registered in code, not
+  discovered from the filesystem. `tests/unit/app/api/versions.test.ts` fails on
+  that drift rather than letting the version go silently undocumented.
+- `status` is `current` (exactly one, always `LATEST_API_VERSION`), `preview`
+  (served and documented, not yet the recommended target), or `deprecated`
+  (still served, carries a `sunset`).
+
+Use the `/new-api-version` skill when adding one — it carries the full
+checklist.
 
 ---
 

@@ -1,6 +1,9 @@
 import {
+  API_VERSIONS,
   DEFAULT_SEND_INTERVAL_MS,
   DEVICE_ID_HEADER,
+  LATEST_API_VERSION,
+  readingsIngestPath,
   REPLAY_WINDOW_MS,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
@@ -23,6 +26,32 @@ describe('ingest contract constants', () => {
       TIMESTAMP_HEADER,
     ]) {
       expect(header).toBe(header.toLowerCase())
+    }
+  })
+})
+
+describe('API version registry', () => {
+  // Firmware pins the full ingest URL at flash time, so a patch/minor segment
+  // in the path would strand the deployed fleet. Semver belongs in the OpenAPI
+  // `info.version`, never here.
+  it('should keep path versions major-only — no semver in the URL', () => {
+    for (const version of API_VERSIONS) {
+      expect(version).toMatch(/^v\d+$/)
+    }
+  })
+
+  it('should list at least one version, with no duplicates', () => {
+    expect(API_VERSIONS.length).toBeGreaterThan(0)
+    expect(new Set(API_VERSIONS).size).toBe(API_VERSIONS.length)
+  })
+
+  it('should point LATEST_API_VERSION at a version that is actually served', () => {
+    expect(API_VERSIONS).toContain(LATEST_API_VERSION)
+  })
+
+  it('should build a versioned ingest path for every served version', () => {
+    for (const version of API_VERSIONS) {
+      expect(readingsIngestPath(version)).toBe(`/api/${version}/readings`)
     }
   })
 })

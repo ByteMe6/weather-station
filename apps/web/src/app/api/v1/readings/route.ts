@@ -10,6 +10,7 @@ import { createServiceRoleClient } from '@ws/supabase-db'
 
 import { parseReadingPayload } from '@/lib/ingest/reading-schema'
 import { verifySignature } from '@/lib/ingest/verify-signature'
+import { ServiceError } from '@/services/database/types'
 import {
   fetchDeviceSecret,
   insertReading,
@@ -29,6 +30,34 @@ const badPayload = (issues: unknown): Response =>
 
 const internalError = (): Response =>
   Response.json({ error: 'internal_error' }, { status: 500 })
+
+// The 500 response stays deliberately bare — a device is write-only and gets
+// nothing back but `internal_error`. The cause still has to land somewhere,
+// though: without this the only trace of a broken ingest is a 500 count in the
+// platform log, and diagnosing one means reproducing the query by hand against
+// the database, which is not something you can do on a deployed environment.
+//
+// Only the 500 paths log. The 401 stays silent and undifferentiated on purpose
+// — it is what stops the endpoint being used to enumerate valid device ids.
+//
+// The two sites are tagged separately because they fail for unrelated reasons:
+// one means the device could not be looked up, the other that the reading
+// could not be stored. Different subsystem, different response.
+const logIngestFailure = (
+  stage: 'device-lookup' | 'insert-reading',
+  deviceId: string,
+  error: unknown,
+): void => {
+  // ServiceError carries the Postgres code and details that actually identify
+  // the fault (a 23502 says which column, a 42P01 which relation). Anything
+  // else only has a message worth keeping.
+  const cause =
+    error instanceof ServiceError
+      ? { message: error.message, code: error.code, details: error.details }
+      : { message: error instanceof Error ? error.message : String(error) }
+
+  console.error(`[ingest] ${stage} failed for ${deviceId}`, cause)
+}
 
 export const POST = async (request: Request): Promise<Response> => {
   const deviceId = request.headers.get(DEVICE_ID_HEADER)
@@ -52,7 +81,8 @@ export const POST = async (request: Request): Promise<Response> => {
   try {
     supabase = createServiceRoleClient()
     secret = await fetchDeviceSecret(supabase, { deviceId })
-  } catch {
+  } catch (error) {
+    logIngestFailure('device-lookup', deviceId, error)
     return internalError()
   }
   if (!secret) return unauthorized()
@@ -73,7 +103,8 @@ export const POST = async (request: Request): Promise<Response> => {
 
   try {
     await insertReading(supabase, { deviceId, payload: parsed.data })
-  } catch {
+  } catch (error) {
+    logIngestFailure('insert-reading', deviceId, error)
     return internalError()
   }
 

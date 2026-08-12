@@ -4,14 +4,15 @@ import {
   OpenApiGeneratorV31,
 } from '@asteasolutions/zod-to-openapi'
 import {
-  API_VERSION,
   DEVICE_ID_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
 } from '@ws/shared'
+import type { ApiVersion } from '@ws/shared'
 import { z } from 'zod'
 
 import { readingSchema } from '@/lib/ingest/reading-schema'
+import { API_VERSION_META } from '@/lib/openapi/versions'
 
 // Adds `.openapi()` to zod's prototype (retroactive — applies to readingSchema).
 extendZodWithOpenApi(z)
@@ -23,8 +24,16 @@ const SIGNING_DESCRIPTION = [
   'x-timestamp is epoch-ms send time and must be within 300s of server time.',
 ].join(' ')
 
-export const buildOpenApiDocument = () => {
-  const registry = new OpenAPIRegistry()
+/**
+ * The v1 operation set.
+ *
+ * Frozen by convention: once a path version ships, its registrar is never
+ * edited. A breaking change gets a `registerV2Paths` and a new `v2` entry in
+ * `PATH_REGISTRARS`, so v1's documented surface cannot drift out from under the
+ * devices still calling it. Backwards-compatible additions to v1 are allowed
+ * here, paired with a `specVersion` bump in `API_VERSION_META`.
+ */
+const registerV1Paths = (registry: OpenAPIRegistry): void => {
   const ReadingPayload = registry.register('ReadingPayload', readingSchema)
 
   registry.registerPath({
@@ -54,11 +63,29 @@ export const buildOpenApiDocument = () => {
     summary: 'Liveness probe',
     responses: { 200: { description: 'Service is alive' } },
   })
+}
+
+const PATH_REGISTRARS: Record<ApiVersion, (registry: OpenAPIRegistry) => void> =
+  {
+    v1: registerV1Paths,
+  }
+
+/**
+ * Build the OpenAPI document for one path version. `servers` scopes the
+ * operation paths to that version's prefix, and `info.version` carries the
+ * independent spec semver.
+ */
+export const buildOpenApiDocument = (version: ApiVersion) => {
+  const registry = new OpenAPIRegistry()
+  PATH_REGISTRARS[version](registry)
 
   const generator = new OpenApiGeneratorV31(registry.definitions)
   return generator.generateDocument({
     openapi: '3.1.0',
-    info: { title: 'Weather Station Ingest API', version: '1.0.0' },
-    servers: [{ url: `/api/${API_VERSION}` }],
+    info: {
+      title: 'Weather Station Ingest API',
+      version: API_VERSION_META[version].specVersion,
+    },
+    servers: [{ url: `/api/${version}` }],
   })
 }

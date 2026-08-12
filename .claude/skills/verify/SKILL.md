@@ -20,9 +20,22 @@ behavior:
 2. Drive the affected page/flow in a browser (Chrome/Playwright tools) and
    confirm the actual behavior changed as intended.
 3. For API routes (`app/api/**`): `curl` the route with realistic payloads —
-   for `/api/readings`, include the `x-device-id`, `x-signature`,
+   for `/api/v1/readings`, include the `x-device-id`, `x-signature`,
    `x-timestamp` headers (constants in `packages/shared`) and verify both the
    accept path and a 401 reject path (bad signature, stale timestamp).
+4. If anything under `lib/openapi/` or `API_VERSIONS` changed, check every
+   served version, not just the latest — for each entry in `API_VERSIONS`:
+
+   ```bash
+   # one spec per version; a single reference page covers them all
+   curl -s localhost:3000/api/$v/openapi.json | jq '.info.version, .servers[0].url'
+   curl -sI localhost:3000/reference | head -1
+   curl -sI localhost:3000/api-docs | head -3   # expect 308 → /reference
+   ```
+
+   Then open `/reference` in a browser: the dropdown must list every
+   `API_VERSIONS` entry and open on `LATEST_API_VERSION`. Rendering is the part
+   typecheck cannot prove.
 
 ## packages/shared
 
