@@ -8,11 +8,26 @@
 // died with mbedTLS -9984 (X509 - Certificate verification failed) while the
 // network, the clock and the payload were all fine.
 //
-// Both Google roots are listed because the chain a host serves is negotiated,
-// not fixed: Google hands back the RSA chain (GTS Root R1, via the WR1
-// intermediate) or the ECC one (GTS Root R4, via WE1) depending on what the
-// client offers in the TLS handshake. Pinning only R1 would leave the fleet one
-// cipher-preference change away from the same silent outage.
+// Both Google roots are listed because the two hosts this firmware talks to
+// chain to different ones. Measured, not assumed:
+//
+//   vercel.app          RSA leaf -> WR1 -> GTS Root R1
+//   trycloudflare.com   EC  leaf -> WE1 -> GTS Root R4
+//
+// R1 covers the production backend. R4 covers the Cloudflare tunnel that
+// firmware/README.md documents for pointing a device at a local dev server,
+// so it is load-bearing rather than a spare - drop it and local development
+// over a tunnel fails with the same -9984.
+//
+// An earlier version of this comment claimed Google negotiates between the two
+// chains per-handshake and that either root could turn up on any of its hosts.
+// That is wrong for Vercel's edge: forcing an ECDSA-only offer
+// (openssl s_client -sigalgs 'ecdsa_secp256r1_sha256:ecdsa_secp384r1_sha384')
+// against vercel.app returns handshake_failure - there is no ECC leaf to serve.
+// Google does serve ECC chains under R4 where a host has an EC certificate
+// (google.com does, via WE2), but that is a property of the host, not of the
+// handshake. Do not rely on the negotiation story; check what a host actually
+// serves before assuming an anchor covers it.
 //
 // This is still a pin, not the system trust store - a host that moves to a
 // fourth CA needs another entry here. That tradeoff is deliberate: the ingest
@@ -26,11 +41,11 @@
 // against system time, which starts at the epoch on a cold boot. The upload
 // path gates on NTP for exactly this reason.
 //
-// Roots below, in order. Extracted from the macOS system trust store and each
-// verified to validate a live chain from the host it covers.
-//   ISRG Root X1 (Let's Encrypt), RSA, valid to 2035-06-04
-//   GTS Root R1  (Google Trust Services), RSA, valid to 2036-06-22
-//   GTS Root R4  (Google Trust Services), ECC, valid to 2036-06-22
+// Roots below, in order. Extracted from the macOS system trust store.
+//   ISRG Root X1 (Let's Encrypt), RSA, to 2035-06-04 - kept for hosts that
+//                 still issue under it; no host we currently use chains here
+//   GTS Root R1  (Google Trust Services), RSA, to 2036-06-22 - vercel.app
+//   GTS Root R4  (Google Trust Services), ECC, to 2036-06-22 - trycloudflare.com
 static const char UPLOAD_CA_BUNDLE_PEM[] =
   "-----BEGIN CERTIFICATE-----\n"
   "MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw\n"

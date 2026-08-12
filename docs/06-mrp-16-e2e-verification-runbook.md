@@ -205,10 +205,18 @@ ordinary deassociation on reboot. Codes 1, 3 and 8 — the normal ways a link en
   reachable and uploading), but the serial log became unusable. Secure the cable
   before attempting the AC2 long run.
 - **Local backend for a pinning device.** The firmware refuses non-HTTPS URLs
-  (`checkApiUrlHttps()`) and pins CA roots, so a plain-HTTP or self-signed local
-  server cannot be used. A tunnel with a publicly trusted certificate is the
-  path of least resistance; force `--protocol http2`, since QUIC failed
-  repeatedly on this network (`datagram manager encountered a failure`).
+  and pins CA roots, so a plain-HTTP or self-signed local server could not be
+  used. A tunnel with a publicly trusted certificate was the path of least
+  resistance; force `--protocol http2`, since QUIC failed repeatedly on this
+  network (`datagram manager encountered a failure`).
+
+  > **Superseded.** MRP-43 removed this constraint for development: the
+  > `esp32dev-local` build env defines `ALLOW_INSECURE_API_URL` and accepts
+  > `http://`, so a dev server on the LAN can be targeted directly with no
+  > tunnel. The scheme check was also renamed `checkApiUrlHttps()` →
+  > `checkApiUrlScheme()`. The tunnel is still needed on a network with client
+  > isolation, which is what this session was run on. The rest of this entry
+  > records what was true during the run.
 - **Repointing without reflashing.** `loadApiUrl()` prefers the NVS value over
   the flashed `API_URL`, so a new tunnel hostname can be set through the device
   web portal (`POST /paramsave`, field `apiurl`). Confirmed working and
