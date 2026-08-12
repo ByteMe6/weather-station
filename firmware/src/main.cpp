@@ -79,6 +79,12 @@ static uint32_t backoffDurationMs = 0;
 static bool backingOff = false;
 static uint32_t resetPressStart = 0;
 static bool resetPressActive = false;
+
+// Six hours. The boot-only check meant a device that stayed up never saw a
+// new firmware version at all, and with the interval now arriving in the
+// manifest it would never see a cadence change either.
+static const uint32_t OTA_CHECK_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
+static uint32_t lastOtaCheck = 0;
 static bool otaCheckedThisBoot = false;
 
 // Same portal, kept reachable on the LAN once we're connected.
@@ -115,6 +121,34 @@ static Preferences cfgPrefs;
 static String apiUrl;
 static WiFiManagerParameter apiUrlParam("apiurl", "Backend URL", "", 128);
 static bool apiUrlParamAdded = false;
+
+// Identity is provisioned into NVS rather than compiled in, so one firmware
+// image is valid for the whole fleet. With it in the binary, the single
+// image OTA publishes would hand every device the same device_id and secret.
+static Preferences idPrefs;
+static String deviceId;
+static String deviceSecret;
+static bool identityWarned = false;
+
+void loadDeviceIdentity() {
+  idPrefs.begin("id", true);
+  deviceId = idPrefs.getString("device_id", "");
+  deviceSecret = idPrefs.getString("secret", "");
+  idPrefs.end();
+}
+
+// Uploads are refused, but WiFi, the portal and the OTA check keep running -
+// that is what lets a mis-provisioned device be recovered without physical
+// access. Warned once: closeUploadWindow() calls this every window and the
+// condition cannot change without a reflash.
+static bool checkIdentity() {
+  if (deviceId.length() > 0 && deviceSecret.length() > 0) return true;
+  if (!identityWarned) {
+    identityWarned = true;
+    Serial.println("No device identity in NVS, uploads disabled - reflash nvs.bin");
+  }
+  return false;
+}
 
 bool initSensor() {
   if (!bmp.begin(BMP_ADDR[0]) && !bmp.begin(BMP_ADDR[1])) return false;
@@ -197,6 +231,36 @@ void loadApiUrl() {
   checkApiUrlScheme();
 }
 
+// Upload cadence. NVS wins over the compiled default so the manifest can
+// change it without a reflash; the compiled value is only the fallback for a
+// device that has never seen a manifest.
+static uint32_t uploadIntervalMs = (uint32_t)SEND_INTERVAL_MS;
+
+void loadUploadInterval() {
+  cfgPrefs.begin("cfg", true);
+  uint32_t stored = cfgPrefs.getUInt("interval", 0);
+  cfgPrefs.end();
+  if (isAcceptableInterval(stored)) uploadIntervalMs = stored;
+}
+
+// Applied on every valid manifest, not only on a newer version:
+// isNewerVersion() gates the image download, and gating config the same way
+// would mean a cadence change needed a FW_VERSION bump and a full image
+// republish - exactly what carrying it in the manifest is meant to avoid.
+static void applyManifestInterval(uint32_t offered) {
+  if (!isAcceptableInterval(offered)) {
+    Serial.printf("OTA: interval %u out of range, keeping %u\n", offered, uploadIntervalMs);
+    return;
+  }
+  if (offered == uploadIntervalMs) return;
+
+  cfgPrefs.begin("cfg", false);
+  cfgPrefs.putUInt("interval", offered);
+  cfgPrefs.end();
+  uploadIntervalMs = offered;
+  Serial.printf("Upload interval set to %u ms\n", uploadIntervalMs);
+}
+
 bool saveApiUrl(const String &url) {
   if (!cfgPrefs.begin("cfg", false)) return false;
   size_t written = cfgPrefs.putString("apiurl", url);
@@ -246,7 +310,22 @@ void startSetupPortal() {
   Serial.println("No saved WiFi - starting setup portal");
   wifiPhase = WifiPhase::SETUP_PORTAL;
 
-  String apName = String("WeatherStation-") + DEVICE_ID;
+  // An unprovisioned device has no id to put in the SSID, but it does have a
+  // MAC - and several unprovisioned boards on a bench would otherwise raise
+  // identically named APs with no way to tell which one you are configuring.
+  // Last two MAC bytes are enough to disambiguate a benchful.
+  //
+  // "unprov" rather than "unprovisioned" because the SSID limit is 32 bytes:
+  // the spelled-out form plus the suffix is 33.
+  String apName;
+  if (deviceId.length()) {
+    apName = String("WeatherStation-") + deviceId;
+  } else {
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    mac.toLowerCase();
+    apName = String("WeatherStation-unprov-") + mac.substring(8);
+  }
 
   bool credentialsSaved = false;
   while (!credentialsSaved) {
@@ -533,14 +612,12 @@ static bool installUpdate(const OtaManifest &m) {
     return false;
   }
 
-  // Signature covers version + digest so an old signed image can't be
-  // replayed under a newer version number.
-  uint8_t signedMsg[36];
-  signedMsg[0] = (uint8_t)m.version;
-  signedMsg[1] = (uint8_t)(m.version >> 8);
-  signedMsg[2] = (uint8_t)(m.version >> 16);
-  signedMsg[3] = (uint8_t)(m.version >> 24);
-  memcpy(signedMsg + 4, digest, sizeof(digest));
+  // Signature covers version + digest + interval so neither an old signed
+  // image nor an altered cadence can be replayed under a newer version.
+  uint8_t signedMsg[40];
+  OtaManifest signedCopy = m;
+  memcpy(signedCopy.sha256, digest, sizeof(digest));
+  buildOtaSignedMessage(signedCopy, signedMsg);
   if (!Ed25519::verify(m.sig, OTA_PUBKEY, signedMsg, sizeof(signedMsg))) {
     Update.abort();
     Serial.println("OTA: bad signature, image rejected");
@@ -583,6 +660,23 @@ static void checkForOtaUpdate() {
     Serial.println("OTA: manifest rejected");
     return;
   }
+  // parseManifest() only type-checks JSON, and installUpdate()'s verify is
+  // reached only when a newer image is offered - so an interval-only
+  // manifest, which is the main reason config lives here at all, would
+  // otherwise be applied and persisted on no authority whatsoever. Verify
+  // before acting on any field.
+  //
+  // This covers the manifest's claimed digest. installUpdate() verifies
+  // again after downloading, over the digest it computed from the actual
+  // bytes, and refuses the image unless the two match - so the claimed
+  // value being signed here cannot be used to smuggle a different image.
+  uint8_t manifestMsg[40];
+  buildOtaSignedMessage(m, manifestMsg);
+  if (!Ed25519::verify(m.sig, OTA_PUBKEY, manifestMsg, sizeof(manifestMsg))) {
+    Serial.println("OTA: bad manifest signature, ignoring");
+    return;
+  }
+  applyManifestInterval(m.intervalMs);
   if (!isNewerVersion(FW_VERSION, m.version)) {
     Serial.printf("OTA: up to date (v%u published, v%u running)\n", m.version, (uint32_t)FW_VERSION);
     return;
@@ -629,6 +723,7 @@ static void closeUploadWindow() {
   // Checked before the (potentially blocking, up to 10s) clock sync: no point
   // waiting on NTP for a reading that can't be sent anyway.
   if (!checkApiUrlScheme()) return;
+  if (!checkIdentity()) return;
   if (!ensureClock()) {
     Serial.println("Window closed before the clock synced, dropping the reading");
     return;
@@ -652,7 +747,7 @@ static void closeUploadWindow() {
     Serial.println("Could not build the payload, dropping the reading");
     return;
   }
-  if (!signPayload(DEVICE_SECRET, pendingTimestampMs, pendingBody,
+  if (!signPayload(deviceSecret.c_str(), pendingTimestampMs, pendingBody,
                    pendingSignature, sizeof(pendingSignature))) {
     Serial.println("Could not sign the payload, dropping the reading");
     return;
@@ -744,7 +839,7 @@ static void attemptUpload() {
     return;
   }
   http.addHeader("content-type", "application/json");
-  http.addHeader("x-device-id", DEVICE_ID);
+  http.addHeader("x-device-id", deviceId.c_str());
   http.addHeader("x-timestamp", pendingTimestampMs);
   http.addHeader("x-signature", pendingSignature);
 
@@ -771,7 +866,7 @@ static void attemptUpload() {
 
   if (!shouldRetryUpload(code)) {
     if (code == 401) {
-      dropPendingUpload("401 - check DEVICE_SECRET and the clock");
+      dropPendingUpload("401 - NVS identity may not match the devices row, or the clock is off");
     } else {
       dropPendingUpload("rejected by the server, retrying cannot help");
     }
@@ -798,6 +893,12 @@ void handleStationConnected() {
     clockValid = syncClock();
     if (!clockValid) Serial.println("NTP sync timed out, will retry before the first upload");
     checkForOtaUpdate();
+    lastOtaCheck = millis();
+  } else if (millis() - lastOtaCheck >= OTA_CHECK_INTERVAL_MS) {
+    // No syncClock() here: it blocks for up to 10s and the clock is already
+    // good by now. Only the first check pays that cost.
+    lastOtaCheck = millis();
+    checkForOtaUpdate();
   }
 
   if (!webPortalRunning) startStationWebPortal();
@@ -807,11 +908,10 @@ void handleStationConnected() {
     uploadWindowStarted = true;
     windowStart = millis();
     accumulatorReset(windowSamples);
-    Serial.printf("Uploading to %s every %u ms\n", apiUrl.c_str(),
-                  (uint32_t)SEND_INTERVAL_MS);
+    Serial.printf("Uploading to %s every %u ms\n", apiUrl.c_str(), uploadIntervalMs);
   }
 
-  if (millis() - windowStart >= (uint32_t)SEND_INTERVAL_MS) closeUploadWindow();
+  if (millis() - windowStart >= uploadIntervalMs) closeUploadWindow();
 
   if (uploadPending &&
       (uploadAttempt == 0 || millis() - lastAttemptAt >= retryDelayMs)) {
@@ -889,7 +989,10 @@ void setup() {
   WiFi.setAutoReconnect(false);
 
   loadWifiCredentials();
+  loadDeviceIdentity();
   loadApiUrl();
+  loadUploadInterval();
+  Serial.printf("Device ID: %s\n", deviceId.length() ? deviceId.c_str() : "(none)");
   Serial.printf("Backend URL: %s\n", apiUrl.c_str());
   if (savedSsid.length() == 0) {
     startSetupPortal();
