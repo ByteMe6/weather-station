@@ -149,17 +149,38 @@ POST plus two retries, spaced 10 s then 30 s — before it's dropped.
 There is no local buffering of undelivered readings — a deliberate MVP
 decision (PRD OQ2), not an oversight.
 
-**TLS:** uploads verify the server certificate against ISRG Root X1, the
-Let's Encrypt trust anchor Vercel issues under, embedded in
-`src/ca_isrg_root_x1.h`. There's no plaintext fallback — a `Backend URL` that
-doesn't start with `https://` is rejected and uploads stay disabled until it's
-fixed. One consequence worth knowing: because that single embedded root is
-Let's Encrypt only, the device will fail TLS verification against _any_ host
-whose certificate isn't issued under Let's Encrypt — a tunnel service, a
-self-signed dev server, a host on a different CA. That's by design, not a
-bug; repoint at a Let's Encrypt-backed host (Vercel included) to fix it. This
-is unrelated to the OTA fetch, which uses `setInsecure()` on purpose — see
-"OTA updates" below.
+**TLS:** uploads verify the server certificate against a small set of pinned
+trust anchors in `src/ca_bundle.h` — ISRG Root X1 (Let's Encrypt), plus GTS
+Root R1 and GTS Root R4 (Google Trust Services). By default there's no
+plaintext fallback: a `Backend URL` that doesn't start with `https://` is
+rejected and uploads stay disabled until it's fixed (see **Local
+development** for the dev build that also accepts `http://`).
+
+Two Google roots rather than one because the hosts this firmware talks to
+chain to different ones — measured, not assumed:
+
+| Host                | Chain                          |
+| ------------------- | ------------------------------ |
+| `vercel.app`        | RSA leaf → `WR1` → GTS Root R1 |
+| `trycloudflare.com` | EC leaf → `WE1` → GTS Root R4  |
+
+R1 covers the production backend; R4 covers the Cloudflare tunnel used for
+local development (see **Local development**). Both are load-bearing — drop
+R4 and a tunnel fails with the same `-9984`.
+
+Note this is a property of each host, not of the handshake: `vercel.app` has
+no EC certificate at all, so an ECDSA-only offer to it returns
+`handshake_failure` rather than an R4 chain. Check what a host actually serves
+before assuming an anchor covers it.
+
+The consequence worth knowing: this is a **pin**, not the system trust store,
+so the device will fail verification against any host whose certificate
+chains to something else. That's by design rather than a bug — the payload
+carries an HMAC over the device secret, and a permissive store would let any
+CA-issued certificate terminate the connection. A backend that moves to a
+fourth CA needs another anchor added here, and the only symptom until then is
+mbedTLS `-9984` on every upload. This is unrelated to the OTA fetch, which
+uses `setInsecure()` on purpose — see "OTA updates" below.
 
 Verifying a certificate needs a correct clock: a window that closes before
 NTP has synced is dropped rather than sent — nothing from it is retained, the
@@ -172,7 +193,8 @@ flash-time `API_URL` build flag when NVS is empty. To repoint a device
 without reflashing, open the same web portal described above (LAN IP printed
 to serial), click **Setup** (not **Configure WiFi** — that page only holds
 the SSID and password), and set **Backend URL**. Only `https://` values are
-accepted, and the field holds at most 128 characters — a longer URL (for
+accepted (see **Local development** below for the dev build that also takes
+`http://`), and the field holds at most 128 characters — a longer URL (for
 example a flash-time `API_URL` over that length) is silently truncated when
 the page pre-fills it, and saving the page without editing the field persists
 that truncated value to NVS, breaking uploads until it's typed back in full
@@ -187,6 +209,40 @@ active. The one visible tell in the UI: the field snaps back to the active
 URL, so if it shows something other than what you just typed, that submit was
 rejected. The serial log (`Backend URL rejected: must start with https://`)
 is the explicit confirmation.
+
+## Local development
+
+The upload path pins CA roots, so a self-signed certificate on a dev machine
+will not validate — and plain `http://` is refused outright. That leaves
+tunnelling a local server through a publicly trusted hostname, which is
+awkward for day-to-day work.
+
+The `esp32dev-local` build env exists for this. It is identical to `esp32dev`
+apart from accepting `http://` backends:
+
+```bash
+pio run -e esp32dev-local -t upload
+```
+
+Then point **Backend URL** at your machine, e.g. `http://192.168.1.50:3000/api/v1/readings`.
+
+A device flashed from this env prints a banner on every boot:
+
+```
+*** ALLOW_INSECURE_API_URL build - http:// backends accepted, DEV ONLY ***
+```
+
+If that line appears on a device that is meant to be in the field, it was
+built from the wrong target — reflash it with `-e esp32dev`.
+
+The flag deliberately lives in `platformio.ini` and not in `secrets.ini`.
+`secrets.ini` is per-device and gets copied between them, so a relaxation
+living there would eventually reach a device sending real readings. Selecting
+a build target is an explicit act; copying a config file is not.
+
+Note this only relaxes the **scheme check**. Over `https://` the CA pinning
+still applies, so a tunnel with a publicly trusted certificate keeps working
+exactly as before.
 
 **Trust model:** the Setup page has no authentication, same as the WiFi
 configuration page above — there is no `setAuth()` call anywhere in the

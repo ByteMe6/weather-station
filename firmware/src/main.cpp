@@ -18,7 +18,7 @@
 #include <aggregate.h>
 #include <upload.h>
 #include <sys/time.h>
-#include "ca_isrg_root_x1.h"
+#include "ca_bundle.h"
 
 // 0x76 on most GY-BMP280 breakouts, 0x77 on Adafruit boards.
 static const uint8_t BMP_ADDR[] = {0x76, 0x77};
@@ -155,10 +155,26 @@ void clearWifiCredentials() {
 // once - closeUploadWindow() calls this every 5-minute window and a repeat
 // log line for a condition that can't change without a reflash or a portal
 // save is just noise.
+//
+// ALLOW_INSECURE_API_URL relaxes this to also accept http://, for developing
+// against a server on the LAN where a publicly trusted certificate is not
+// practical to stand up. It is set only by the esp32dev-local build env, never
+// from secrets.ini: that file is per-device and gets copied between them, so a
+// flag living there would eventually reach a device shipping real readings.
+// Choosing a different build target is a deliberate act; copying a config file
+// is not.
 static bool apiUrlWarned = false;
 
-static bool checkApiUrlHttps() {
+static bool apiUrlSchemeAllowed() {
   if (apiUrl.startsWith("https://")) return true;
+#ifdef ALLOW_INSECURE_API_URL
+  if (apiUrl.startsWith("http://")) return true;
+#endif
+  return false;
+}
+
+static bool checkApiUrlScheme() {
+  if (apiUrlSchemeAllowed()) return true;
   if (!apiUrlWarned) {
     apiUrlWarned = true;
     Serial.printf("Backend URL is not https, uploads disabled: %s\n", apiUrl.c_str());
@@ -171,7 +187,14 @@ void loadApiUrl() {
   apiUrl = cfgPrefs.getString("apiurl", "");
   cfgPrefs.end();
   if (apiUrl.length() == 0) apiUrl = API_URL;
-  checkApiUrlHttps();
+#ifdef ALLOW_INSECURE_API_URL
+  // Loud on every boot, not warn-once: this build will happily put a signed
+  // reading on the wire in plaintext, and the log is the only place that says
+  // so. If this line shows up on a device that is meant to be in the field,
+  // it was built from the wrong target.
+  Serial.println("*** ALLOW_INSECURE_API_URL build - http:// backends accepted, DEV ONLY ***");
+#endif
+  checkApiUrlScheme();
 }
 
 bool saveApiUrl(const String &url) {
@@ -183,13 +206,26 @@ bool saveApiUrl(const String &url) {
 
 // Portal callback for the Backend URL field. https is required: the ingest
 // path carries a signature over the device secret and must never fall back to
-// plaintext, so a http:// entry is refused rather than quietly accepted.
+// plaintext, so a http:// entry is refused rather than quietly accepted -
+// unless this is an ALLOW_INSECURE_API_URL dev build, which accepts both.
+// The check is deliberately the same predicate the upload path uses, so the
+// portal can never store a URL that closeUploadWindow() would then refuse.
 void syncApiUrlFromPortal() {
   String url = apiUrlParam.getValue();
   url.trim();
   if (url.length() == 0) return;
-  if (!url.startsWith("https://")) {
+
+  const String saved = apiUrl;
+  apiUrl = url;
+  const bool accepted = apiUrlSchemeAllowed();
+  apiUrl = saved;
+
+  if (!accepted) {
+#ifdef ALLOW_INSECURE_API_URL
+    Serial.println("Backend URL rejected: must start with https:// or http://");
+#else
     Serial.println("Backend URL rejected: must start with https://");
+#endif
     // WiFiManager's save-params page always shows "Saved" no matter what this
     // callback does, so an operator who enters http:// sees success with no
     // visible sign it was rejected unless they're watching serial. Put the
@@ -288,6 +324,68 @@ void stopStationWebPortal() {
   if (!webPortalRunning) return;
   webPortal.stopWebPortal();
   webPortalRunning = false;
+}
+
+// The handful of reasons that actually discriminate the failure modes seen
+// here; anything else prints its bare number (full list: wifi_err_reason_t in
+// esp_wifi_types.h).
+static const char *wifiDisconnectReason(uint8_t reason) {
+  switch (reason) {
+    // 1/3/8 are the ordinary ways a link ends - a clean deassociation on
+    // reboot reports 8, so leaving them unmapped made routine shutdowns read
+    // as anomalies in the log.
+    case WIFI_REASON_UNSPECIFIED:            return "unspecified";
+    case WIFI_REASON_AUTH_LEAVE:             return "AP deauthenticated us";
+    case WIFI_REASON_ASSOC_LEAVE:            return "left the AP (normal on reboot)";
+    case WIFI_REASON_AUTH_EXPIRE:            return "auth expired";
+    case WIFI_REASON_ASSOC_EXPIRE:           return "association expired";
+    case WIFI_REASON_ASSOC_TOOMANY:          return "AP refused - too many clients";
+    case WIFI_REASON_NOT_AUTHED:             return "not authenticated";
+    case WIFI_REASON_NOT_ASSOCED:            return "not associated";
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "4-way handshake timeout - wrong password";
+    case WIFI_REASON_BEACON_TIMEOUT:         return "beacon timeout - out of range";
+    case WIFI_REASON_NO_AP_FOUND:            return "AP not found";
+    case WIFI_REASON_AUTH_FAIL:              return "auth failed";
+    case WIFI_REASON_ASSOC_FAIL:             return "association refused by the AP";
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:      return "handshake timeout";
+    case WIFI_REASON_CONNECTION_FAIL:        return "connection failed";
+    default:                                 return "unmapped";
+  }
+}
+
+// Both join paths swallow the ESP-IDF disconnect reason: WiFiManager reports
+// only "Connect to new AP Failed", and handleStationConnecting() sees nothing
+// but a WL_CONNECTED that never arrives. That cannot tell a wrong password
+// apart from an AP that refuses association outright (a guest network gating
+// on MAC registration, say), which are opposite problems with opposite fixes.
+// The reason code is the one signal that separates them.
+//
+// GOT_IP is logged alongside it because association succeeding and DHCP
+// succeeding are distinct steps, and a captive/gated network commonly passes
+// the first and withholds the second - which looks identical from
+// WiFi.status() alone.
+//
+// Registered once in setup() before any WiFi call, so it covers the setup
+// portal, the station retry loop, and portal-driven network changes alike.
+// Diagnostics only: nothing here changes connection behaviour.
+static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
+      uint8_t reason = info.wifi_sta_disconnected.reason;
+      Serial.printf("WiFi disconnected: reason=%u (%s)\n", reason,
+                    wifiDisconnectReason(reason));
+      break;
+    }
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("WiFi associated, waiting for DHCP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("WiFi got IP: %s\n",
+                    IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+      break;
+    default:
+      break;
+  }
 }
 
 void beginStationConnect() {
@@ -530,7 +628,7 @@ static void closeUploadWindow() {
   }
   // Checked before the (potentially blocking, up to 10s) clock sync: no point
   // waiting on NTP for a reading that can't be sent anyway.
-  if (!checkApiUrlHttps()) return;
+  if (!checkApiUrlScheme()) return;
   if (!ensureClock()) {
     Serial.println("Window closed before the clock synced, dropping the reading");
     return;
@@ -607,8 +705,26 @@ static String readBoundedErrorBody(HTTPClient &http) {
 static void attemptUpload() {
   uploadAttempt++;
 
-  WiFiClientSecure client;
-  client.setCACert(ISRG_ROOT_X1_PEM);
+  // Both clients are declared here so whichever one is used outlives the
+  // HTTPClient below - it keeps a reference, not a copy. Picking the transport
+  // from the URL rather than always using the TLS client matters: HTTPClient
+  // given a WiFiClientSecure and an http:// URL still attempts a handshake, on
+  // port 80, against a server that is not speaking TLS. That fails in a way
+  // that looks like a network fault rather than a configuration mistake.
+  //
+  // checkApiUrlScheme() has already run by the time a reading is pending, so a
+  // plaintext URL can only reach this point in an ALLOW_INSECURE_API_URL
+  // build; in a production build the else-branch is unreachable.
+  WiFiClientSecure secureClient;
+  WiFiClient plainClient;
+  WiFiClient *client;
+  if (apiUrl.startsWith("https://")) {
+    secureClient.setCACert(UPLOAD_CA_BUNDLE_PEM);
+    client = &secureClient;
+  } else {
+    client = &plainClient;
+  }
+
   HTTPClient http;
   http.setTimeout(UPLOAD_TIMEOUT_MS);
 
@@ -622,7 +738,7 @@ static void attemptUpload() {
   // fire immediately with no spacing at all. Every exit path below sets this
   // right before it returns, including the http.begin() failure, so none of
   // them can leave it stale.
-  if (!http.begin(client, apiUrl)) {
+  if (!http.begin(*client, apiUrl)) {
     lastAttemptAt = millis();
     scheduleRetryOrDrop("cannot open the connection");
     return;
@@ -765,6 +881,9 @@ void setup() {
 
   ready = initSensor();
   if (!ready) Serial.println("BMP280 not found, retrying...");
+
+  // Before any other WiFi call so no early association/disconnect is missed.
+  WiFi.onEvent(onWifiEvent);
 
   // We do our own backoff; the SDK's auto-reconnect just fights it.
   WiFi.setAutoReconnect(false);
