@@ -217,10 +217,23 @@ cover everything the device acts on.
 
 ### Release script
 
-`ota_release.py` takes `--interval-ms`, defaulting to 300 000, and includes it
-in both the manifest and the signed message. Its existing refusal to publish
-without a version bump stays for images; publishing a manifest that changes
-only `intervalMs` at the same version must be allowed.
+`ota_release.py` takes `--interval-ms` and includes the value in both the
+manifest and the signed message. The flag has **no** default that always wins:
+omitting it carries forward whatever the published manifest already holds,
+falling back to 300 000 only when nothing has ever been published. A fixed
+default would silently reset the fleet cadence on every release that forgot the
+flag, which is the opposite of what a sticky config field should do. The script
+prints the value it is publishing and where it came from.
+
+Its existing refusal to publish without a version bump stays for images, and
+also covers a manifest that changes only `intervalMs`: a same-version
+republish is still refused, but the error points at `--interval-only`, a
+separate mode that re-signs the already-published `path`, `sha256` and `size`
+with the new interval — no build, no image upload, no version change. Routing
+cadence-only changes through their own flag rather than relaxing the version
+check keeps "publishing at the same version" an error in the case where it is
+a mistake (a rebuilt image nobody would ever install, since the device's
+version check is strictly-greater).
 
 ## 4. Periodic manifest check
 

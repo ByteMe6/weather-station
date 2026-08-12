@@ -749,9 +749,14 @@ import { execFileSync } from 'node:child_process'
 
 ```typescript
 // nvs_partition_gen.py consumes this CSV shape: a namespace row, then one
-// row per key. It ships with the Arduino ESP32 framework package rather than
-// being a project dependency, so the path is resolved at call time and a
-// clear error beats a stack trace when it is missing.
+// row per key. The generator is not a project dependency, so it is resolved
+// at call time and a clear error beats a stack trace when it is missing.
+//
+// CORRECTION (post-implementation): this plan originally said the generator
+// ships with the Arduino ESP32 framework package. It does not — that package
+// carries gen_esp32part.py (the partition *table* generator) only. Espressif
+// publishes the NVS image generator standalone on PyPI as
+// esp-idf-nvs-partition-gen. See the corrected Step 1 below.
 const buildNvsCsv = (id: string, secret: string) =>
   [
     'key,type,encoding,value',
@@ -770,19 +775,31 @@ const emitNvsImage = (id: string, secret: string, outPath: string) => {
   const csvPath = `${outPath}.csv`
   writeFileSync(csvPath, buildNvsCsv(id, secret), { mode: 0o600 })
 
-  const gen = process.env.NVS_PARTITION_GEN
-  if (!gen) {
-    throw new Error(
-      'Set NVS_PARTITION_GEN to nvs_partition_gen.py, e.g.\n' +
-        '  export NVS_PARTITION_GEN="$(find ~/.platformio/packages/framework-arduinoespressif32 -name nvs_partition_gen.py | head -1)"',
-    )
-  }
+  // NVS_PARTITION_GEN is an *optional* override for anyone who already has
+  // nvs_partition_gen.py from a full ESP-IDF checkout on disk. The default is
+  // the PyPI module.
+  const override = process.env.NVS_PARTITION_GEN
+  const gen = override ? [override] : ['-m', 'esp_idf_nvs_partition_gen']
 
-  execFileSync('python3', [gen, 'generate', csvPath, outPath, NVS_PARTITION_SIZE], {
-    stdio: 'inherit',
-  })
+  execFileSync(
+    'python3',
+    [...gen, 'generate', csvPath, outPath, NVS_PARTITION_SIZE],
+    { stdio: 'inherit' },
+  )
 }
 ```
+
+> **CORRECTION (post-implementation).** This step originally made
+> `NVS_PARTITION_GEN` **required**, throwing when unset and telling the reader
+> to point it at `nvs_partition_gen.py` inside
+> `~/.platformio/packages/framework-arduinoespressif32`. That file does not
+> exist there — the Arduino framework package ships `gen_esp32part.py` only —
+> so the instruction could never work. The code above is the corrected form,
+> matching what shipped: default to `python3 -m esp_idf_nvs_partition_gen`
+> (`pip install esp-idf-nvs-partition-gen`), with `NVS_PARTITION_GEN` as an
+> optional override. The shipped script also probes the generator *before* the
+> `devices` insert, so an unusable generator cannot strand a secret in the
+> database; see `infra/supabase-db/scripts/provision-device.ts`.
 
 - [ ] **Step 2: Wire it to a flag**
 
@@ -842,10 +859,10 @@ Expected: prints `DEVICE_ID` and `DEVICE_SECRET`, plus the hint about `--emit-nv
 
 Run:
 ```bash
-export NVS_PARTITION_GEN="$(find ~/.platformio/packages/framework-arduinoespressif32 -name nvs_partition_gen.py | head -1)"
+pip install esp-idf-nvs-partition-gen  # once per machine; not bundled with PlatformIO
 SUPABASE_URL="http://127.0.0.1:54321" SUPABASE_SECRET_KEY="<local secret key>" yarn provision:device --emit-nvs /tmp/nvs.bin
 ```
-Expected: `nvs_partition_gen.py` output, then the esptool instructions. Confirm the image is the right size:
+Expected: generator output (`esp_idf_nvs_partition_gen`), then the esptool instructions. Confirm the image is the right size:
 
 Run: `ls -l /tmp/nvs.bin`
 Expected: `20480` bytes (`0x5000`).
@@ -910,7 +927,7 @@ Insert before the `## Uploading readings` heading:
 which is what makes OTA usable on more than one of them.
 
 ```bash
-export NVS_PARTITION_GEN="$(find ~/.platformio/packages/framework-arduinoespressif32 -name nvs_partition_gen.py | head -1)"
+pip install esp-idf-nvs-partition-gen  # once per machine; not bundled with PlatformIO
 cd infra/supabase-db
 yarn provision:device --emit-nvs /tmp/nvs.bin
 esptool.py --port /dev/cu.usbserial-10 write_flash 0x9000 /tmp/nvs.bin
@@ -1034,7 +1051,7 @@ first upload window closes, so allow one interval for it.
 Regenerate the image — Task 7 had you delete it, and it holds the secret:
 
 ```bash
-export NVS_PARTITION_GEN="$(find ~/.platformio/packages/framework-arduinoespressif32 -name nvs_partition_gen.py | head -1)"
+pip install esp-idf-nvs-partition-gen  # once per machine; not bundled with PlatformIO
 cd infra/supabase-db
 SUPABASE_URL="http://127.0.0.1:54321" SUPABASE_SECRET_KEY="<local secret key>" \
   yarn provision:device --emit-nvs /tmp/nvs.bin
