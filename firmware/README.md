@@ -433,6 +433,24 @@ rejected outright:
 
 **Release process:**
 
+> **Rollout order for the 36→40-byte signature change — do this once, in this
+> order.** The signed message grew to cover `intervalMs`, which is breaking in
+> both directions: old firmware cannot verify a new-format manifest, and new
+> firmware cannot verify an old one. So:
+>
+> 1. USB-flash the new firmware (and each device's `nvs.bin`) to **every**
+>    existing device first.
+> 2. Publish a new-format manifest only after that.
+>
+> Reversing the order leaves the fleet unable to verify anything — including
+> the update that would fix it, since OTA is the only remote channel and it is
+> precisely what breaks.
+>
+> This is inert today only because `FW_VERSION` is still 1: the next publish is
+> a same-version republish, which old firmware ignores rather than chokes on.
+> The hazard bites at the first version bump, so a quiet first release is not
+> evidence that this warning was theatre.
+
 1. Bump `FW_VERSION` in `src/version.h` — publishing over an already-published
    version is refused; the firmware's version check is strictly-greater, so
    such a release would never reach a device
@@ -477,6 +495,12 @@ comes from the Ed25519 signature; TLS is just transport.
   the download whenever a newer image is offered — so sampling pauses for it
 - Rollout is fleet-wide: there is one manifest, so a release reaches every
   device that checks in — there is no staged or per-device targeting
+- The 36→40-byte signed-message change is breaking in both directions, so the
+  order is fixed: USB-flash every existing device first, publish a new-format
+  manifest second. Publishing first leaves devices unable to verify the update
+  that would fix them. Inert while `FW_VERSION` is 1 — a same-version
+  republish is ignored, not failed — and live at the next bump. See
+  **Release process** above.
 
 ## Flash-time configuration
 

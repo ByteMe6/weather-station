@@ -196,3 +196,16 @@ if not r.ok:
     die(f"manifest upload failed: {r.status_code} {r.text}")
 
 print(f"published v{version}: {name} ({size} bytes, interval {interval_ms} ms)")
+
+# The rollout order is the one thing a publish can get catastrophically wrong,
+# and it is invisible from here - only the operator knows whether the fleet has
+# been reflashed. Printed at publish time because that is the moment it is
+# actionable; README "Release process" carries the long form.
+print(
+    "\nreminder: the signed message is 40 bytes (version + digest + interval),\n"
+    "which old firmware cannot verify. Order is fixed: USB-flash every existing\n"
+    "device FIRST, publish a new-format manifest SECOND. Reversed, devices\n"
+    "cannot verify the update that would fix them.\n"
+    "Inert only while FW_VERSION is 1 - old firmware ignores a same-version\n"
+    "republish - so a quiet release here proves nothing about the next bump."
+)
