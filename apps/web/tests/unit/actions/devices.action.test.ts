@@ -174,6 +174,8 @@ describe('updateDeviceProfileAction', () => {
       deviceId: 'ws-1',
       label: 'x'.repeat(41),
       address: '',
+      latitude: '',
+      longitude: '',
     })
     expect(res).toMatchObject({
       ok: false,
@@ -188,8 +190,53 @@ describe('updateDeviceProfileAction', () => {
         deviceId: 'ws-1',
         label: 'Backyard',
         address: '',
+        latitude: '',
+        longitude: '',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+  })
+
+  it('rejects an out-of-range latitude and a half-filled pair', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    await expect(
+      updateDeviceProfileAction({
+        deviceId: 'ws-1',
+        label: '',
+        address: '',
+        latitude: '91',
+        longitude: '24.0297',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+      fieldErrors: { latitude: expect.any(String) as string },
+    })
+    await expect(
+      updateDeviceProfileAction({
+        deviceId: 'ws-1',
+        label: '',
+        address: '',
+        latitude: '49.8397',
+        longitude: '',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+      fieldErrors: { longitude: expect.any(String) as string },
+    })
+  })
+
+  it('rejects a non-numeric coordinate', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    await expect(
+      updateDeviceProfileAction({
+        deviceId: 'ws-1',
+        label: '',
+        address: '',
+        latitude: 'north',
+        longitude: '24.0297',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
   })
 })
 

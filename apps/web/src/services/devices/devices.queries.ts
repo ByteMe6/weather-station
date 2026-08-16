@@ -125,8 +125,12 @@ export const useRemoveMemberMutation = (deviceId: string) => {
 export const useUpdateDeviceProfileMutation = (deviceId: string) => {
   const invalidate = useInvalidateDevice(deviceId)
   return useMutation({
-    mutationFn: async (input: { label: string; address: string }) =>
-      unwrapAction(await updateDeviceProfileAction({ deviceId, ...input })),
+    mutationFn: async (input: {
+      label: string
+      address: string
+      latitude: string
+      longitude: string
+    }) => unwrapAction(await updateDeviceProfileAction({ deviceId, ...input })),
     onSuccess: invalidate,
   })
 }

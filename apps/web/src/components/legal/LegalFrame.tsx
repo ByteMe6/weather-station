@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { ReactElement, ReactNode } from 'react'
 
+import { Logo } from '@/components/brand/Logo'
+
 /** Shell-less frame for legal pages: brand, a way back, and a prose column. */
 export const LegalFrame = ({
   children,
@@ -18,10 +20,7 @@ export const LegalFrame = ({
         href="/"
         className="flex items-center gap-2 font-semibold tracking-tight"
       >
-        <span
-          aria-hidden
-          className="from-sky to-sky/60 inline-block size-5 rounded-md bg-gradient-to-br"
-        />
+        <Logo testId={`${testId}-logo`} size={20} />
         Weather Station
       </Link>
       <Link

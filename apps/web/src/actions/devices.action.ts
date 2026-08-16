@@ -270,26 +270,62 @@ export const removeMemberAction = async (input: {
   return actionOk(null)
 }
 
-const profileSchema = z.object({
-  deviceId: z.string().min(1),
-  label: z
+// Empty string clears the value; anything else must be a number in range. The
+// DB enforces both-or-neither too (devices_coords_both_or_neither), but doing
+// it here turns a 23514 into a field error the form can point at.
+const coordinateField = (min: number, max: number, name: string) =>
+  z
     .string()
     .trim()
-    .max(40, 'Keep the nickname under 40 characters')
-    .transform((v) => (v.length === 0 ? null : v)),
-  address: z
-    .string()
-    .trim()
-    .max(200, 'Keep the address under 200 characters')
-    .transform((v) => (v.length === 0 ? null : v)),
-})
+    .transform((v) => (v.length === 0 ? null : v))
+    .refine((v) => v === null || /^-?\d+(\.\d+)?$/.test(v), {
+      message: `Enter ${name} as a decimal number`,
+    })
+    .transform((v) => (v === null ? null : Number(v)))
+    .refine((v) => v === null || (v >= min && v <= max), {
+      message: `${name} must be between ${min} and ${max}`,
+    })
+
+const profileSchema = z
+  .object({
+    deviceId: z.string().min(1),
+    label: z
+      .string()
+      .trim()
+      .max(40, 'Keep the nickname under 40 characters')
+      .transform((v) => (v.length === 0 ? null : v)),
+    address: z
+      .string()
+      .trim()
+      .max(200, 'Keep the address under 200 characters')
+      .transform((v) => (v.length === 0 ? null : v)),
+    latitude: coordinateField(-90, 90, 'latitude'),
+    longitude: coordinateField(-180, 180, 'longitude'),
+  })
+  .superRefine((v, ctx) => {
+    if ((v.latitude === null) === (v.longitude === null)) return
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [v.latitude === null ? 'latitude' : 'longitude'],
+      message: 'Enter both latitude and longitude, or leave both empty',
+    })
+  })
 
 /** Owner sets the station's nickname and address (free text; geocoding/map is a later ticket). */
 export const updateDeviceProfileAction = async (input: {
   deviceId: string
   label: string
   address: string
-}): Promise<ActionResult<{ label: string | null; address: string | null }>> => {
+  latitude: string
+  longitude: string
+}): Promise<
+  ActionResult<{
+    label: string | null
+    address: string | null
+    latitude: number | null
+    longitude: number | null
+  }>
+> => {
   const parsed = profileSchema.safeParse(input)
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {}
@@ -307,7 +343,12 @@ export const updateDeviceProfileAction = async (input: {
   if (!gate.ok) return gate.result
   const { error } = await gate.service
     .from('devices')
-    .update({ label: parsed.data.label, address: parsed.data.address })
+    .update({
+      label: parsed.data.label,
+      address: parsed.data.address,
+      latitude: parsed.data.latitude,
+      longitude: parsed.data.longitude,
+    })
     .eq('device_id', parsed.data.deviceId)
   if (error) {
     console.error('updateDeviceProfileAction failed', error)
@@ -316,7 +357,12 @@ export const updateDeviceProfileAction = async (input: {
       'Could not save the station details. Try again.',
     )
   }
-  return actionOk({ label: parsed.data.label, address: parsed.data.address })
+  return actionOk({
+    label: parsed.data.label,
+    address: parsed.data.address,
+    latitude: parsed.data.latitude,
+    longitude: parsed.data.longitude,
+  })
 }
 
 export type MemberProfiles = Record<string, ClerkProfile>

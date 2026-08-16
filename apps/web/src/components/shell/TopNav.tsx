@@ -13,6 +13,7 @@ import { MobileNav } from './MobileNav'
 import { NAV_ITEMS } from './nav-items'
 import { ThemeToggle } from './ThemeToggle'
 
+import { Logo } from '@/components/brand/Logo'
 import { springs } from '@/components/motion/variants'
 import { cn } from '@/lib/utils'
 import type { MyDevice } from '@/services/devices/devices.service'
@@ -47,10 +48,7 @@ export const TopNav = ({
           href="/dashboard"
           className="flex items-center gap-2.5 font-bold tracking-tight"
         >
-          <span
-            aria-hidden
-            className="from-sky to-sky/60 inline-block size-[22px] rounded-md bg-gradient-to-br"
-          />
+          <Logo testId={`${testId}-logo`} size={22} />
           Weather Station
         </Link>
         <nav

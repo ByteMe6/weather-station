@@ -48,7 +48,12 @@ export const DeviceProfileDialog = ({
       e.preventDefault()
       setErrors({})
       try {
-        await save.mutateAsync({ label: labelValue, address: addressValue })
+        await save.mutateAsync({
+          label: labelValue,
+          address: addressValue,
+          latitude: '',
+          longitude: '',
+        })
       } catch (err) {
         setErrors(
           err instanceof ActionError

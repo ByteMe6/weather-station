@@ -13,6 +13,8 @@ export interface MyDevice {
     createdAt: string
     label: string | null
     address: string | null
+    latitude: number | null
+    longitude: number | null
   } | null
 }
 
@@ -27,7 +29,7 @@ export const fetchMyDevices = async (
   const { data, error } = await supabase
     .from('device_users')
     .select(
-      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at, label, address )',
+      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at, label, address, latitude, longitude )',
     )
     .order('added_at', { ascending: true })
 

@@ -162,4 +162,41 @@ describe('devices service (integration)', () => {
     ).toBe(true)
     expect(stillOwner.data?.role).toBe('owner')
   })
+
+  it('coordinates: owner writes them, members read them, clearing sets both to null', async () => {
+    const { data: a } = await db
+      .from('users')
+      .insert({ clerk_user_id: CLERK_A })
+      .select('id')
+      .single()
+    await db.from('devices').insert({
+      device_id: DEVICE_ID,
+      secret: 'x'.repeat(64),
+      status: 'registered',
+    })
+    await db
+      .from('device_users')
+      .insert({ device_id: DEVICE_ID, user_id: a!.id, role: 'owner' })
+
+    await db
+      .from('devices')
+      .update({ latitude: 49.8397, longitude: 24.0297 })
+      .eq('device_id', DEVICE_ID)
+
+    const mine = await fetchMyDevices(createUserClient(CLERK_A))
+    expect(mine[0]?.device).toMatchObject({
+      latitude: 49.8397,
+      longitude: 24.0297,
+    })
+
+    await db
+      .from('devices')
+      .update({ latitude: null, longitude: null })
+      .eq('device_id', DEVICE_ID)
+    const cleared = await fetchMyDevices(createUserClient(CLERK_A))
+    expect(cleared[0]?.device).toMatchObject({
+      latitude: null,
+      longitude: null,
+    })
+  })
 })

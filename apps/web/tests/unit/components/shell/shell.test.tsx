@@ -34,6 +34,8 @@ const device = (deviceId: string, label: string | null): MyDevice => ({
     createdAt: '2026-08-01T00:00:00Z',
     label,
     address: null,
+    latitude: null,
+    longitude: null,
   },
 })
 
