@@ -52,3 +52,46 @@ export const createUserClient = (
     accessToken: async () => token,
   })
 }
+
+/**
+ * A session whose ACTIVE organisation is `orgId` — the shape Clerk emits once
+ * an org is activated, and the only shape is_admin_request() accepts.
+ */
+export const signTestJwtWithOrg = (
+  clerkUserId: string,
+  orgId: string,
+): string => {
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const payload = b64url(
+    JSON.stringify({
+      sub: clerkUserId,
+      role: 'authenticated',
+      aud: 'authenticated',
+      iss: 'supabase-test',
+      org_id: orgId,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    }),
+  )
+  const sig = createHmac('sha256', JWT_SECRET)
+    .update(`${header}.${payload}`)
+    .digest('base64url')
+  return `${header}.${payload}.${sig}`
+}
+
+export const createAdminClient = (
+  clerkUserId: string,
+  orgId: string,
+): SupabaseClient<Database> => {
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.SUPABASE_PUBLISHABLE_KEY
+  if (!url || !key) {
+    throw new Error(
+      'Set SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (npx supabase status).',
+    )
+  }
+  const token = signTestJwtWithOrg(clerkUserId, orgId)
+  return createClient<Database>(url, key, { accessToken: async () => token })
+}
