@@ -76,3 +76,33 @@
     }
   }
 }
+
+/* Station map (Leaflet). The tiles are raster and light-only, so dark mode
+   filters the tile pane; markers keep their own colours. */
+.ws-pin {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.ws-pin-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--color-sky);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-sky) 30%, transparent);
+}
+.ws-pin-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink);
+  text-shadow:
+    0 1px 2px var(--color-paper),
+    0 -1px 2px var(--color-paper);
+}
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+}
+.leaflet-container {
+  background: var(--color-card);
+}
