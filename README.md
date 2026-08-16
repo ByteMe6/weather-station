@@ -56,6 +56,12 @@ token, so two one-time settings are required:
   token → `{"role": "authenticated"}` (or Integrations → Supabase). Without it
   every RLS query runs as `anon`.
 
+What the web app does today: live dashboard (Realtime), 24 h / 7 d / 30 d
+charts, CSV export, station registration + sharing with roles, station
+nickname/address, Telegram account linking, web-managed alerts, account
+deletion, privacy policy. Bot-side pieces (`/register`, `/current`, the alert
+dispatcher) are separate tickets.
+
 Design spec and plans: `docs/superpowers/specs/2026-08-15-web-dashboard-ui-design.md`,
 `docs/superpowers/plans/2026-08-15-web-plan-1-foundation-mvp.md`, `…-plan-2-….md`;
 mockups in `docs/superpowers/mockups/2026-08-15-ui-direction/`.

@@ -512,17 +512,19 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 
 ## Environment Variables
 
-| Variable                               | Scope         | Description                                         |
-| -------------------------------------- | ------------- | --------------------------------------------------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key                               |
-| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                                    |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                                    |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)                      |
-| `SUPABASE_URL`                         | Server        | Supabase API URL                                    |
-| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                 |
-| `BOT_TOKEN`                            | Edge function | Telegram bot token                                  |
-| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                       |
-| `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod) |
+| Variable                               | Scope         | Description                                                    |
+| -------------------------------------- | ------------- | -------------------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key                                          |
+| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                                               |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                                               |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)                                 |
+| `SUPABASE_URL`                         | Server        | Supabase API URL                                               |
+| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                            |
+| `BOT_TOKEN`                            | Edge function | Telegram bot token                                             |
+| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                                  |
+| `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)            |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username (no @) for the Telegram-linking deep link         |
+| `CLERK_WEBHOOK_SIGNING_SECRET`         | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`) |
 
 Clerk routing (`/sign-in`, `/sign-up`, fallback `/dashboard`) is set in code
 (`apps/web/src/proxy.ts` + `RootProviders`), not env vars. Two dashboard-side
