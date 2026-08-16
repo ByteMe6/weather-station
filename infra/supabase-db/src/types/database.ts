@@ -218,6 +218,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_org_id_configured: { Args: never; Returns: string }
       claim_device: {
         Args: { p_device_id: string; p_user_id: string }
         Returns: undefined
@@ -233,6 +234,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      is_admin_request: { Args: never; Returns: boolean }
       is_device_owner: { Args: { p_device_id: string }; Returns: boolean }
       readings_bucketed: {
         Args: {
@@ -258,6 +260,7 @@ export type Database = {
           total_precipitation: number
         }[]
       }
+      set_admin_org_id: { Args: { p_org_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
