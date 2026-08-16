@@ -26,6 +26,11 @@ const state = {
   status: 'live' as RealtimeStatus,
   now: new Date('2026-08-15T12:37:00Z'),
   error: null as unknown,
+  range: '24h' as HistoryRange,
+  setRange: jest.fn(),
+  chartPoints: [] as HistoryPoint[],
+  chartLoading: false,
+  chartError: false,
 }
 jest.mock('@/components/dashboard/useDashboardData', () => ({
   useDashboardData: () => state,
@@ -34,7 +39,7 @@ jest.mock('@/components/dashboard/useDashboardData', () => ({
 import { ConditionsStrip } from '@/components/dashboard/ConditionsStrip'
 import { DashboardView } from '@/components/dashboard/DashboardView'
 import { ParameterCard } from '@/components/dashboard/ParameterCard'
-import type { HistoryPoint } from '@/lib/chart'
+import type { HistoryPoint, HistoryRange } from '@/lib/chart'
 import { parameterMeta } from '@/lib/parameters'
 import type { RealtimeStatus } from '@/services/readings/readings.realtime'
 

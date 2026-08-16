@@ -4,7 +4,8 @@ import { useUser } from '@clerk/nextjs'
 import type { Reading } from '@ws/shared'
 import { useEffect, useMemo, useState } from 'react'
 
-import type { HistoryPoint } from '@/lib/chart'
+import { useRangeParam } from '@/components/charts/useRangeParam'
+import type { HistoryPoint, HistoryRange } from '@/lib/chart'
 import { toHistoryPoints } from '@/lib/chart'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
 import {
@@ -23,6 +24,12 @@ export interface DashboardData {
   status: RealtimeStatus
   now: Date
   error: unknown
+  /** Chart range from ?range= (strip/cards always use the 24h series). */
+  range: HistoryRange
+  setRange: (r: HistoryRange) => void
+  chartPoints: HistoryPoint[]
+  chartLoading: boolean
+  chartError: boolean
 }
 
 /** One hook per page: devices → first device → latest + 24h history + realtime. `now` ticks every 30 s for relative labels. */
@@ -32,6 +39,9 @@ export const useDashboardData = (): DashboardData => {
   const deviceId = devices.data?.[0]?.deviceId ?? null
   const latest = useLatestReadingQuery(deviceId ?? undefined)
   const history = useReadingsHistoryQuery(deviceId ?? undefined, '24h')
+  const [range, setRange] = useRangeParam()
+  // Same key as `history` when range is 24h → TanStack dedups the fetch.
+  const chartHistory = useReadingsHistoryQuery(deviceId ?? undefined, range)
   const { status } = useReadingsRealtime(deviceId ?? undefined)
 
   const [now, setNow] = useState(() => new Date())
@@ -42,6 +52,10 @@ export const useDashboardData = (): DashboardData => {
 
   const readings = useMemo(() => history.data ?? [], [history.data])
   const points = useMemo(() => toHistoryPoints(readings), [readings])
+  const chartPoints = useMemo(
+    () => toHistoryPoints(chartHistory.data ?? []),
+    [chartHistory.data],
+  )
 
   const isLoading =
     !isUserLoaded ||
@@ -57,5 +71,10 @@ export const useDashboardData = (): DashboardData => {
     status,
     now,
     error: devices.error ?? latest.error ?? history.error ?? null,
+    range,
+    setRange,
+    chartPoints,
+    chartLoading: chartHistory.isLoading,
+    chartError: chartHistory.isError,
   }
 }
