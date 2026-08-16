@@ -1,7 +1,9 @@
 'use client'
 
+import { Download } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactElement } from 'react'
+import { useCallback, useState } from 'react'
 
 import { ConditionsStrip } from './ConditionsStrip'
 import { DashboardSkeleton } from './DashboardSkeleton'
@@ -11,7 +13,9 @@ import { useDashboardData } from './useDashboardData'
 import { WaitingForReading } from './WaitingForReading'
 
 import { ChartSection } from '@/components/charts/ChartSection'
+import { ExportDialog } from '@/components/export/ExportDialog'
 import { fade } from '@/components/motion/variants'
+import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
@@ -29,6 +33,8 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
     chartLoading,
     chartError,
   } = useDashboardData()
+  const [exportOpen, setExportOpen] = useState(false)
+  const openExport = useCallback(() => setExportOpen(true), [])
 
   if (isLoading) return <DashboardSkeleton testId={`${testId}-skeleton`} />
   if (error) {
@@ -76,13 +82,31 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
           exit="exit"
           className="flex flex-col gap-6"
         >
-          <ConditionsStrip
-            testId={`${testId}-strip`}
-            latest={latest}
-            points={points}
-            status={status}
-            now={now}
-          />
+          <div className="relative">
+            <ConditionsStrip
+              testId={`${testId}-strip`}
+              latest={latest}
+              points={points}
+              status={status}
+              now={now}
+            />
+            <Button
+              testId={`${testId}-export`}
+              variant="ghost"
+              size="sm"
+              onClick={openExport}
+              className="absolute top-0 right-0"
+            >
+              <Download className="size-3.5" aria-hidden />
+              Export CSV
+            </Button>
+            <ExportDialog
+              testId={`${testId}-export-dialog`}
+              deviceId={deviceId}
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+            />
+          </div>
           <ParameterCardGrid
             testId={`${testId}-cards`}
             latest={latest}

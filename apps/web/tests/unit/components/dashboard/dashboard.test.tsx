@@ -34,6 +34,10 @@ const state = {
 jest.mock('@/components/dashboard/useDashboardData', () => ({
   useDashboardData: () => state,
 }))
+// The export dialog pulls in the server action (Clerk backend ESM) — not under test here.
+jest.mock('@/actions/readings.action', () => ({
+  exportReadingsChunkAction: jest.fn(),
+}))
 
 import { ConditionsStrip } from '@/components/dashboard/ConditionsStrip'
 import { DashboardView } from '@/components/dashboard/DashboardView'

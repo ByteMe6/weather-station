@@ -288,7 +288,7 @@ the error code on the client).
 | --- | --- | --- |
 | `ensureCurrentUserAction` | 19 | upsert `users` by `clerk_user_id`; returns internal `userId` |
 | `registerDeviceAction({deviceId})` | 22 | trims/uppercases id; RPC `claim_device(p_device_id, p_user_id)`; maps SQL errors `DEVICE_NOT_FOUND`, `DEVICE_ALREADY_CLAIMED` to codes; idempotent for same user |
-| `exportReadingsChunkAction({deviceId, from, to, cursor})` | 35 | ownership via `device_users`; returns up to 10 000 rows as CSV lines + `nextCursor` (keyset on `timestamp,id`); first call includes header |
+| `exportReadingsChunkAction({deviceId, from, to, cursor})` | 35 | ownership via `device_users`; returns up to 1 000 rows (PostgREST `max_rows`) as CSV lines + `nextCursor` (keyset on `timestamp,id`); first call includes header |
 | `shareDeviceAction`, `updateMemberRoleAction`, `removeMemberAction` | 38 | requester must be `owner`; target resolved from `users` by `clerk_user_id` **or** `telegram_id`; last owner cannot be removed/demoted |
 | `startTelegramLinkAction`, `unlinkTelegramAction` | 37 | see §4.7 |
 | `deleteAccountAction` | 40 | see §4.9 |
@@ -546,7 +546,7 @@ authenticated`; Google OAuth on; sign-in/up paths set.
   test guards the SSR path.
 - **Theme switching** — class-based tokens (`.dark` overrides), no
   `light-dark()` (see §1.1 amendment).
-- **Chunked export on slow links** — 10 000-row chunks × ~10 calls for a year;
+- **Chunked export on slow links** — 1 000-row chunks (PostgREST `max_rows`) × ~105 calls for a year;
   progress UI makes it tolerable; abortable via dialog close.
 - **Server-action error shape** — actions return unions, never throw; a
   shared `ActionResult<T>` type and `actionError()` helper keep this uniform.
