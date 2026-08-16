@@ -14,6 +14,13 @@ Every stored personal field, why it exists, how long it lives. Reviewed
 | `readings` | sensor values, `device_id`, `timestamp` | The product | 12 months raw, then daily aggregates (MRP-36) | Not personal data on its own; becomes unlinked when accounts are deleted |
 | Clerk (external) | email, name, avatar | Sign-in | Managed by Clerk; deleted with the account | Not copied into our DB |
 
+Who sees whose identifiers: `users` is readable only by its own row
+(`users can view own profile`). A station owner sees other members through
+the `device_members()` RPC, which returns the **last four characters** of
+`clerk_user_id` / `telegram_id` — enough to tell people apart, not enough to
+address them. The API never returns a member's full identifier to another
+user (proven in `supabase/tests/device_sharing.sql`).
+
 Conclusion: nothing stored is unjustified — no removal tickets. Follow-ups:
 purge stale `telegram_link_codes` nightly once pg_cron work (MRP-36) lands;
 replace the placeholder `privacy@example.com` with the real contact before

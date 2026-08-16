@@ -5,8 +5,10 @@ import { createUserClient } from '../../helpers/auth-client'
 
 import {
   fetchDeviceMembers,
+  fetchMemberRole,
   fetchMyDevices,
 } from '@/services/devices/devices.service'
+import { fetchCurrentUser } from '@/services/users/users.service'
 
 const url = process.env.SUPABASE_URL
 const key = process.env.SUPABASE_SECRET_KEY
@@ -91,20 +93,38 @@ describe('devices service (integration)', () => {
       { device_id: DEVICE_ID, user_id: b!.id, role: 'viewer' },
     ])
 
-    const asOwner = await fetchDeviceMembers(createUserClient(CLERK_A), {
+    const ownerClient = createUserClient(CLERK_A)
+    const asOwner = await fetchDeviceMembers(ownerClient, {
       deviceId: DEVICE_ID,
     })
     expect(asOwner.map((m) => m.role).sort()).toEqual(['owner', 'viewer'])
-    expect(asOwner.find((m) => m.role === 'viewer')?.user).toMatchObject({
-      clerkUserId: CLERK_B,
+    // Only 4-char tails leave the DB — never the full identifier.
+    expect(asOwner.find((m) => m.role === 'viewer')).toMatchObject({
+      userId: b!.id,
+      clerkTail: CLERK_B.slice(-4),
+      telegramTail: null,
     })
+    // Sharing must not widen `users`: the owner still resolves exactly their own row.
+    expect(await fetchCurrentUser(ownerClient)).toMatchObject({
+      clerkUserId: CLERK_A,
+    })
+    // Server-path membership check (service role) sees both roles.
+    expect(
+      await fetchMemberRole(db, { deviceId: DEVICE_ID, userId: b!.id }),
+    ).toBe('viewer')
+    expect(
+      await fetchMemberRole(db, { deviceId: DEVICE_ID, userId: a!.id }),
+    ).toBe('owner')
 
     const viewerClient = createUserClient(CLERK_B)
     const asViewer = await fetchDeviceMembers(viewerClient, {
       deviceId: DEVICE_ID,
     })
     expect(asViewer).toHaveLength(1)
-    expect(asViewer[0]).toMatchObject({ role: 'viewer' })
+    expect(asViewer[0]).toMatchObject({ role: 'viewer', userId: b!.id })
+    expect(await fetchCurrentUser(viewerClient)).toMatchObject({
+      clerkUserId: CLERK_B,
+    })
 
     const { error: writeErr } = await viewerClient
       .from('device_users')

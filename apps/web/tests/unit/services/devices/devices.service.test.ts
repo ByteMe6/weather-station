@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@ws/supabase-db'
 
+import { ServiceError } from '@/services/database/types'
 import {
   fetchDeviceMembers,
+  fetchMemberRole,
   fetchMyDevices,
 } from '@/services/devices/devices.service'
 
@@ -57,30 +59,80 @@ describe('fetchMyDevices', () => {
 })
 
 describe('fetchDeviceMembers', () => {
-  it('selects members with nested user identifiers', async () => {
-    interface MChain {
-      select: jest.Mock<MChain, [string]>
-      eq: jest.Mock<MChain, [string, string]>
-      order: jest.Mock<
-        Promise<{ data: unknown; error: unknown }>,
-        [string, { ascending: boolean }]
-      >
-    }
-    const chain: MChain = {
-      select: jest.fn<MChain, [string]>(() => chain),
-      eq: jest.fn<MChain, [string, string]>(() => chain),
-      order: jest.fn<
-        Promise<{ data: unknown; error: unknown }>,
-        [string, { ascending: boolean }]
-      >(async () => ({ data: [], error: null })),
-    }
+  it('calls the device_members RPC and maps rows to camelCase with nullable tails', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [
+        {
+          user_id: 'u-a',
+          role: 'owner',
+          added_at: '2026-08-01T00:00:00Z',
+          clerk_tail: '3f2a',
+          telegram_tail: null,
+        },
+      ],
+      error: null,
+    }))
+    const client = { rpc } as unknown as SupabaseClient<Database>
+    await expect(
+      fetchDeviceMembers(client, { deviceId: 'ws-1' }),
+    ).resolves.toEqual([
+      {
+        userId: 'u-a',
+        role: 'owner',
+        addedAt: '2026-08-01T00:00:00Z',
+        clerkTail: '3f2a',
+        telegramTail: null,
+      },
+    ])
+    expect(rpc).toHaveBeenCalledWith('device_members', { p_device_id: 'ws-1' })
+  })
+  it('throws ServiceError when the RPC fails', async () => {
     const client = {
-      from: jest.fn(() => chain),
+      rpc: jest.fn(async () => ({
+        data: null,
+        error: { message: 'x', code: '42501', details: null },
+      })),
     } as unknown as SupabaseClient<Database>
-    await fetchDeviceMembers(client, { deviceId: 'WS-1' })
-    expect(chain.select).toHaveBeenCalledWith(
-      'deviceId:device_id, userId:user_id, role, addedAt:added_at, user:users ( clerkUserId:clerk_user_id, telegramId:telegram_id )',
-    )
-    expect(chain.eq).toHaveBeenCalledWith('device_id', 'WS-1')
+    await expect(
+      fetchDeviceMembers(client, { deviceId: 'ws-1' }),
+    ).rejects.toBeInstanceOf(ServiceError)
+  })
+})
+
+describe('fetchMemberRole', () => {
+  const make = (result: { data: unknown; error: unknown }) => {
+    const eq2 = jest.fn(() => ({ maybeSingle: jest.fn(async () => result) }))
+    const eq1 = jest.fn(() => ({ eq: eq2 }))
+    const select = jest.fn(() => ({ eq: eq1 }))
+    return {
+      client: {
+        from: jest.fn(() => ({ select })),
+      } as unknown as SupabaseClient<Database>,
+      eq1,
+      eq2,
+    }
+  }
+  it('filters by device and user and returns the role', async () => {
+    const { client, eq1, eq2 } = make({ data: { role: 'owner' }, error: null })
+    await expect(
+      fetchMemberRole(client, { deviceId: 'ws-1', userId: 'u-a' }),
+    ).resolves.toBe('owner')
+    expect(eq1).toHaveBeenCalledWith('device_id', 'ws-1')
+    expect(eq2).toHaveBeenCalledWith('user_id', 'u-a')
+  })
+  it('returns null for a non-member and throws on a DB error', async () => {
+    await expect(
+      fetchMemberRole(make({ data: null, error: null }).client, {
+        deviceId: 'ws-1',
+        userId: 'u-a',
+      }),
+    ).resolves.toBeNull()
+    await expect(
+      fetchMemberRole(
+        make({ data: null, error: { message: 'x', code: '1', details: null } })
+          .client,
+        { deviceId: 'ws-1', userId: 'u-a' },
+      ),
+    ).rejects.toBeInstanceOf(ServiceError)
   })
 })

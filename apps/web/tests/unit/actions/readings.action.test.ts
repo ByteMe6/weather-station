@@ -57,6 +57,69 @@ describe('exportReadingsChunkAction', () => {
     ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
   })
 
+  it('rejects a cursor whose timestamp is not an ISO datetime (it reaches a PostgREST filter)', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('viewer')
+    await expect(
+      exportReadingsChunkAction({
+        deviceId: 'WS-1',
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+        cursor: { timestamp: '2026-08-01T00:00:00Z,id.gt.0', id: 1 },
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    await expect(
+      exportReadingsChunkAction({
+        deviceId: 'WS-1',
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+        cursor: { timestamp: '2026-08-01T00:00:00Z', id: -1 },
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+  })
+
+  it('accepts the +00:00 offset PostgREST returns and omits the header on later chunks', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('viewer')
+    rows.mockReturnValue({ data: [], error: null })
+    const res = await exportReadingsChunkAction({
+      deviceId: 'WS-1',
+      from: '2026-08-01T00:00:00Z',
+      to: '2026-08-02T00:00:00Z',
+      cursor: { timestamp: '2026-08-01T00:05:00+00:00', id: 42 },
+    })
+    expect(res).toEqual({
+      ok: true,
+      data: { lines: [], nextCursor: null, includesHeader: false },
+    })
+  })
+
+  it('maps a DB failure to UNKNOWN', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('viewer')
+    rows.mockReturnValue({
+      data: null,
+      error: { message: 'down', code: '08006', details: null },
+    })
+    await expect(
+      exportReadingsChunkAction({
+        deviceId: 'WS-1',
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+        cursor: null,
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'UNKNOWN' })
+  })
+
+  it('reports UNKNOWN (not FORBIDDEN) when the membership lookup itself fails', async () => {
+    helpers.resolveMemberRole.mockRejectedValue(new Error('db down'))
+    await expect(
+      exportReadingsChunkAction({
+        deviceId: 'WS-1',
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-02T00:00:00Z',
+        cursor: null,
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'UNKNOWN' })
+  })
+
   it('returns header + lines on the first chunk and a cursor when full', async () => {
     helpers.resolveMemberRole.mockResolvedValue('viewer')
     const data = Array.from({ length: 1_000 }, (_, i) => ({

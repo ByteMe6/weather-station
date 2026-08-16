@@ -6,7 +6,8 @@ const helpers = {
 jest.mock('@/actions/_helpers', () => helpers)
 
 const insert = jest.fn<Promise<{ error: unknown }>, [unknown]>()
-const maybeSingle = jest.fn<Promise<{ data: unknown }>, []>()
+const maybeSingle = jest.fn<Promise<{ data: unknown; error?: unknown }>, []>()
+const CODE = 'ABCDEFGHJKMNPQRSTVWX'
 const update = jest.fn<unknown, [unknown]>()
 jest.mock('@ws/supabase-db', () => ({
   createServiceRoleClient: () => ({
@@ -53,6 +54,9 @@ describe('telegram actions', () => {
 
   it.each([
     [{ consumed_at: 't', expires_at: 'x', failed_reason: null }, 'linked'],
+    // the bot claims (consumed_at) before writing users.telegram_id, so a
+    // failed attempt has both set — failure wins
+    [{ consumed_at: 't', expires_at: 'x', failed_reason: 'taken' }, 'failed'],
     [
       {
         consumed_at: null,
@@ -80,11 +84,23 @@ describe('telegram actions', () => {
   ])('status maps %j → %s', async (row, state) => {
     maybeSingle.mockResolvedValue({ data: row })
     await expect(
-      getTelegramLinkStatusAction({ code: 'ABC' }),
+      getTelegramLinkStatusAction({ code: CODE }),
     ).resolves.toMatchObject({
       ok: true,
       data: { state },
     })
+  })
+
+  it('status rejects malformed codes without a query and unknown users as UNAUTHORIZED', async () => {
+    await expect(
+      getTelegramLinkStatusAction({ code: 'abc' }),
+    ).resolves.toMatchObject({ ok: false, code: 'NOT_FOUND' })
+    expect(maybeSingle).not.toHaveBeenCalled()
+    helpers.resolveCurrentUserId.mockResolvedValue(null)
+    await expect(
+      getTelegramLinkStatusAction({ code: CODE }),
+    ).resolves.toMatchObject({ ok: false, code: 'UNAUTHORIZED' })
+    expect(maybeSingle).not.toHaveBeenCalled()
   })
 
   it('unlink nulls telegram_id for the current user only', async () => {

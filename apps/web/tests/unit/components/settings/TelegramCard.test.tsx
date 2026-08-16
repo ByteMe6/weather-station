@@ -13,6 +13,9 @@ const me = {
   },
   isLoading: false,
 }
+jest.mock('@clerk/nextjs', () => ({
+  useUser: () => ({ isLoaded: true, isSignedIn: true }),
+}))
 jest.mock('@/services/users/users.queries', () => ({
   useCurrentUserQuery: () => me,
   userKeys: { all: ['users'], current: ['users', 'current'] },

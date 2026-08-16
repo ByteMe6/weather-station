@@ -5,8 +5,9 @@ jest.mock('@clerk/nextjs/server', () => ({
   clerkClient: async () => ({ users: { deleteUser } }),
 }))
 const erase = jest.fn<Promise<unknown>, [unknown, string]>()
-jest.mock('@/lib/account/erase-user', () => ({
-  eraseUserByClerkId: (c: unknown, id: string) => erase(c, id),
+jest.mock('@/services/users/users.service', () => ({
+  deleteUserByClerkId: (c: unknown, p: { clerkUserId: string }) =>
+    erase(c, p.clerkUserId),
 }))
 jest.mock('@ws/supabase-db', () => ({ createServiceRoleClient: () => ({}) }))
 

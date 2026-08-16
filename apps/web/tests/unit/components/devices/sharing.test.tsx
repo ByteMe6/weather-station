@@ -18,26 +18,28 @@ jest.mock('@/actions/devices.action', () => ({
 
 const members: DeviceMember[] = [
   {
-    deviceId: 'ws-1',
     userId: 'u-a',
     role: 'owner',
     addedAt: '2026-08-01T00:00:00Z',
-    user: { clerkUserId: 'user_2abcDEF13f2a', telegramId: null },
+    clerkTail: '3f2a',
+    telegramTail: null,
   },
   {
-    deviceId: 'ws-1',
     userId: 'u-b',
     role: 'viewer',
     addedAt: '2026-08-02T00:00:00Z',
-    user: { clerkUserId: null, telegramId: 987654821 },
+    clerkTail: null,
+    telegramTail: '4821',
   },
 ]
 
 describe('sharing', () => {
-  it('maskIdentifier hides most of the identifier', () => {
-    expect(maskIdentifier(members[0]!.user)).toBe('user_…3f2a')
-    expect(maskIdentifier(members[1]!.user)).toBe('tg · …4821')
-    expect(maskIdentifier(null)).toBe('unknown')
+  it('maskIdentifier formats the 4-char tails the RPC returns', () => {
+    expect(maskIdentifier(members[0]!)).toBe('user_…3f2a')
+    expect(maskIdentifier(members[1]!)).toBe('tg · …4821')
+    expect(maskIdentifier({ clerkTail: null, telegramTail: null })).toBe(
+      'unknown',
+    )
   })
 
   it('owners get role selects and remove buttons; viewers get read-only rows', () => {

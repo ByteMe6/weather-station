@@ -59,7 +59,7 @@ const MemberRow = ({
       transition={springs.default}
       className="border-line flex items-center gap-3 border-b py-3 last:border-b-0"
     >
-      <span className="font-mono text-sm">{maskIdentifier(member.user)}</span>
+      <span className="font-mono text-sm">{maskIdentifier(member)}</span>
       {isSelf ? <Badge testId={`${testId}-you`}>you</Badge> : null}
       <span className="flex-1" />
       {canManage ? (
@@ -137,6 +137,7 @@ export const MembersList = ({
   const closeRemove = useCallback((open: boolean) => {
     if (!open) setPendingRemove(null)
   }, [])
+  const cancelRemove = useCallback(() => setPendingRemove(null), [])
   const confirmRemove = useCallback(async () => {
     if (!pendingRemove) return
     const res = await removeMemberAction({
@@ -180,7 +181,7 @@ export const MembersList = ({
         title="Remove access?"
         description={
           pendingRemove
-            ? `${maskIdentifier(pendingRemove.user)} will no longer see this station.`
+            ? `${maskIdentifier(pendingRemove)} will no longer see this station.`
             : undefined
         }
       >
@@ -188,7 +189,7 @@ export const MembersList = ({
           <Button
             testId={`${testId}-remove-cancel`}
             variant="ghost"
-            onClick={() => closeRemove(false)}
+            onClick={cancelRemove}
           >
             Cancel
           </Button>

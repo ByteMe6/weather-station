@@ -1,8 +1,13 @@
 import type { DeviceMember } from '@/services/devices/devices.service'
 
-/** Never show a full Clerk/Telegram id in the UI — just enough to recognise a person. */
-export const maskIdentifier = (user: DeviceMember['user']): string => {
-  if (user?.clerkUserId) return `user_…${user.clerkUserId.slice(-4)}`
-  if (user?.telegramId) return `tg · …${String(user.telegramId).slice(-4)}`
+/**
+ * A recognisable handle for a member. The `device_members` RPC already
+ * minimises what leaves the DB (4-char tails only), so this only formats.
+ */
+export const maskIdentifier = (
+  member: Pick<DeviceMember, 'clerkTail' | 'telegramTail'>,
+): string => {
+  if (member.clerkTail) return `user_…${member.clerkTail}`
+  if (member.telegramTail) return `tg · …${member.telegramTail}`
   return 'unknown'
 }

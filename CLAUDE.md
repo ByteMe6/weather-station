@@ -235,6 +235,8 @@ data.map((r) => ({ createdAt: r.created_at }))
 - Filter/sort columns (`.eq()`, `.order()`) stay snake_case
 - Insert/update payloads use snake_case column names
 - Nested selects support aliasing: `device_users ( userId:user_id, role )`
+- `rpc()` rows cannot be aliased — map them in the service with a comment
+  saying so (`fetchReadingsBucketed`, `fetchDeviceMembers` are the two cases)
 
 ### Query Best Practices
 

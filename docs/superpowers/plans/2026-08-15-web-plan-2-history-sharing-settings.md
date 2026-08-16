@@ -1888,3 +1888,31 @@ PR to `dev`: "Web — history ranges, CSV export, sharing, Telegram link, alerts
 - **Hidden-tab caveat for browser checks**: TanStack pauses `refetchInterval`
   and Motion pauses animations when the extension tab is hidden — inspect DOM
   state via JS rather than screenshots for those.
+
+### Review round (rls-reviewer + data-path-reviewer, 2026-08-16)
+
+- **Members via RPC, not widened policies.** The first sharing migration
+  extended SELECT on `users`/`device_users` for owners; that made the
+  dashboard's unfiltered `users … maybeSingle()` return >1 rows for any owner
+  who had shared (PGRST116 → Telegram card / alerts broke), ran
+  `is_device_owner()` per row (SubPlan, not InitPlan), and let owners read
+  members' full identifiers. `20260816053000_device_members_rpc.sql` drops both
+  policies and adds `device_members(p_device_id)` (SECURITY DEFINER; owners get
+  all rows, members their own, others none; identifiers as 4-char tails).
+  `fetchDeviceMembers` maps its rows; `maskIdentifier` only formats.
+- **Bot link claim is atomic**: conditional `update … where consumed_at is null
+  and expires_at > now()` first, then the `users` write; the web status action
+  reads `failed_reason` before `consumed_at`.
+- **Actions validate every input with zod** (share/role/remove/profile,
+  export cursor as ISO datetime + non-negative id, link code as 20 Crockford
+  chars, delete-account confirmation), return `UNAUTHORIZED` early when the
+  users row is missing, and map thrown `ServiceError`s to `UNKNOWN` instead of
+  reporting them as `FORBIDDEN`.
+- **DB access lives in services**: `fetchUserIdByClerkId`, `fetchMemberRole`,
+  `deleteUserByClerkId` (was `lib/account/erase-user`), `fetchReadingsPage`
+  (was inline in the export action); `actions/_helpers.ts` is now thin.
+- Shared `AlertSchedule` gained `timezone` and replaces the local `Schedule`;
+  `MyDevice.device.status` is `DeviceStatus`; Telegram polling has a query-key
+  factory (`services/telegram/telegram.queries.ts`); the Clerk webhook route
+  imports `server-only`; pgTAP gained the second-device / anon / check-constraint
+  cases the review asked for.

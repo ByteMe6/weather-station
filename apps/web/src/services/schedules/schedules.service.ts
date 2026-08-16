@@ -1,23 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { AlertSchedule } from '@ws/shared'
 import type { Database } from '@ws/supabase-db'
 
 import { ServiceError } from '../database/types'
 
 import { normaliseTime } from '@/lib/schedule'
 
-export interface Schedule {
-  id: number
-  userId: string
-  /** 'HH:MM' in `timezone` */
-  time: string
-  timezone: string
-  /** ISO weekday numbers, 1 = Monday … 7 = Sunday */
-  days: number[]
-  createdAt: string
-}
-
 const COLUMNS = 'id, userId:user_id, time, timezone, days, createdAt:created_at'
-const tidy = (row: Schedule): Schedule => ({
+// Postgres returns `time` as 'HH:MM:SS'; PostgREST cannot reformat a column in
+// the select, so this is the one post-map in the schedules service.
+const tidy = (row: AlertSchedule): AlertSchedule => ({
   ...row,
   time: normaliseTime(row.time),
 })
@@ -25,7 +17,7 @@ const tidy = (row: Schedule): Schedule => ({
 /** Own alert slots (RLS: users can view own schedules), earliest first. */
 export const fetchSchedules = async (
   supabase: SupabaseClient<Database>,
-): Promise<Schedule[]> => {
+): Promise<AlertSchedule[]> => {
   const { data, error } = await supabase
     .from('schedules')
     .select(COLUMNS)
@@ -43,7 +35,7 @@ export const fetchSchedules = async (
 export const createSchedule = async (
   supabase: SupabaseClient<Database>,
   input: { userId: string; time: string; timezone: string; days: number[] },
-): Promise<Schedule> => {
+): Promise<AlertSchedule> => {
   const { data, error } = await supabase
     .from('schedules')
     .insert({
@@ -67,7 +59,7 @@ export const createSchedule = async (
 export const updateSchedule = async (
   supabase: SupabaseClient<Database>,
   input: { id: number; time: string; timezone: string; days: number[] },
-): Promise<Schedule> => {
+): Promise<AlertSchedule> => {
   const { data, error } = await supabase
     .from('schedules')
     .update({

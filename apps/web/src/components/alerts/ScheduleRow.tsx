@@ -1,5 +1,6 @@
 'use client'
 
+import type { AlertSchedule } from '@ws/shared'
 import { motion } from 'motion/react'
 import type { ReactElement } from 'react'
 import { useCallback } from 'react'
@@ -8,7 +9,6 @@ import { DayPills } from './DayPills'
 
 import { springs } from '@/components/motion/variants'
 import { Button } from '@/components/ui/Button'
-import type { Schedule } from '@/services/schedules/schedules.service'
 
 export const ScheduleRow = ({
   schedule,
@@ -16,9 +16,9 @@ export const ScheduleRow = ({
   onDelete,
   testId,
 }: {
-  schedule: Schedule
-  onEdit: (s: Schedule) => void
-  onDelete: (s: Schedule) => void
+  schedule: AlertSchedule
+  onEdit: (s: AlertSchedule) => void
+  onDelete: (s: AlertSchedule) => void
   testId: string
 }): ReactElement => {
   const edit = useCallback(() => onEdit(schedule), [schedule, onEdit])

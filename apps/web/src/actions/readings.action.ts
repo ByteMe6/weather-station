@@ -3,7 +3,6 @@
 import 'server-only'
 
 import { auth } from '@clerk/nextjs/server'
-import type { Reading } from '@ws/shared'
 import { createServiceRoleClient } from '@ws/supabase-db'
 import { z } from 'zod'
 
@@ -12,11 +11,10 @@ import { resolveCurrentUserId, resolveMemberRole } from './_helpers'
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
 import { CSV_HEADER, readingToCsvLine } from '@/lib/csv'
+import type { ReadingsCursor } from '@/services/readings/readings.service'
+import { fetchReadingsPage } from '@/services/readings/readings.service'
 
-export interface ExportCursor {
-  timestamp: string
-  id: number
-}
+export type ExportCursor = ReadingsCursor
 // Must not exceed PostgREST's max_rows (1000 by default) or chunks are silently truncated.
 const CHUNK = 1_000
 const MAX_DAYS = 366
@@ -26,8 +24,14 @@ const inputSchema = z
     deviceId: z.string().min(1),
     from: z.string().datetime(),
     to: z.string().datetime(),
+    // The cursor is interpolated into a PostgREST filter expression, so it is
+    // pinned to an ISO datetime (PostgREST returns '+00:00' offsets) and a
+    // non-negative integer — nothing else can reach the query DSL.
     cursor: z
-      .object({ timestamp: z.string(), id: z.number().int() })
+      .object({
+        timestamp: z.string().datetime({ offset: true }),
+        id: z.number().int().nonnegative(),
+      })
       .nullable(),
   })
   .refine(
@@ -67,42 +71,32 @@ export const exportReadingsChunkAction = async (input: {
   const { deviceId, from, to, cursor } = parsed.data
 
   const service = createServiceRoleClient()
-  const userId = await resolveCurrentUserId(service, clerkUserId)
-  const role = userId
-    ? await resolveMemberRole(service, userId, deviceId)
-    : null
-  if (!role)
-    return actionError('FORBIDDEN', "You don't have access to this station")
+  try {
+    const userId = await resolveCurrentUserId(service, clerkUserId)
+    const role = userId
+      ? await resolveMemberRole(service, userId, deviceId)
+      : null
+    if (!role)
+      return actionError('FORBIDDEN', "You don't have access to this station")
 
-  let query = service
-    .from('readings')
-    .select(
-      'id, deviceId:device_id, timestamp, temperature, humidity, pressure, windSpeed:wind_speed, windDirection:wind_direction, precipitation',
-    )
-    .eq('device_id', deviceId)
-    .gte('timestamp', from)
-    .lte('timestamp', to)
-    .order('timestamp', { ascending: true })
-    .order('id', { ascending: true })
-    .limit(CHUNK)
-  if (cursor) {
-    query = query.or(
-      `timestamp.gt.${cursor.timestamp},and(timestamp.eq.${cursor.timestamp},id.gt.${cursor.id})`,
-    )
-  }
-  const { data, error } = await query
-  if (error) {
-    console.error('exportReadingsChunkAction failed', error)
+    const rows = await fetchReadingsPage(service, {
+      deviceId,
+      from,
+      to,
+      cursor,
+      limit: CHUNK,
+    })
+    const lines = rows.map(readingToCsvLine)
+    const includesHeader = cursor === null
+    if (includesHeader) lines.unshift(CSV_HEADER)
+    const last = rows[rows.length - 1]
+    const nextCursor =
+      rows.length >= CHUNK && last
+        ? { timestamp: last.timestamp, id: last.id }
+        : null
+    return actionOk({ lines, nextCursor, includesHeader })
+  } catch (err) {
+    console.error('exportReadingsChunkAction failed', err)
     return actionError('UNKNOWN', 'Export failed. Try again.')
   }
-  const rows = (data ?? []) as Reading[]
-  const lines = rows.map(readingToCsvLine)
-  const includesHeader = cursor === null
-  if (includesHeader) lines.unshift(CSV_HEADER)
-  const last = rows[rows.length - 1]
-  const nextCursor =
-    rows.length >= CHUNK && last
-      ? { timestamp: last.timestamp, id: last.id }
-      : null
-  return actionOk({ lines, nextCursor, includesHeader })
 }

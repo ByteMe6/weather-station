@@ -8,6 +8,7 @@ import {
   fetchLatestReading,
   fetchReadingsBucketed,
   fetchReadingsHistory,
+  fetchReadingsPage,
   fetchReadingsRange,
   insertReading,
 } from '@/services/readings/readings.service'
@@ -193,6 +194,27 @@ describe('readings service (integration)', () => {
         range: '7d',
       }),
     ).toEqual([])
+
+    // Keyset paging (CSV export): two pages of 2, the cursor from page 1
+    // continues exactly where it stopped, and PostgREST's +00:00 offset round-trips.
+    const window = {
+      deviceId: DEVICE_ID,
+      from: '2026-07-21T09:00:00.000Z',
+      to: '2026-07-21T13:00:00.000Z',
+    }
+    const page1 = await fetchReadingsPage(db, {
+      ...window,
+      cursor: null,
+      limit: 2,
+    })
+    expect(page1.map((r) => r.temperature)).toEqual([20, 21])
+    const last = page1[page1.length - 1]!
+    const page2 = await fetchReadingsPage(db, {
+      ...window,
+      cursor: { timestamp: last.timestamp, id: last.id },
+      limit: 2,
+    })
+    expect(page2.map((r) => r.temperature)).toEqual([22])
 
     const asOther = createUserClient(CLERK_OTHER)
     expect(

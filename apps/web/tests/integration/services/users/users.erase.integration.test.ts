@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@ws/supabase-db'
 
-import { eraseUserByClerkId } from '@/lib/account/erase-user'
+import { deleteUserByClerkId } from '@/services/users/users.service'
 
 const url = process.env.SUPABASE_URL
 const key = process.env.SUPABASE_SECRET_KEY
@@ -21,7 +21,7 @@ afterEach(async () => {
   await db.from('users').delete().eq('clerk_user_id', CLERK_A)
 })
 
-describe('eraseUserByClerkId (integration)', () => {
+describe('deleteUserByClerkId (integration)', () => {
   it('removes every row referencing the user, frees the device, keeps readings', async () => {
     const { data: a } = await db
       .from('users')
@@ -52,7 +52,9 @@ describe('eraseUserByClerkId (integration)', () => {
       pressure: 1000,
     })
 
-    expect(await eraseUserByClerkId(db, CLERK_A)).toEqual({ deletedUsers: 1 })
+    expect(await deleteUserByClerkId(db, { clerkUserId: CLERK_A })).toEqual({
+      deletedUsers: 1,
+    })
 
     expect((await db.from('users').select('id').eq('id', a!.id)).data).toEqual(
       [],

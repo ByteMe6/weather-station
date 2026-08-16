@@ -217,6 +217,16 @@ export type Database = {
         Returns: undefined
       }
       current_app_user_id: { Args: never; Returns: string }
+      device_members: {
+        Args: { p_device_id: string }
+        Returns: {
+          added_at: string
+          clerk_tail: string
+          role: string
+          telegram_tail: string
+          user_id: string
+        }[]
+      }
       is_device_owner: { Args: { p_device_id: string }; Returns: boolean }
       readings_bucketed: {
         Args: {

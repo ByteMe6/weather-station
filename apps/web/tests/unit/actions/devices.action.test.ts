@@ -16,8 +16,10 @@ jest.mock('@ws/supabase-db', () => ({
 
 import {
   registerDeviceAction,
+  removeMemberAction,
   shareDeviceAction,
   updateDeviceProfileAction,
+  updateMemberRoleAction,
 } from '@/actions/devices.action'
 import { normalizeDeviceId } from '@/lib/device-id'
 import { parseShareIdentifier } from '@/lib/share-identifier'
@@ -92,6 +94,56 @@ describe('shareDeviceAction', () => {
         role: 'viewer',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+  })
+  it('validates the role and identifier before touching the DB', async () => {
+    await expect(
+      shareDeviceAction({
+        deviceId: 'WS-1',
+        identifier: 'user_2abcDEF12345',
+        role: 'admin' as never,
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    await expect(
+      shareDeviceAction({ deviceId: '', identifier: 'nope', role: 'viewer' }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    expect(helpers.resolveCurrentUserId).not.toHaveBeenCalled()
+  })
+  it('reports UNKNOWN when the ownership lookup fails (not FORBIDDEN)', async () => {
+    helpers.resolveCurrentUserId.mockRejectedValue(new Error('db down'))
+    await expect(
+      shareDeviceAction({
+        deviceId: 'WS-1',
+        identifier: 'user_2abcDEF12345',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'UNKNOWN' })
+  })
+})
+
+describe('member actions input validation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    auth.mockResolvedValue({ userId: 'user_1' })
+  })
+  it('rejects a non-uuid userId and an unknown role without hitting the DB', async () => {
+    await expect(
+      updateMemberRoleAction({
+        deviceId: 'ws-1',
+        userId: 'not-a-uuid',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    await expect(
+      updateMemberRoleAction({
+        deviceId: 'ws-1',
+        userId: '00000000-0000-0000-0000-00000000000b',
+        role: 'root' as never,
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    await expect(
+      removeMemberAction({ deviceId: 'ws-1', userId: 'nope' }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    expect(helpers.resolveCurrentUserId).not.toHaveBeenCalled()
   })
 })
 

@@ -189,3 +189,51 @@ export const fetchReadingsHistory = async (
     }),
   )
 }
+
+export interface ReadingsCursor {
+  timestamp: string
+  id: number
+}
+
+/**
+ * One keyset page of raw readings for export (MRP-35): rows after `cursor` in
+ * (timestamp, id) order, capped at `limit`. Callers keep `limit` at or below
+ * PostgREST's max_rows (1000) or pages are silently truncated. The cursor's
+ * timestamp is interpolated into a PostgREST filter, so callers validate it
+ * as an ISO datetime first (the export action does via zod).
+ */
+export const fetchReadingsPage = async (
+  supabase: SupabaseClient<Database>,
+  params: {
+    deviceId: string
+    from: string
+    to: string
+    cursor: ReadingsCursor | null
+    limit: number
+  },
+): Promise<Reading[]> => {
+  let query = supabase
+    .from('readings')
+    .select(READING_COLUMNS)
+    .eq('device_id', params.deviceId)
+    .gte('timestamp', params.from)
+    .lte('timestamp', params.to)
+    .order('timestamp', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(params.limit)
+  if (params.cursor) {
+    const { timestamp, id } = params.cursor
+    query = query.or(
+      `timestamp.gt.${timestamp},and(timestamp.eq.${timestamp},id.gt.${id})`,
+    )
+  }
+  const { data, error } = await query
+  if (error) {
+    throw new ServiceError(
+      `Failed to fetch readings page: ${error.message}`,
+      error.code,
+      error.details,
+    )
+  }
+  return (data ?? []) as Reading[]
+}

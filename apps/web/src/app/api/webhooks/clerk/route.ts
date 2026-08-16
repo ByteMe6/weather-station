@@ -1,9 +1,11 @@
+import 'server-only'
+
 import { verifyWebhook } from '@clerk/nextjs/webhooks'
 import { createServiceRoleClient } from '@ws/supabase-db'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 
-import { eraseUserByClerkId } from '@/lib/account/erase-user'
+import { deleteUserByClerkId } from '@/services/users/users.service'
 
 /**
  * Clerk → us: a user deleted from the Clerk dashboard must not leave orphaned
@@ -19,7 +21,9 @@ export const POST = async (req: NextRequest): Promise<NextResponse> => {
   }
   if (evt.type === 'user.deleted' && evt.data.id) {
     try {
-      await eraseUserByClerkId(createServiceRoleClient(), evt.data.id)
+      await deleteUserByClerkId(createServiceRoleClient(), {
+        clerkUserId: evt.data.id,
+      })
     } catch (err) {
       console.error('clerk webhook: erase failed', err)
       return NextResponse.json({ error: 'erase failed' }, { status: 500 })

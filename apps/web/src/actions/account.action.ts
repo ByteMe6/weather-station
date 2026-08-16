@@ -4,10 +4,13 @@ import 'server-only'
 
 import { auth, clerkClient } from '@clerk/nextjs/server'
 import { createServiceRoleClient } from '@ws/supabase-db'
+import { z } from 'zod'
 
-import { eraseUserByClerkId } from '@/lib/account/erase-user'
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
+import { deleteUserByClerkId } from '@/services/users/users.service'
+
+const inputSchema = z.object({ confirmation: z.string() })
 
 /** Deletes the caller's data, then their Clerk account. The client signs out afterwards. */
 export const deleteAccountAction = async (input: {
@@ -15,14 +18,18 @@ export const deleteAccountAction = async (input: {
 }): Promise<ActionResult<null>> => {
   const { userId: clerkUserId } = await auth()
   if (!clerkUserId) return actionError('UNAUTHORIZED', 'Sign in to continue')
-  if (input.confirmation.trim().toLowerCase() !== 'delete') {
+  const parsed = inputSchema.safeParse(input)
+  if (
+    !parsed.success ||
+    parsed.data.confirmation.trim().toLowerCase() !== 'delete'
+  ) {
     return actionError('INVALID_INPUT', 'Type "delete" to confirm', {
       confirmation: 'Type "delete" to confirm',
     })
   }
 
   try {
-    await eraseUserByClerkId(createServiceRoleClient(), clerkUserId)
+    await deleteUserByClerkId(createServiceRoleClient(), { clerkUserId })
   } catch (err) {
     console.error('deleteAccountAction: erase failed', err)
     return actionError(

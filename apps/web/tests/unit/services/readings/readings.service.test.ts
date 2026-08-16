@@ -3,6 +3,7 @@ import type { Database } from '@ws/supabase-db'
 
 import {
   fetchReadingsHistory,
+  fetchReadingsPage,
   fetchReadingsRange,
 } from '@/services/readings/readings.service'
 
@@ -121,5 +122,64 @@ describe('fetchReadingsHistory', () => {
       temperatureMin: 10,
       temperatureMax: 12,
     })
+  })
+})
+
+describe('fetchReadingsPage', () => {
+  interface PageChain {
+    select: jest.Mock<PageChain, [string]>
+    eq: jest.Mock<PageChain, [string, string]>
+    gte: jest.Mock<PageChain, [string, string]>
+    lte: jest.Mock<PageChain, [string, string]>
+    order: jest.Mock<PageChain, [string, { ascending: boolean }]>
+    limit: jest.Mock<PageChain, [number]>
+    or: jest.Mock<PageChain, [string]>
+    then: (res: (v: Result) => void) => void
+  }
+  const make = (result: Result) => {
+    const chain: PageChain = {
+      select: jest.fn<PageChain, [string]>(() => chain),
+      eq: jest.fn<PageChain, [string, string]>(() => chain),
+      gte: jest.fn<PageChain, [string, string]>(() => chain),
+      lte: jest.fn<PageChain, [string, string]>(() => chain),
+      order: jest.fn<PageChain, [string, { ascending: boolean }]>(() => chain),
+      limit: jest.fn<PageChain, [number]>(() => chain),
+      or: jest.fn<PageChain, [string]>(() => chain),
+      then: (res) => res(result),
+    }
+    return {
+      client: {
+        from: jest.fn(() => chain),
+      } as unknown as SupabaseClient<Database>,
+      chain,
+    }
+  }
+  it('orders by (timestamp, id), caps at limit, and only adds the keyset filter with a cursor', async () => {
+    const { client, chain } = make({ data: [], error: null })
+    await fetchReadingsPage(client, {
+      deviceId: 'WS-1',
+      from: 'a',
+      to: 'b',
+      cursor: null,
+      limit: 1000,
+    })
+    expect(chain.eq).toHaveBeenCalledWith('device_id', 'WS-1')
+    expect(chain.order).toHaveBeenNthCalledWith(1, 'timestamp', {
+      ascending: true,
+    })
+    expect(chain.order).toHaveBeenNthCalledWith(2, 'id', { ascending: true })
+    expect(chain.limit).toHaveBeenCalledWith(1000)
+    expect(chain.or).not.toHaveBeenCalled()
+
+    await fetchReadingsPage(client, {
+      deviceId: 'WS-1',
+      from: 'a',
+      to: 'b',
+      cursor: { timestamp: '2026-08-01T00:05:00+00:00', id: 7 },
+      limit: 1000,
+    })
+    expect(chain.or).toHaveBeenCalledWith(
+      'timestamp.gt.2026-08-01T00:05:00+00:00,and(timestamp.eq.2026-08-01T00:05:00+00:00,id.gt.7)',
+    )
   })
 })

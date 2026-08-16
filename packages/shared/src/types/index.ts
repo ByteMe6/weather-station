@@ -61,8 +61,10 @@ export interface Reading extends SensorValues {
 export interface AlertSchedule {
   id: number
   userId: string
-  /** HH:MM in the user's timezone */
+  /** HH:MM in `timezone` */
   time: string
+  /** IANA zone the time is expressed in, e.g. 'Europe/Kyiv' */
+  timezone: string
   /** ISO weekday numbers, 1 = Monday … 7 = Sunday */
   days: number[]
   createdAt: string

@@ -1,13 +1,13 @@
 'use client'
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useUser } from '@clerk/nextjs'
+import { useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { toDataURL } from 'qrcode'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
-  getTelegramLinkStatusAction,
   startTelegramLinkAction,
   unlinkTelegramAction,
 } from '@/actions/telegram.action'
@@ -17,6 +17,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Dialog } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/Toast'
+import { useTelegramLinkStatusQuery } from '@/services/telegram/telegram.queries'
 import { useCurrentUserQuery, userKeys } from '@/services/users/users.queries'
 
 interface PendingLink {
@@ -47,6 +48,7 @@ const useCountdown = (expiresAt: string | null): string => {
 export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { isLoaded } = useUser()
   const me = useCurrentUserQuery()
   const [pending, setPending] = useState<PendingLink | null>(null)
   const [qr, setQr] = useState<string | null>(null)
@@ -54,17 +56,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const [unlinkOpen, setUnlinkOpen] = useState(false)
   const countdown = useCountdown(pending?.expiresAt ?? null)
 
-  const status = useQuery({
-    queryKey: ['telegram-link', pending?.code ?? null],
-    queryFn: () => getTelegramLinkStatusAction({ code: pending!.code }),
-    enabled: pending !== null,
-    // Keep polling while the user is over in the Telegram app / another window.
-    refetchIntervalInBackground: true,
-    refetchInterval: (q) => {
-      const d = q.state.data
-      return d && d.ok && d.data.state === 'pending' ? 3000 : false
-    },
-  })
+  const status = useTelegramLinkStatusQuery(pending?.code ?? null)
   const state = status.data?.ok ? status.data.data.state : null
   const failReason = status.data?.ok ? status.data.data.reason : undefined
 
@@ -145,7 +137,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
         ) : null}
       </CardHeader>
       <CardBody testId={`${testId}-body`}>
-        {me.isLoading ? (
+        {!isLoaded || me.isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-10 w-64" />
         ) : linkedId !== null ? (
           <div

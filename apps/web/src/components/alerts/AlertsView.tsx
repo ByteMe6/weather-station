@@ -1,10 +1,11 @@
 'use client'
 
 import { useUser } from '@clerk/nextjs'
+import type { AlertSchedule } from '@ws/shared'
 import { AnimatePresence } from 'motion/react'
 import Link from 'next/link'
 import type { ReactElement } from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import type { ScheduleDraft } from './ScheduleDialog'
 import { ScheduleDialog } from './ScheduleDialog'
@@ -23,7 +24,6 @@ import {
   useSchedulesQuery,
   useUpdateScheduleMutation,
 } from '@/services/schedules/schedules.queries'
-import type { Schedule } from '@/services/schedules/schedules.service'
 import { useCurrentUserQuery } from '@/services/users/users.queries'
 
 const WEEKDAYS_DEFAULT = [1, 2, 3, 4, 5]
@@ -37,8 +37,8 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
   const remove = useDeleteScheduleMutation()
   const { toast } = useToast()
   const [adding, setAdding] = useState(false)
-  const [editing, setEditing] = useState<Schedule | null>(null)
-  const [deleting, setDeleting] = useState<Schedule | null>(null)
+  const [editing, setEditing] = useState<AlertSchedule | null>(null)
+  const [deleting, setDeleting] = useState<AlertSchedule | null>(null)
 
   const openAdd = useCallback(() => setAdding(true), [])
   const closeAdd = useCallback((o: boolean) => setAdding(o), [])
@@ -49,6 +49,22 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
     if (!o) setDeleting(null)
   }, [])
   const cancelDelete = useCallback(() => setDeleting(null), [])
+
+  const addInitial = useMemo<ScheduleDraft>(
+    () => ({
+      time: '07:30',
+      timezone: localTimeZone(),
+      days: WEEKDAYS_DEFAULT,
+    }),
+    [],
+  )
+  const editInitial = useMemo<ScheduleDraft | null>(
+    () =>
+      editing
+        ? { time: editing.time, timezone: editing.timezone, days: editing.days }
+        : null,
+    [editing],
+  )
 
   const userId = me.data?.id ?? null
   const onCreate = useCallback(
@@ -159,25 +175,17 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
           testId={`${testId}-add-dialog`}
           open={adding}
           onOpenChange={closeAdd}
-          initial={{
-            time: '07:30',
-            timezone: localTimeZone(),
-            days: WEEKDAYS_DEFAULT,
-          }}
+          initial={addInitial}
           onSubmit={onCreate}
           pending={create.isPending}
         />
       ) : null}
-      {editing ? (
+      {editInitial ? (
         <ScheduleDialog
           testId={`${testId}-edit-dialog`}
           open
           onOpenChange={closeEdit}
-          initial={{
-            time: editing.time,
-            timezone: editing.timezone,
-            days: editing.days,
-          }}
+          initial={editInitial}
           onSubmit={onUpdate}
           pending={update.isPending}
           title="Edit alert"
