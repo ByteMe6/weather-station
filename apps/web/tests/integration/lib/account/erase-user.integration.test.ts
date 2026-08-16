@@ -28,35 +28,29 @@ describe('eraseUserByClerkId (integration)', () => {
       .insert({ clerk_user_id: CLERK_A })
       .select('id')
       .single()
-    await db
-      .from('devices')
-      .insert({
-        device_id: DEVICE_ID,
-        secret: 'x'.repeat(64),
-        status: 'registered',
-      })
+    await db.from('devices').insert({
+      device_id: DEVICE_ID,
+      secret: 'x'.repeat(64),
+      status: 'registered',
+    })
     await db
       .from('device_users')
       .insert({ device_id: DEVICE_ID, user_id: a!.id, role: 'owner' })
     await db
       .from('schedules')
       .insert({ user_id: a!.id, time: '07:30', timezone: 'UTC', days: [1] })
-    await db
-      .from('telegram_link_codes')
-      .insert({
-        code: 'ERASECODE0000000001',
-        user_id: a!.id,
-        expires_at: new Date().toISOString(),
-      })
-    await db
-      .from('readings')
-      .insert({
-        device_id: DEVICE_ID,
-        timestamp: '2026-07-01T00:00:00Z',
-        temperature: 20,
-        humidity: 50,
-        pressure: 1000,
-      })
+    await db.from('telegram_link_codes').insert({
+      code: 'ERASECODE0000000001',
+      user_id: a!.id,
+      expires_at: new Date().toISOString(),
+    })
+    await db.from('readings').insert({
+      device_id: DEVICE_ID,
+      timestamp: '2026-07-01T00:00:00Z',
+      temperature: 20,
+      humidity: 50,
+      pressure: 1000,
+    })
 
     expect(await eraseUserByClerkId(db, CLERK_A)).toEqual({ deletedUsers: 1 })
 
