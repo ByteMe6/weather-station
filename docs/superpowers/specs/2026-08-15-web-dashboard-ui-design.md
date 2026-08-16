@@ -440,8 +440,10 @@ that local time; validation matches the bot (HH:MM, ≥1 day).
 Telegram card states: *Not linked* → button "Link Telegram" →
 `startTelegramLinkAction` creates a code (`crypto.randomUUID()` base32-ish,
 10 min TTL) and returns a deep link `https://t.me/<BOT_USERNAME>?start=link_<code>`;
-the UI shows the link as a button + QR (SVG generated client-side, `qrcode`
-package) and polls `useCurrentUserQuery` every 3 s while pending. When the
+the UI shows the link as a button + QR (`qrcode` package, rendered
+client-side) and polls `getTelegramLinkStatusAction({ code })` every 3 s while
+pending (states: `pending | linked | expired | failed`), refetching
+`useCurrentUserQuery` once linked. When the
 bot consumes the code it sets `users.telegram_id` and marks the code
 consumed; the page flips to *Linked* ("Linked as tg · …4821", "Unlink"). Unlink
 → `unlinkTelegramAction` nulls `telegram_id`. Conflicts (Telegram already
