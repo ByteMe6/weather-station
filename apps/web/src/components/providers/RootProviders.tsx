@@ -5,6 +5,7 @@ import { ThemeProvider } from 'next-themes'
 import type { ReactElement, ReactNode } from 'react'
 
 import { MotionProvider } from '@/components/motion/MotionProvider'
+import { ToastProvider } from '@/components/ui/Toast'
 import { clerkAppearance } from '@/lib/clerk-appearance'
 import { QueryProvider } from '@/lib/query-client'
 
@@ -21,7 +22,9 @@ export const RootProviders = ({
       enableColorScheme
     >
       <QueryProvider>
-        <MotionProvider>{children}</MotionProvider>
+        <MotionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </MotionProvider>
       </QueryProvider>
     </ThemeProvider>
   </ClerkProvider>
