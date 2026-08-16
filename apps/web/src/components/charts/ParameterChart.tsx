@@ -137,7 +137,7 @@ export const ParameterChart = ({
         minTickGap={24}
       />
       <YAxis
-        width={44}
+        width={52}
         domain={['auto', 'auto']}
         tick={AXIS_TICK}
         axisLine={false}
