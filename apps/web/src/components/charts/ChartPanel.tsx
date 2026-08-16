@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { useMemo } from 'react'
 
 import { ParameterChart } from './ParameterChart'
@@ -16,12 +16,15 @@ export const ChartPanel = ({
   range,
   now,
   testId,
+  aside,
 }: {
   meta: ParameterMeta
   points: HistoryPoint[]
   range: HistoryRange
   now: Date
   testId: string
+  /** Extra header content (e.g. the wind-direction glyph on the wind panel). */
+  aside?: ReactNode
 }): ReactElement => {
   const stats = useMemo(() => {
     let min = Infinity
@@ -57,7 +60,7 @@ export const ChartPanel = ({
           </span>
         ) : null}
         <span className="flex-1" />
-        <div data-testid={`${testId}-range-slot`} />
+        {aside ?? null}
       </CardHeader>
       <CardBody testId={`${testId}-body`}>
         <ParameterChart

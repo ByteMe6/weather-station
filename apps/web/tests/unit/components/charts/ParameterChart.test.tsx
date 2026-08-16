@@ -30,4 +30,32 @@ describe('ParameterChart', () => {
     expect(screen.getByTestId('chart')).toBeInTheDocument()
     expect(screen.getByTestId('chart').querySelector('svg')).not.toBeNull()
   })
+
+  it('renders precipitation as bars', () => {
+    const now = Date.now()
+    const points = Array.from({ length: 6 }, (_, i) => ({
+      t: now - (5 - i) * 300_000,
+      temperature: null,
+      humidity: null,
+      pressure: null,
+      windSpeed: null,
+      windDirection: null,
+      precipitation: i % 2,
+    }))
+    render(
+      <ParameterChart
+        testId="rain"
+        meta={parameterMeta('precipitation')}
+        points={points}
+        range="24h"
+        now={new Date(now)}
+        width={600}
+        height={200}
+      />,
+    )
+    expect(
+      screen.getByTestId('rain').querySelectorAll('.recharts-bar-rectangle')
+        .length,
+    ).toBeGreaterThan(0)
+  })
 })

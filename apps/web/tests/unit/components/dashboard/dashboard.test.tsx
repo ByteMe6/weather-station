@@ -38,6 +38,7 @@ jest.mock('@/components/dashboard/useDashboardData', () => ({
 import { ConditionsStrip } from '@/components/dashboard/ConditionsStrip'
 import { DashboardView } from '@/components/dashboard/DashboardView'
 import { ParameterCard } from '@/components/dashboard/ParameterCard'
+import { ParameterCardGrid } from '@/components/dashboard/ParameterCardGrid'
 import type { HistoryPoint, HistoryRange } from '@/lib/chart'
 import { parameterMeta } from '@/lib/parameters'
 import type { RealtimeStatus } from '@/services/readings/readings.realtime'
@@ -106,5 +107,31 @@ describe('dashboard', () => {
     )
     expect(screen.getByTestId('card')).toHaveAttribute('data-fitted', 'false')
     expect(screen.getByTestId('card')).toHaveTextContent('Sensor not fitted')
+  })
+
+  it('renders wind and rain cards as fitted when the latest reading has values', () => {
+    const withWind: Reading = {
+      ...latest,
+      windSpeed: 12,
+      windDirection: 315,
+      precipitation: 0,
+    }
+    render(
+      <ParameterCardGrid
+        testId="grid"
+        latest={withWind}
+        points={[]}
+        now={new Date('2026-08-15T12:37:00Z')}
+      />,
+    )
+    expect(screen.getByTestId('grid-windSpeed')).toHaveAttribute(
+      'data-fitted',
+      'true',
+    )
+    expect(screen.getByTestId('grid-windDirection')).toHaveTextContent('NW')
+    expect(screen.getByTestId('grid-precipitation')).toHaveAttribute(
+      'data-fitted',
+      'true',
+    )
   })
 })

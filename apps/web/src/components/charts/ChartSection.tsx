@@ -8,10 +8,12 @@ import { useMemo } from 'react'
 import { ChartPanel } from './ChartPanel'
 import { RangeSelector } from './RangeSelector'
 
+import { CompassGlyph } from '@/components/dashboard/CompassGlyph'
 import { fadeUp, stagger } from '@/components/motion/variants'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import type { HistoryPoint, HistoryRange } from '@/lib/chart'
+import { bearingToCompass } from '@/lib/format'
 import { PARAMETERS } from '@/lib/parameters'
 
 interface ChartSectionProps {
@@ -83,6 +85,21 @@ export const ChartSection = ({
                 points={points}
                 range={range}
                 now={now}
+                aside={
+                  meta.key === 'windSpeed' && latest.windDirection !== null ? (
+                    <span
+                      data-testid={`${testId}-wind-direction`}
+                      className="text-slate inline-flex items-center gap-1.5 text-xs"
+                    >
+                      <CompassGlyph
+                        testId={`${testId}-wind-compass`}
+                        bearing={latest.windDirection}
+                      />
+                      {bearingToCompass(latest.windDirection)} ·{' '}
+                      {latest.windDirection}°
+                    </span>
+                  ) : null
+                }
               />
             </motion.div>
           ),

@@ -6,6 +6,7 @@ import { useCallback } from 'react'
 import type { TooltipContentProps } from 'recharts'
 import {
   Area,
+  Bar,
   ComposedChart,
   Line,
   ResponsiveContainer,
@@ -180,16 +181,27 @@ export const ParameterChart = ({
           />
         </>
       ) : null}
-      <Line
-        type="monotone"
-        dataKey={meta.key}
-        stroke={meta.cssVar}
-        strokeWidth={2}
-        dot={renderDot}
-        activeDot={{ r: 4 }}
-        isAnimationActive={false}
-        connectNulls={false}
-      />
+      {meta.key === 'precipitation' ? (
+        // Rain is an accumulation per interval — bars are the honest mark.
+        <Bar
+          dataKey="precipitation"
+          fill={meta.cssVar}
+          radius={[2, 2, 0, 0]}
+          isAnimationActive={false}
+          maxBarSize={10}
+        />
+      ) : (
+        <Line
+          type="monotone"
+          dataKey={meta.key}
+          stroke={meta.cssVar}
+          strokeWidth={2}
+          dot={renderDot}
+          activeDot={{ r: 4 }}
+          isAnimationActive={false}
+          connectNulls={false}
+        />
+      )}
     </ComposedChart>
   )
 
