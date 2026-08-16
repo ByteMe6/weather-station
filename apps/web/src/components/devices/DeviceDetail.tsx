@@ -133,6 +133,8 @@ export const DeviceDetail = ({
           deviceId={deviceId}
           label={link.device?.label ?? null}
           address={link.device?.address ?? null}
+          latitude={link.device?.latitude ?? null}
+          longitude={link.device?.longitude ?? null}
           open={profileOpen}
           onOpenChange={setProfileOpen}
         />

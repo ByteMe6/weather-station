@@ -9,6 +9,7 @@ import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
 import { ActionError } from '@/lib/actions/unwrap'
+import { formatCoordinate, parseCoordinateInput } from '@/lib/coordinates'
 import { useUpdateDeviceProfileMutation } from '@/services/devices/devices.queries'
 
 interface DeviceProfileDialogProps {
@@ -16,6 +17,8 @@ interface DeviceProfileDialogProps {
   deviceId: string
   label: string | null
   address: string | null
+  latitude: number | null
+  longitude: number | null
   open: boolean
   onOpenChange: (o: boolean) => void
 }
@@ -25,6 +28,8 @@ export const DeviceProfileDialog = ({
   deviceId,
   label,
   address,
+  latitude,
+  longitude,
   open,
   onOpenChange,
 }: DeviceProfileDialogProps): ReactElement => {
@@ -32,6 +37,12 @@ export const DeviceProfileDialog = ({
   const save = useUpdateDeviceProfileMutation(deviceId)
   const [labelValue, setLabelValue] = useState(label ?? '')
   const [addressValue, setAddressValue] = useState(address ?? '')
+  const [latValue, setLatValue] = useState(
+    latitude === null ? '' : formatCoordinate(latitude),
+  )
+  const [lngValue, setLngValue] = useState(
+    longitude === null ? '' : formatCoordinate(longitude),
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const onLabel = useCallback(
@@ -40,6 +51,16 @@ export const DeviceProfileDialog = ({
   )
   const onAddress = useCallback(
     (e: FormEvent<HTMLInputElement>) => setAddressValue(e.currentTarget.value),
+    [],
+  )
+  // Pasting "49.8397, 24.0297" into latitude fills both fields (lib/coordinates).
+  const onLatitude = useCallback((e: FormEvent<HTMLInputElement>) => {
+    const parsed = parseCoordinateInput(e.currentTarget.value)
+    setLatValue(parsed.latitude)
+    if (parsed.longitude !== undefined) setLngValue(parsed.longitude)
+  }, [])
+  const onLongitude = useCallback(
+    (e: FormEvent<HTMLInputElement>) => setLngValue(e.currentTarget.value),
     [],
   )
 
@@ -51,8 +72,8 @@ export const DeviceProfileDialog = ({
         await save.mutateAsync({
           label: labelValue,
           address: addressValue,
-          latitude: '',
-          longitude: '',
+          latitude: latValue,
+          longitude: lngValue,
         })
       } catch (err) {
         setErrors(
@@ -65,7 +86,7 @@ export const DeviceProfileDialog = ({
       toast({ title: 'Station details saved', tone: 'success' })
       onOpenChange(false)
     },
-    [labelValue, addressValue, save, toast, onOpenChange],
+    [labelValue, addressValue, latValue, lngValue, save, toast, onOpenChange],
   )
 
   return (
@@ -74,7 +95,7 @@ export const DeviceProfileDialog = ({
       open={open}
       onOpenChange={onOpenChange}
       title="Station details"
-      description="A nickname shows instead of the id everywhere; the address is free text for now (a map view comes later)."
+      description="A nickname shows instead of the id everywhere. Coordinates put the station on the map on your devices page."
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Field
@@ -109,6 +130,44 @@ export const DeviceProfileDialog = ({
             invalid={!!errors.address}
           />
         </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            testId={`${testId}-latitude`}
+            label="Latitude"
+            htmlFor="device-latitude"
+            error={errors.latitude}
+            hint="From your phone's GPS — paste both numbers here"
+          >
+            <Input
+              testId={`${testId}-latitude-input`}
+              id="device-latitude"
+              value={latValue}
+              onChange={onLatitude}
+              inputMode="decimal"
+              placeholder="49.839700"
+              mono
+              invalid={!!errors.latitude}
+            />
+          </Field>
+          <Field
+            testId={`${testId}-longitude`}
+            label="Longitude"
+            htmlFor="device-longitude"
+            error={errors.longitude}
+            hint="Leave both empty to hide the station from the map"
+          >
+            <Input
+              testId={`${testId}-longitude-input`}
+              id="device-longitude"
+              value={lngValue}
+              onChange={onLongitude}
+              inputMode="decimal"
+              placeholder="24.029700"
+              mono
+              invalid={!!errors.longitude}
+            />
+          </Field>
+        </div>
         <div className="flex justify-end">
           <Button
             testId={`${testId}-save`}
