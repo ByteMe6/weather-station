@@ -15,13 +15,17 @@ major_version = 17
 enabled = true
 port = 54323
 
-# Web auth is Clerk (PRD W1), integrated via Supabase third-party auth.
-# The Clerk domain gets filled in by the auth ticket:
-# [auth.third_party.clerk]
-# enabled = true
-# domain = "<your-app>.clerk.accounts.dev"
 [auth]
 enabled = true
+
+# Web auth is Clerk (PRD W1, MRP-17/19), integrated via Supabase third-party
+# auth: PostgREST/Realtime verify Clerk's JWTs against this domain's JWKS and
+# `auth.jwt() ->> 'sub'` is the Clerk user id (see current_app_user_id()).
+# The Clerk session token must carry {"role": "authenticated"} (Clerk dashboard
+# -> Sessions -> Customize session token) or every request is treated as anon.
+[auth.third_party.clerk]
+enabled = true
+domain = "trusted-longhorn-13.clerk.accounts.dev"
 
 # Required, not optional: 20260727102352_firmware_ota_bucket.sql inserts the
 # OTA bucket into storage.buckets, so with storage off that migration - and
