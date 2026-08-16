@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>04 · Synoptic — Weather Station</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{ color-scheme: light dark;
+    --paper:light-dark(#F2F3F0,#0F1622); --panel:light-dark(#FAFAF8,#141D2C); --ink:light-dark(#10233F,#E9EEF5); --ink2:light-dark(#4A5B74,#9AA9BF); --rule:light-dark(#C9CFD8,#2A3648); --iso:light-dark(#B9C4D6,#243247); --red:light-dark(#C8102E,#FF5C6C); --blue:light-dark(#1F4E9C,#6FA0FF);
+    --temp:light-dark(#C8102E,#FF5C6C); --hum:light-dark(#1F7A8C,#3FB6CB); --press:light-dark(#4B3FBF,#9C8FFF); --wind:light-dark(#8A6D0B,#E0B23A); --rain:light-dark(#1F4E9C,#6FA0FF);
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;-webkit-font-smoothing:antialiased;position:relative}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+  a{color:inherit;text-decoration:none}
+  .iso{position:fixed;inset:0;z-index:-1;opacity:.55}
+  .iso svg{width:100%;height:100%}
+  .iso path{fill:none;stroke:var(--iso);stroke-width:1}
+  header{border-bottom:2px solid var(--ink);background:color-mix(in srgb,var(--paper) 85%,transparent);backdrop-filter:blur(6px)}
+  .nav{max-width:1160px;margin:0 auto;padding:0 24px;height:54px;display:flex;align-items:center;gap:26px}
+  .brand{font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:14px;display:flex;align-items:center;gap:10px}
+  .brand .plot{width:22px;height:22px}
+  .tabs{display:flex;gap:2px}
+  .tabs a{padding:6px 12px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);border-radius:3px}
+  .tabs a.on{background:var(--ink);color:var(--paper)}
+  .spacer{flex:1}
+  .stn{font-size:12px;color:var(--ink2)}
+  .stn b{color:var(--ink);font-weight:500}
+  main{max-width:1160px;margin:0 auto;padding:26px 24px 60px}
+
+  .obs{display:grid;grid-template-columns:auto 1fr auto;gap:36px;align-items:center;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:22px 26px}
+  .plot-big{width:150px;height:150px}
+  .plot-big text{font-family:"IBM Plex Mono",monospace;font-size:14px;fill:var(--ink)}
+  .obs h1{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);font-weight:600;margin-bottom:8px}
+  .temp{font-size:104px;line-height:.92;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--red)}
+  .temp small{font-size:26px;font-weight:500;color:var(--ink2);margin-left:6px;letter-spacing:0}
+  .obs .line{font-size:14px;color:var(--ink2);margin-top:8px}
+  .obs .line b{color:var(--ink);font-weight:600}
+  .stamp{border-left:1px solid var(--rule);padding-left:26px;font-size:12px;color:var(--ink2);line-height:1.9;min-width:220px}
+  .stamp b{color:var(--ink);font-weight:500}
+  .stamp .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);vertical-align:middle;margin-right:6px;animation:blink 1.6s steps(2) infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  table{width:100%;border-collapse:collapse;margin-top:18px;background:var(--panel);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+  th{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);text-align:left;padding:10px 14px;border-bottom:1px solid var(--ink);font-weight:600}
+  td{padding:12px 14px;border-bottom:1px solid var(--rule);font-size:14px;vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  td.v{font-size:26px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;width:180px}
+  td.v small{font-size:12px;color:var(--ink2);font-weight:500;margin-left:4px}
+  td svg{width:120px;height:26px;display:block}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;vertical-align:-1px}
+  .up{color:var(--red)} .down{color:var(--blue)} .dim{color:var(--ink2)}
+  tr.off td{opacity:.5}
+
+  .chart-box{margin-top:18px;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:16px 18px 10px}
+  .chart-h{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+  .chart-h h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  .chart-h .sub{font-size:12px;color:var(--ink2)}
+  .seg{margin-left:auto;display:inline-flex;border:1px solid var(--ink);border-radius:3px;overflow:hidden}
+  .seg a{padding:4px 12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);border-right:1px solid var(--ink)}
+  .seg a:last-child{border-right:0}
+  .seg a.on{background:var(--ink);color:var(--paper)}
+  .chart svg{width:100%;height:auto;display:block}
+  .axis{font-size:7px;fill:var(--ink2);font-family:"IBM Plex Mono",monospace}
+  .gl{stroke:var(--rule)}
+  .toolbar{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .btn{padding:8px 16px;border-radius:3px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;border:1px solid var(--ink);color:var(--ink)}
+  .btn.primary{background:var(--ink);color:var(--paper)}
+  @media (prefers-reduced-motion: reduce){ .live{animation:none} }
+  @media (max-width:900px){ .obs{grid-template-columns:1fr} .stamp{border-left:0;padding-left:0} .temp{font-size:80px} }
+</style>
+</head>
+<body>
+<div class="iso" aria-hidden="true">
+  <svg viewBox="0 0 1200 800" preserveAspectRatio="none">
+    <path d="M-50 120 C200 60 380 220 620 150 S1000 40 1250 130"/>
+    <path d="M-50 220 C220 150 400 320 640 250 S1010 140 1250 230"/>
+    <path d="M-50 330 C240 250 420 430 660 350 S1030 240 1250 330"/>
+    <path d="M-50 450 C260 360 440 540 680 460 S1050 350 1250 440"/>
+    <path d="M-50 570 C280 470 460 650 700 570 S1070 460 1250 550"/>
+    <path d="M-50 690 C300 590 480 760 720 680 S1090 570 1250 660"/>
+    <path d="M-50 810 C320 700 500 870 740 790 S1110 680 1250 770"/>
+  </svg>
+</div>
+<header>
+  <div class="nav">
+    <a class="brand" href="#"><svg class="plot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="5"/><path d="M12 7 V1 M12 1 l5 2"/></svg>Weather Station</a>
+    <nav class="tabs"><a class="on" href="#">Observations</a><a href="#">Alerts</a><a href="#">Devices</a><a href="#">Settings</a></nav>
+    <span class="spacer"></span>
+    <span class="stn mono">STN <b>WS-7F3A</b> · BACKYARD · 12:35 UTC+2</span>
+  </div>
+</header>
+
+<main>
+  <section class="obs">
+    <svg class="plot-big" viewBox="0 0 150 150" aria-label="Station plot">
+      <circle cx="75" cy="75" r="18" fill="none" stroke="var(--ink)" stroke-width="2"/>
+      <!-- wind barb from NW (315°), 12 km/h ≈ 1 short barb -->
+      <g transform="rotate(-45 75 75)"><path d="M75 57 V12" stroke="var(--ink)" stroke-width="2"/><path d="M75 16 l12 -6" stroke="var(--ink)" stroke-width="2"/></g>
+      <text x="10" y="62">21.4</text><text x="18" y="102" fill="var(--ink2)">58</text>
+      <text x="100" y="62" text-anchor="start">132</text><text x="100" y="102" text-anchor="start" fill="var(--blue)">18</text>
+      <path d="M118 92 l7 7 l7 -3" fill="none" stroke="var(--blue)" stroke-width="1.6"/>
+    </svg>
+    <div>
+      <h1>Current observation</h1>
+      <div class="temp">21.4<small>°C</small></div>
+      <div class="line">RH <b>58 %</b> · QFE <b>1013.2 hPa</b> falling <b class="down">−1.8</b>/3 h · wind <b>NW 12</b> km/h · rain <b>0.0</b> mm</div>
+    </div>
+    <div class="stamp mono">
+      <div><span class="live"></span>LIVE VIA REALTIME</div>
+      <div>OBS <b>2026-08-15 12:35:04</b></div>
+      <div>NEXT DUE <b>12:40</b> · Δ 5 MIN</div>
+      <div>SENSOR <b>BME280</b> · FW <b>1.4.2</b></div>
+    </div>
+  </section>
+
+  <table>
+    <thead><tr><th>Element</th><th>Value</th><th>Trend · 3 h</th><th>24 h</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td><span class="sw" style="background:var(--temp)"></span>Temperature</td><td class="v">21.4<small>°C</small></td><td class="up">▴ 0.6</td><td><svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 18 L8 16 L16 17 L24 12 L32 10 L40 11 L48 7 L56 6 L60 5" fill="none" stroke="var(--temp)" stroke-width="1.5"/></svg></td><td class="dim mono">min 14.1 / max 23.2</td></tr>
+      <tr><td><span class="sw" style="background:var(--hum)"></span>Relative humidity</td><td class="v">58<small>%</small></td><td class="down">▾ 3</td><td><svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 6 L8 8 L16 7 L24 10 L32 12 L40 11 L48 14 L56 15 L60 16" fill="none" stroke="var(--hum)" stroke-width="1.5"/></svg></td><td class="dim mono">dew pt 12.8</td></tr>
+      <tr><td><span class="sw" style="background:var(--press)"></span>Pressure (QFE)</td><td class="v">1013.2<small>hPa</small></td><td class="down">▾ 1.8 · falling</td><td><svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 4 L8 5 L16 5 L24 7 L32 9 L40 10 L48 13 L56 15 L60 17" fill="none" stroke="var(--press)" stroke-width="1.5"/></svg></td><td class="dim mono">tendency code 7</td></tr>
+      <tr><td><span class="sw" style="background:var(--wind)"></span>Wind</td><td class="v">12<small>km/h NW</small></td><td class="dim">— steady</td><td><svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 14 L8 10 L16 15 L24 9 L32 12 L40 8 L48 13 L56 10 L60 12" fill="none" stroke="var(--wind)" stroke-width="1.5"/></svg></td><td class="dim mono">315° · gust 19</td></tr>
+      <tr class="off"><td><span class="sw" style="background:var(--rain)"></span>Precipitation</td><td class="v">0.0<small>mm</small></td><td class="dim">—</td><td><svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 20 L60 20" fill="none" stroke="var(--rain)" stroke-width="1.5" stroke-dasharray="2 3"/></svg></td><td class="dim mono">gauge not fitted</td></tr>
+    </tbody>
+  </table>
+
+  <section class="chart-box">
+    <div class="chart-h"><h2>Temperature trace</h2><span class="sub mono">24 h · 5-min · °C</span>
+      <div class="seg"><a class="on" href="#">24 h</a><a href="#">7 d</a><a href="#">30 d</a></div></div>
+    <div class="chart">
+      <svg viewBox="0 0 600 190">
+        <g class="gl"><line x1="8" x2="592" y1="8" y2="8"/><line x1="8" x2="592" y1="56" y2="56"/><line x1="8" x2="592" y1="104" y2="104"/><line x1="8" x2="592" y1="152" y2="152"/></g>
+        <path d="M8.0 107.5 L14.1 109.8 L20.2 118.2 L26.3 123.4 L32.3 126.0 L38.4 125.7 L44.5 133.1 L50.6 135.2 L56.7 134.5 L62.8 140.5 L68.8 140.8 L74.9 141.3 L81.0 142.2 L87.1 146.8 L93.2 149.6 L99.3 149.5 L105.3 150.1 L111.4 149.5 L117.5 151.8 L123.6 147.6 L129.7 152.0 L135.8 146.3 L141.8 150.4 L147.9 147.1 L154.0 144.4 L160.1 141.8 L166.2 139.1 L172.3 136.1 L178.3 132.8 L184.4 132.5 L190.5 125.9 L196.6 128.1 L202.7 124.3 L208.8 118.2 L214.8 110.9 L220.9 112.3 L227.0 103.2 L233.1 99.9 L239.2 93.9 L245.3 92.8 L251.3 85.6 L257.4 80.7 L263.5 77.6 L269.6 72.5 L275.7 70.5 L281.8 61.8 L287.8 58.4 L293.9 53.6 L300.0 50.6 L306.1 47.7 L312.2 41.8 L318.3 41.2 L324.3 38.1 L330.4 32.6 L336.5 31.3 L342.6 27.0 L348.7 23.4 L354.8 18.1 L360.8 19.2 L366.9 18.7 L373.0 13.4 L379.1 11.6 L385.2 8.9 L391.3 14.3 L397.3 8.9 L403.4 12.4 L409.5 11.1 L415.6 8.0 L421.7 12.1 L427.8 14.9 L433.8 13.2 L439.9 11.9 L446.0 15.6 L452.1 21.4 L458.2 23.4 L464.3 24.2 L470.3 22.3 L476.4 28.8 L482.5 30.7 L488.6 34.0 L494.7 39.2 L500.8 45.6 L506.8 46.1 L512.9 51.1 L519.0 51.4 L525.1 62.1 L531.2 61.2 L537.3 66.2 L543.3 71.9 L549.4 80.2 L555.5 79.4 L561.6 85.7 L567.7 90.6 L573.8 94.4 L579.8 100.4 L585.9 102.9 L592.0 107.9" fill="none" stroke="var(--red)" stroke-width="1.6"/>
+        <circle cx="592" cy="107.9" r="3.5" fill="var(--ink)"/>
+        <g class="axis"><text x="8" y="182">12Z</text><text x="150" y="182">18Z</text><text x="292" y="182">00Z</text><text x="434" y="182">06Z</text><text x="566" y="182">NOW</text></g>
+        <g class="axis"><text x="8" y="14">23.2</text><text x="8" y="150">14.1</text></g>
+      </svg>
+    </div>
+  </section>
+  <div class="toolbar"><a class="btn" href="#">Export CSV</a><a class="btn primary" href="#">Register device</a></div>
+</main>
+
+<button id="theme-toggle" type="button" aria-label="Toggle light/dark" style="position:fixed;left:16px;bottom:16px;z-index:99;width:40px;height:40px;border-radius:50%;border:1px solid rgba(127,127,127,.35);background:rgba(127,127,127,.15);backdrop-filter:blur(8px);color:inherit;font-size:18px;cursor:pointer">◐</button>
+<script>
+  (()=>{const r=document.documentElement,b=document.getElementById('theme-toggle');
+  const sys=()=>matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  let mode=r.dataset.defaultTheme||sys();r.style.colorScheme=mode;
+  b.onclick=()=>{mode=mode==='dark'?'light':'dark';r.style.colorScheme=mode;};})();
+</script>
+</body>
+</html>
