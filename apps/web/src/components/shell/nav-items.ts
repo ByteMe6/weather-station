@@ -7,6 +7,7 @@ export interface NavItem {
 /** Plan 2 appends Alerts and Devices when those routes exist (spec §2.1). */
 export const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', href: '/dashboard', label: 'Dashboard' },
+  { key: 'alerts', href: '/alerts', label: 'Alerts' },
   { key: 'devices', href: '/devices', label: 'Devices' },
   { key: 'settings', href: '/settings', label: 'Settings' },
 ]
