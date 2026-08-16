@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { ReactElement } from 'react'
 
 import { NoDeviceState } from '@/components/dashboard/NoDeviceState'
+import { StationMapCard } from '@/components/map/StationMapCard'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -21,6 +22,7 @@ export const DevicesIndex = ({ testId }: { testId: string }): ReactElement => {
     return <NoDeviceState testId={`${testId}-empty`} />
   return (
     <div data-testid={testId} className="flex flex-col gap-3">
+      <StationMapCard testId={`${testId}-map`} devices={data} />
       {data.map((d) => (
         <Link
           key={d.deviceId}
@@ -45,6 +47,16 @@ export const DevicesIndex = ({ testId }: { testId: string }): ReactElement => {
                     <span className="font-sans"> · {d.device.address}</span>
                   ) : null}
                 </span>
+                {d.role === 'owner' &&
+                (d.device?.latitude === null ||
+                  d.device?.latitude === undefined) ? (
+                  <span
+                    data-testid={`${testId}-hint-${d.deviceId}`}
+                    className="text-slate text-[12px]"
+                  >
+                    Add coordinates in station details to see it on the map
+                  </span>
+                ) : null}
               </div>
               <Badge testId={`${testId}-card-${d.deviceId}-role`}>
                 {d.role}
