@@ -14,7 +14,13 @@ export const RootProviders = ({
 }: {
   children: ReactNode
 }): ReactElement => (
-  <ClerkProvider appearance={clerkAppearance}>
+  <ClerkProvider
+    appearance={clerkAppearance}
+    signInUrl="/sign-in"
+    signUpUrl="/sign-up"
+    signInFallbackRedirectUrl="/dashboard"
+    signUpFallbackRedirectUrl="/dashboard"
+  >
     <ThemeProvider
       attribute="class"
       defaultTheme="system"

@@ -1535,7 +1535,7 @@ git commit -m "feat(web): motion vocabulary — springs, NumberRoll, FreshnessPu
 ### Task 6: Clerk authentication — proxy, sign-in/up pages, appearance, env (MRP-17)
 
 **Files:**
-- Create: `apps/web/proxy.ts`
+- Create: `apps/web/src/proxy.ts` (the app uses a `src/` dir, so Next 16 looks for the proxy there)
 - Create: `apps/web/src/lib/auth/public-routes.ts`
 - Replace: `apps/web/src/lib/clerk-appearance.ts`
 - Create: `apps/web/src/app/sign-in/[[...sign-in]]/page.tsx`, `apps/web/src/app/sign-up/[[...sign-up]]/page.tsx`
@@ -1609,7 +1609,7 @@ export const isPublicPath = (pathname: string): boolean =>
   PUBLIC_MATCHERS.some((re) => re.test(pathname))
 ```
 
-`apps/web/proxy.ts` (Next 16 name for middleware; Clerk supports it):
+`apps/web/src/proxy.ts` (Next 16 name for middleware; Clerk supports it):
 
 ```ts
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
