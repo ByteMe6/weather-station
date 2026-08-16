@@ -6,14 +6,15 @@
   --font-sans: var(--font-archivo), system-ui, sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;
 
-  /* Chrome — light-dark() follows html { color-scheme } set by next-themes */
-  --color-paper: light-dark(#f7f9fc, #0b1220);
-  --color-card: light-dark(#ffffff, #111a2c);
-  --color-ink: light-dark(#0b1526, #e8eef7);
-  --color-slate: light-dark(#5b6b82, #8b9ab3);
-  --color-line: light-dark(#dce3ec, #1e2a3e);
-  --color-sky: light-dark(#1e6fe8, #4d8dff);
-  --color-danger: light-dark(#d3323a, #ff6b6b);
+  /* Chrome — light values; `.dark` (set by next-themes, incl. system preference) overrides below.
+     Not light-dark(): Lightning CSS polyfills it with prefers-color-scheme, so a user toggle can't win. */
+  --color-paper: #f7f9fc;
+  --color-card: #ffffff;
+  --color-ink: #0b1526;
+  --color-slate: #5b6b82;
+  --color-line: #dce3ec;
+  --color-sky: #1e6fe8;
+  --color-danger: #d3323a;
 
   /* Parameters — same in both themes; a colour always means "this parameter" */
   --color-temp: #e4572e;
@@ -27,24 +28,21 @@
   --shadow-card: 0 1px 2px rgb(11 21 38 / 4%);
 }
 
-/* Browsers without light-dark(): stay on the light palette. */
-@supports not (color: light-dark(#000, #fff)) {
-  :root {
-    --color-paper: #f7f9fc;
-    --color-card: #ffffff;
-    --color-ink: #0b1526;
-    --color-slate: #5b6b82;
-    --color-line: #dce3ec;
-    --color-sky: #1e6fe8;
-    --color-danger: #d3323a;
-  }
-}
-
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 @layer base {
+  .dark {
+    color-scheme: dark;
+    --color-paper: #0b1220;
+    --color-card: #111a2c;
+    --color-ink: #e8eef7;
+    --color-slate: #8b9ab3;
+    --color-line: #1e2a3e;
+    --color-sky: #4d8dff;
+    --color-danger: #ff6b6b;
+  }
   html {
     font-family: var(--font-sans);
   }

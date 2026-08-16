@@ -120,7 +120,7 @@ export const ParameterChart = ({
   const chart = (
     <LineChart
       data={data}
-      margin={{ top: 12, right: 12, bottom: 4, left: 0 }}
+      margin={{ top: 12, right: 28, bottom: 4, left: 0 }}
       width={width}
       height={width ? height : undefined}
     >

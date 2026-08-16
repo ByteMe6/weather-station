@@ -68,10 +68,11 @@ enough detail that each ticket becomes a mechanical plan.
 
 ### 1.1 Tokens
 
-Defined once in `apps/web/src/app/globals.css` with Tailwind v4 `@theme` and
-CSS `light-dark()`; `next-themes` toggles `color-scheme` on `<html>` (class
-`light`/`dark`) so light/dark follows the OS by default and the user can
-override from the nav.
+Defined once in `apps/web/src/app/globals.css` with Tailwind v4 `@theme`
+(light values) plus a `.dark { … }` override block; `next-themes` sets the
+`dark` class on `<html>` (system preference by default, user override from the
+nav). _Amended during Plan 1:_ not `light-dark()` — Lightning CSS polyfills it
+with `prefers-color-scheme`, so an explicit user toggle could never win.
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
@@ -543,8 +544,8 @@ authenticated`; Google OAuth on; sign-in/up paths set.
 - **Recharts + React 19 / Next 16 SSR** — charts render client-only
   (`'use client'`, `ResponsiveContainer` with `initialDimension`); a snapshot
   test guards the SSR path.
-- **`light-dark()` browser support** — Tailwind tokens fall back to the light
-  values via `@supports not (color: light-dark(#000,#fff))`.
+- **Theme switching** — class-based tokens (`.dark` overrides), no
+  `light-dark()` (see §1.1 amendment).
 - **Chunked export on slow links** — 10 000-row chunks × ~10 calls for a year;
   progress UI makes it tolerable; abortable via dialog close.
 - **Server-action error shape** — actions return unions, never throw; a
