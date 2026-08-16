@@ -176,6 +176,7 @@ export type Database = {
         Returns: undefined
       }
       current_app_user_id: { Args: never; Returns: string }
+      is_device_owner: { Args: { p_device_id: string }; Returns: boolean }
       readings_bucketed: {
         Args: {
           p_bucket_minutes: number

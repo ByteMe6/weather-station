@@ -20,6 +20,8 @@ jest.mock('recharts', () => ({
 const state = {
   isLoading: false,
   deviceId: 'WS-7F3A' as string | null,
+  devices: [] as MyDevice[],
+  setDeviceId: jest.fn(),
   latest: null as Reading | null,
   points: [] as HistoryPoint[],
   status: 'live' as RealtimeStatus,
@@ -45,6 +47,7 @@ import { ParameterCard } from '@/components/dashboard/ParameterCard'
 import { ParameterCardGrid } from '@/components/dashboard/ParameterCardGrid'
 import type { HistoryPoint, HistoryRange } from '@/lib/chart'
 import { parameterMeta } from '@/lib/parameters'
+import type { MyDevice } from '@/services/devices/devices.service'
 import type { RealtimeStatus } from '@/services/readings/readings.realtime'
 
 const latest: Reading = {

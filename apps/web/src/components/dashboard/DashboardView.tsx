@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react'
 
 import { ConditionsStrip } from './ConditionsStrip'
 import { DashboardSkeleton } from './DashboardSkeleton'
+import { DeviceSelect } from './DeviceSelect'
 import { NoDeviceState } from './NoDeviceState'
 import { ParameterCardGrid } from './ParameterCardGrid'
 import { useDashboardData } from './useDashboardData'
@@ -22,6 +23,8 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
   const {
     isLoading,
     deviceId,
+    devices,
+    setDeviceId,
     latest,
     points,
     status,
@@ -90,16 +93,25 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
               status={status}
               now={now}
             />
-            <Button
-              testId={`${testId}-export`}
-              variant="ghost"
-              size="sm"
-              onClick={openExport}
-              className="absolute top-0 right-0"
-            >
-              <Download className="size-3.5" aria-hidden />
-              Export CSV
-            </Button>
+            <div className="absolute top-0 right-0 flex items-center gap-2">
+              {devices.length > 1 ? (
+                <DeviceSelect
+                  testId={`${testId}-device-select`}
+                  devices={devices}
+                  value={deviceId}
+                  onChange={setDeviceId}
+                />
+              ) : null}
+              <Button
+                testId={`${testId}-export`}
+                variant="ghost"
+                size="sm"
+                onClick={openExport}
+              >
+                <Download className="size-3.5" aria-hidden />
+                Export CSV
+              </Button>
+            </div>
             <ExportDialog
               testId={`${testId}-export-dialog`}
               deviceId={deviceId}

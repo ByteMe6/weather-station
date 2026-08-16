@@ -1,7 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@ws/supabase-db'
 
-import { fetchMyDevices } from '@/services/devices/devices.service'
+import {
+  fetchDeviceMembers,
+  fetchMyDevices,
+} from '@/services/devices/devices.service'
 
 interface Chain {
   select: jest.Mock<Chain, [string]>
@@ -45,5 +48,34 @@ describe('fetchMyDevices', () => {
     expect(client.chain.order).toHaveBeenCalledWith('added_at', {
       ascending: true,
     })
+  })
+})
+
+describe('fetchDeviceMembers', () => {
+  it('selects members with nested user identifiers', async () => {
+    interface MChain {
+      select: jest.Mock<MChain, [string]>
+      eq: jest.Mock<MChain, [string, string]>
+      order: jest.Mock<
+        Promise<{ data: unknown; error: unknown }>,
+        [string, { ascending: boolean }]
+      >
+    }
+    const chain: MChain = {
+      select: jest.fn<MChain, [string]>(() => chain),
+      eq: jest.fn<MChain, [string, string]>(() => chain),
+      order: jest.fn<
+        Promise<{ data: unknown; error: unknown }>,
+        [string, { ascending: boolean }]
+      >(async () => ({ data: [], error: null })),
+    }
+    const client = {
+      from: jest.fn(() => chain),
+    } as unknown as SupabaseClient<Database>
+    await fetchDeviceMembers(client, { deviceId: 'WS-1' })
+    expect(chain.select).toHaveBeenCalledWith(
+      'deviceId:device_id, userId:user_id, role, addedAt:added_at, user:users ( clerkUserId:clerk_user_id, telegramId:telegram_id )',
+    )
+    expect(chain.eq).toHaveBeenCalledWith('device_id', 'WS-1')
   })
 })

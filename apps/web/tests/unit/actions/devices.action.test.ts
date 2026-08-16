@@ -5,12 +5,21 @@ jest.mock('@/actions/users.action', () => ({
   ensureCurrentUserAction: () => ensure(),
 }))
 const rpc = jest.fn<Promise<{ error: unknown }>, unknown[]>()
+const helpers = {
+  resolveCurrentUserId: jest.fn<Promise<string | null>, unknown[]>(),
+  resolveMemberRole: jest.fn<Promise<string | null>, unknown[]>(),
+}
+jest.mock('@/actions/_helpers', () => helpers)
 jest.mock('@ws/supabase-db', () => ({
   createServiceRoleClient: () => ({ rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
-import { registerDeviceAction } from '@/actions/devices.action'
+import {
+  registerDeviceAction,
+  shareDeviceAction,
+} from '@/actions/devices.action'
 import { normalizeDeviceId } from '@/lib/device-id'
+import { parseShareIdentifier } from '@/lib/share-identifier'
 
 describe('registerDeviceAction', () => {
   beforeEach(() => {
@@ -53,5 +62,34 @@ describe('registerDeviceAction', () => {
     await expect(
       registerDeviceAction({ deviceId: 'WS-1' }),
     ).resolves.toMatchObject({ ok: false, code })
+  })
+})
+
+describe('shareDeviceAction', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    auth.mockResolvedValue({ userId: 'user_1' })
+  })
+  it('parses identifiers', () => {
+    expect(parseShareIdentifier('123456')).toEqual({
+      kind: 'telegram',
+      telegramId: 123456,
+    })
+    expect(parseShareIdentifier('user_2abcDEF12345')).toEqual({
+      kind: 'clerk',
+      clerkUserId: 'user_2abcDEF12345',
+    })
+    expect(parseShareIdentifier('nope')).toBeNull()
+  })
+  it('rejects non-owners with FORBIDDEN', async () => {
+    helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
+    helpers.resolveMemberRole.mockResolvedValue('viewer')
+    await expect(
+      shareDeviceAction({
+        deviceId: 'WS-1',
+        identifier: 'user_2abcDEF12345',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
   })
 })

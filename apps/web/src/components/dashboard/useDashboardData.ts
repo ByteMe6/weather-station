@@ -4,9 +4,12 @@ import { useUser } from '@clerk/nextjs'
 import type { Reading } from '@ws/shared'
 import { useEffect, useMemo, useState } from 'react'
 
+import { useDeviceParam } from './useDeviceParam'
+
 import { useRangeParam } from '@/components/charts/useRangeParam'
 import type { HistoryPoint, HistoryRange } from '@/lib/chart'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
+import type { MyDevice } from '@/services/devices/devices.service'
 import {
   useLatestReadingQuery,
   useReadingsHistoryQuery,
@@ -17,6 +20,8 @@ import { useReadingsRealtime } from '@/services/readings/readings.realtime'
 export interface DashboardData {
   isLoading: boolean
   deviceId: string | null
+  devices: MyDevice[]
+  setDeviceId: (deviceId: string) => void
   latest: Reading | null
   points: HistoryPoint[]
   status: RealtimeStatus
@@ -34,7 +39,14 @@ export interface DashboardData {
 export const useDashboardData = (): DashboardData => {
   const { isLoaded: isUserLoaded } = useUser()
   const devices = useMyDevicesQuery()
-  const deviceId = devices.data?.[0]?.deviceId ?? null
+  const [selected, setDeviceId] = useDeviceParam()
+  const deviceList = useMemo(() => devices.data ?? [], [devices.data])
+  const deviceId =
+    (selected && deviceList.some((d) => d.deviceId === selected)
+      ? selected
+      : null) ??
+    deviceList[0]?.deviceId ??
+    null
   const latest = useLatestReadingQuery(deviceId ?? undefined)
   const history = useReadingsHistoryQuery(deviceId ?? undefined, '24h')
   const [range, setRange] = useRangeParam()
@@ -62,6 +74,8 @@ export const useDashboardData = (): DashboardData => {
   return {
     isLoading,
     deviceId,
+    devices: deviceList,
+    setDeviceId,
     latest: latest.data ?? null,
     points,
     status,
