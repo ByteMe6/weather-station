@@ -1,8 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@ws/supabase-db'
 
+import { createUserClient } from '../../helpers/auth-client'
+
 import {
   fetchDeviceSecret,
+  fetchLatestReading,
+  fetchReadingsHistory,
+  fetchReadingsRange,
   insertReading,
 } from '@/services/readings/readings.service'
 
@@ -40,9 +45,16 @@ beforeAll(() => {
   }
 })
 
+const CLERK_MEMBER = 'user_inttest_readings_member'
+const CLERK_OTHER = 'user_inttest_readings_other'
+
 afterEach(async () => {
   // FK on delete cascade removes the device's readings too.
   await db.from('devices').delete().eq('device_id', DEVICE_ID)
+  await db
+    .from('users')
+    .delete()
+    .in('clerk_user_id', [CLERK_MEMBER, CLERK_OTHER])
 })
 
 describe('readings service (integration)', () => {
@@ -115,5 +127,57 @@ describe('readings service (integration)', () => {
       .single()
 
     expect(data?.humidity).toBeNull()
+  })
+
+  it('fetchReadingsRange/latest respect RLS: member sees rows ascending, non-member sees none', async () => {
+    await seedDevice()
+    const { data: member } = await db
+      .from('users')
+      .insert({ clerk_user_id: CLERK_MEMBER })
+      .select('id')
+      .single()
+    await db.from('users').insert({ clerk_user_id: CLERK_OTHER })
+    await db
+      .from('device_users')
+      .insert({ device_id: DEVICE_ID, user_id: member!.id, role: 'owner' })
+    for (const [i, ts] of [
+      '2026-07-21T10:00:00.000Z',
+      '2026-07-21T11:00:00.000Z',
+      '2026-07-21T12:00:00.000Z',
+    ].entries()) {
+      await insertReading(db, {
+        deviceId: DEVICE_ID,
+        payload: { ...payload, timestamp: ts, temperature: 20 + i },
+      })
+    }
+
+    const asMember = createUserClient(CLERK_MEMBER)
+    const rows = await fetchReadingsRange(asMember, {
+      deviceId: DEVICE_ID,
+      from: '2026-07-21T09:00:00.000Z',
+      to: '2026-07-21T13:00:00.000Z',
+    })
+    expect(rows.map((r) => r.temperature)).toEqual([20, 21, 22])
+    expect(rows[0]).toMatchObject({ deviceId: DEVICE_ID, windSpeed: null })
+    expect(
+      await fetchLatestReading(asMember, { deviceId: DEVICE_ID }),
+    ).toMatchObject({
+      temperature: 22,
+    })
+    await expect(
+      fetchReadingsHistory(asMember, { deviceId: DEVICE_ID, range: '7d' }),
+    ).rejects.toMatchObject({ code: 'RANGE_NOT_SUPPORTED' })
+
+    const asOther = createUserClient(CLERK_OTHER)
+    expect(
+      await fetchReadingsRange(asOther, {
+        deviceId: DEVICE_ID,
+        from: '2026-07-21T09:00:00.000Z',
+        to: '2026-07-21T13:00:00.000Z',
+      }),
+    ).toEqual([])
+    expect(
+      await fetchLatestReading(asOther, { deviceId: DEVICE_ID }),
+    ).toBeNull()
   })
 })
