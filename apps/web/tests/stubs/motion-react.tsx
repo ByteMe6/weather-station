@@ -16,11 +16,18 @@ const MOTION_PROPS = new Set([
   'layoutId',
 ])
 
+const isMotionValue = (v: unknown): v is { get: () => unknown } =>
+  typeof v === 'object' &&
+  v !== null &&
+  typeof (v as { get?: unknown }).get === 'function'
+
 const stripMotionProps = (props: Record<string, unknown>) => {
   const out: Record<string, unknown> = {}
   for (const key of Object.keys(props)) {
     if (!MOTION_PROPS.has(key)) out[key] = props[key]
   }
+  // Real Motion renders a MotionValue child by reading it.
+  if (isMotionValue(out.children)) out.children = out.children.get()
   return out
 }
 
