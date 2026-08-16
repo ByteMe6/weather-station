@@ -422,6 +422,19 @@ for now, kept because the schema and PRD define it); **viewer** — read-only.
 DB layer: no authenticated write policies exist on `device_users`, so viewers
 cannot escalate even bypassing the UI; pgTAP proves it.
 
+### 4.5b Station nickname & address (added 2026-08-15, during Plan 2)
+
+Owners can give a station a **nickname** (≤ 40 chars) and a free-text
+**address** (≤ 200 chars); both live on `devices` (`label`, `address` — shared
+by every member, readable through the existing member policy via an extended
+column-list grant, never a blanket grant) and are written only by
+`updateDeviceProfileAction` (owner-gated). The nickname replaces the id in the
+nav chip, the device header, the devices list, the dashboard eyebrow, and the
+station `Select`; the address shows under the header and on the devices list.
+Users with several stations switch with the `?device=` `Select` on the
+dashboard (§4.2). **Deferred by decision:** geocoding + Google Map of confirmed
+locations (needs Maps JS + Geocoding keys and billing) — its own ticket later.
+
 ### 4.6 Alerts (MRP-42)
 
 `/alerts`: if `telegramId` is null → `EmptyState` "Link Telegram to manage

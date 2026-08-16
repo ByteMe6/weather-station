@@ -17,6 +17,7 @@ jest.mock('@ws/supabase-db', () => ({
 import {
   registerDeviceAction,
   shareDeviceAction,
+  updateDeviceProfileAction,
 } from '@/actions/devices.action'
 import { normalizeDeviceId } from '@/lib/device-id'
 import { parseShareIdentifier } from '@/lib/share-identifier'
@@ -89,6 +90,36 @@ describe('shareDeviceAction', () => {
         deviceId: 'WS-1',
         identifier: 'user_2abcDEF12345',
         role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+  })
+})
+
+describe('updateDeviceProfileAction', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    auth.mockResolvedValue({ userId: 'user_1' })
+    helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
+  })
+  it('rejects an over-long nickname with a field error', async () => {
+    const res = await updateDeviceProfileAction({
+      deviceId: 'ws-1',
+      label: 'x'.repeat(41),
+      address: '',
+    })
+    expect(res).toMatchObject({
+      ok: false,
+      code: 'INVALID_INPUT',
+      fieldErrors: { label: expect.any(String) as string },
+    })
+  })
+  it('rejects non-owners', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('viewer')
+    await expect(
+      updateDeviceProfileAction({
+        deviceId: 'ws-1',
+        label: 'Backyard',
+        address: '',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
   })

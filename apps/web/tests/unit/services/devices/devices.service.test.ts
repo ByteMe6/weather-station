@@ -37,13 +37,18 @@ describe('fetchMyDevices', () => {
         deviceId: 'WS-1',
         role: 'owner',
         addedAt: 't',
-        device: { status: 'registered', createdAt: 'c' },
+        device: {
+          status: 'registered',
+          createdAt: 'c',
+          label: null,
+          address: null,
+        },
       },
     ]
     const client = makeClient({ data: rows, error: null })
     await expect(fetchMyDevices(client)).resolves.toEqual(rows)
     expect(client.chain.select).toHaveBeenCalledWith(
-      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at )',
+      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at, label, address )',
     )
     expect(client.chain.order).toHaveBeenCalledWith('added_at', {
       ascending: true,

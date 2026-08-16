@@ -27,6 +27,8 @@ interface ConditionsStripProps {
   points: HistoryPoint[]
   status: RealtimeStatus
   now: Date
+  /** Owner-set nickname, shown before the freshness label. */
+  stationLabel?: string | null
   testId: string
 }
 
@@ -39,6 +41,7 @@ export const ConditionsStrip = ({
   points,
   status,
   now,
+  stationLabel = null,
   testId,
 }: ConditionsStripProps): ReactElement => {
   const stale = readingAgeMs(latest.timestamp, now) > STALE_AFTER_MS
@@ -87,7 +90,10 @@ export const ConditionsStrip = ({
             status={pulseStatus}
             pulseKey={latest.id}
           />
-          <span>{eyebrow}</span>
+          <span>
+            {stationLabel ? `${stationLabel} · ` : ''}
+            {eyebrow}
+          </span>
           {status === 'reconnecting' ? (
             <span className="text-wind">· reconnecting</span>
           ) : null}

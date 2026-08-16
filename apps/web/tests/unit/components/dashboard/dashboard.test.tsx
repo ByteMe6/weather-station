@@ -20,6 +20,7 @@ jest.mock('recharts', () => ({
 const state = {
   isLoading: false,
   deviceId: 'WS-7F3A' as string | null,
+  deviceLabel: null as string | null,
   devices: [] as MyDevice[],
   setDeviceId: jest.fn(),
   latest: null as Reading | null,

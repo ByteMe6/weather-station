@@ -235,3 +235,52 @@ export const removeMemberAction = async (input: {
   }
   return actionOk(null)
 }
+
+const profileSchema = z.object({
+  deviceId: z.string().min(1),
+  label: z
+    .string()
+    .trim()
+    .max(40, 'Keep the nickname under 40 characters')
+    .transform((v) => (v.length === 0 ? null : v)),
+  address: z
+    .string()
+    .trim()
+    .max(200, 'Keep the address under 200 characters')
+    .transform((v) => (v.length === 0 ? null : v)),
+})
+
+/** Owner sets the station's nickname and address (free text; geocoding/map is a later ticket). */
+export const updateDeviceProfileAction = async (input: {
+  deviceId: string
+  label: string
+  address: string
+}): Promise<ActionResult<{ label: string | null; address: string | null }>> => {
+  const parsed = profileSchema.safeParse(input)
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {}
+    for (const issue of parsed.error.issues) {
+      const key = String(issue.path[0] ?? 'label')
+      fieldErrors[key] = issue.message
+    }
+    return actionError(
+      'INVALID_INPUT',
+      'Check the highlighted fields',
+      fieldErrors,
+    )
+  }
+  const gate = await requireOwner(parsed.data.deviceId)
+  if (!gate.ok) return gate.result
+  const { error } = await gate.service
+    .from('devices')
+    .update({ label: parsed.data.label, address: parsed.data.address })
+    .eq('device_id', parsed.data.deviceId)
+  if (error) {
+    console.error('updateDeviceProfileAction failed', error)
+    return actionError(
+      'UNKNOWN',
+      'Could not save the station details. Try again.',
+    )
+  }
+  return actionOk({ label: parsed.data.label, address: parsed.data.address })
+}

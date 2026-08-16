@@ -5,7 +5,9 @@ import type { ReactElement, ReactNode } from 'react'
 import { Footer } from './Footer'
 import { TopNav } from './TopNav'
 
+import { useDeviceParam } from '@/components/dashboard/useDeviceParam'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
+import { deviceDisplayName } from '@/services/devices/devices.service'
 
 export const AppShell = ({
   children,
@@ -15,7 +17,10 @@ export const AppShell = ({
   testId: string
 }): ReactElement => {
   const { data: devices, isLoading } = useMyDevicesQuery()
-  const deviceLabel = devices?.[0]?.deviceId ?? null
+  const [selected] = useDeviceParam()
+  const current =
+    devices?.find((d) => d.deviceId === selected) ?? devices?.[0] ?? null
+  const deviceLabel = current ? deviceDisplayName(current) : null
   return (
     <div data-testid={testId} className="flex min-h-dvh flex-col">
       <TopNav

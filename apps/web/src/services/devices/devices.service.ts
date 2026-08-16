@@ -8,8 +8,17 @@ export interface MyDevice {
   deviceId: string
   role: DeviceRole
   addedAt: string
-  device: { status: string; createdAt: string } | null
+  device: {
+    status: string
+    createdAt: string
+    label: string | null
+    address: string | null
+  } | null
 }
+
+/** Display name for a station: the owner's nickname, else the id. */
+export const deviceDisplayName = (d: MyDevice): string =>
+  d.device?.label ?? d.deviceId
 
 /** Devices the current user is linked to (RLS on device_users + devices). Oldest link first. */
 export const fetchMyDevices = async (
@@ -18,7 +27,7 @@ export const fetchMyDevices = async (
   const { data, error } = await supabase
     .from('device_users')
     .select(
-      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at )',
+      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at, label, address )',
     )
     .order('added_at', { ascending: true })
 

@@ -23,6 +23,7 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
   const {
     isLoading,
     deviceId,
+    deviceLabel,
     devices,
     setDeviceId,
     latest,
@@ -92,6 +93,7 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
               points={points}
               status={status}
               now={now}
+              stationLabel={deviceLabel}
             />
             <div className="absolute top-0 right-0 flex items-center gap-2">
               {devices.length > 1 ? (

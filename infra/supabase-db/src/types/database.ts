@@ -47,20 +47,26 @@ export type Database = {
       }
       devices: {
         Row: {
+          address: string | null
           created_at: string
           device_id: string
+          label: string | null
           secret: string
           status: string
         }
         Insert: {
+          address?: string | null
           created_at?: string
           device_id: string
+          label?: string | null
           secret: string
           status?: string
         }
         Update: {
+          address?: string | null
           created_at?: string
           device_id?: string
+          label?: string | null
           secret?: string
           status?: string
         }

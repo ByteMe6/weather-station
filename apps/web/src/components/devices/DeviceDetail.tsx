@@ -6,6 +6,7 @@ import type { ReactElement } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 
 import { DeviceHeader } from './DeviceHeader'
+import { DeviceProfileDialog } from './DeviceProfileDialog'
 import { MembersList } from './MembersList'
 import { ShareDialog } from './ShareDialog'
 
@@ -32,6 +33,8 @@ export const DeviceDetail = ({
   const members = useDeviceMembersQuery(deviceId)
   const [shareOpen, setShareOpen] = useState(false)
   const openShare = useCallback(() => setShareOpen(true), [])
+  const [profileOpen, setProfileOpen] = useState(false)
+  const openProfile = useCallback(() => setProfileOpen(true), [])
 
   const link = useMemo(
     () => mine.data?.find((d) => d.deviceId === deviceId) ?? null,
@@ -71,8 +74,22 @@ export const DeviceDetail = ({
       <DeviceHeader
         testId={`${testId}-header`}
         deviceId={deviceId}
+        label={link.device?.label ?? null}
+        address={link.device?.address ?? null}
         status={link.device?.status ?? null}
         role={link.role}
+        action={
+          canManage ? (
+            <Button
+              testId={`${testId}-edit`}
+              variant="ghost"
+              size="sm"
+              onClick={openProfile}
+            >
+              Edit details
+            </Button>
+          ) : null
+        }
       />
       <Card testId={`${testId}-members`}>
         <CardHeader testId={`${testId}-members-header`}>
@@ -107,6 +124,16 @@ export const DeviceDetail = ({
         open={shareOpen}
         onOpenChange={setShareOpen}
       />
+      {profileOpen ? (
+        <DeviceProfileDialog
+          testId={`${testId}-profile-dialog`}
+          deviceId={deviceId}
+          label={link.device?.label ?? null}
+          address={link.device?.address ?? null}
+          open={profileOpen}
+          onOpenChange={setProfileOpen}
+        />
+      ) : null}
     </div>
   )
 }

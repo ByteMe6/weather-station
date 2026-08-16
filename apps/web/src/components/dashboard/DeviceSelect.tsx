@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 
 import { Select } from '@/components/ui/Select'
 import type { MyDevice } from '@/services/devices/devices.service'
+import { deviceDisplayName } from '@/services/devices/devices.service'
 
 export const DeviceSelect = ({
   devices,
@@ -21,7 +22,9 @@ export const DeviceSelect = ({
     () =>
       devices.map((d) => ({
         value: d.deviceId,
-        label: `${d.deviceId} · ${d.role}`,
+        label: d.device?.label
+          ? `${deviceDisplayName(d)} · ${d.deviceId}`
+          : d.deviceId,
       })),
     [devices],
   )

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
+import { deviceDisplayName } from '@/services/devices/devices.service'
 
 export const DevicesIndex = ({ testId }: { testId: string }): ReactElement => {
   const { isLoaded } = useUser()
@@ -34,9 +35,17 @@ export const DevicesIndex = ({ testId }: { testId: string }): ReactElement => {
               testId={`${testId}-card-${d.deviceId}-body`}
               className="flex items-center gap-3 pt-4"
             >
-              <span className="font-mono text-sm font-semibold">
-                {d.deviceId}
-              </span>
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold">
+                  {deviceDisplayName(d)}
+                </span>
+                <span className="text-slate font-mono text-xs">
+                  {d.deviceId}
+                  {d.device?.address ? (
+                    <span className="font-sans"> · {d.device.address}</span>
+                  ) : null}
+                </span>
+              </div>
               <Badge testId={`${testId}-card-${d.deviceId}-role`}>
                 {d.role}
               </Badge>

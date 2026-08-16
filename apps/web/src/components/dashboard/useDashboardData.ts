@@ -20,6 +20,8 @@ import { useReadingsRealtime } from '@/services/readings/readings.realtime'
 export interface DashboardData {
   isLoading: boolean
   deviceId: string | null
+  /** Nickname of the selected station, when the owner set one. */
+  deviceLabel: string | null
   devices: MyDevice[]
   setDeviceId: (deviceId: string) => void
   latest: Reading | null
@@ -74,6 +76,8 @@ export const useDashboardData = (): DashboardData => {
   return {
     isLoading,
     deviceId,
+    deviceLabel:
+      deviceList.find((d) => d.deviceId === deviceId)?.device?.label ?? null,
     devices: deviceList,
     setDeviceId,
     latest: latest.data ?? null,
