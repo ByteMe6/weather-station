@@ -1863,3 +1863,28 @@ git add -A && git commit -m "docs: plan 2 verification, env docs" && git push -u
 ```
 
 PR to `dev`: "Web — history ranges, CSV export, sharing, Telegram link, alerts, account deletion, privacy (MRP-33/34/35/37/38/40/41/42)"; link spec + plan + verification doc; move tickets to In Review; leave the **[verify when …]** checklist in the PR description.
+
+---
+
+## Amendments (during execution, 2026-08-15)
+
+- **CSV export chunk = 1 000 rows**, not 10 000: PostgREST `max_rows` (1000)
+  silently truncates larger `.limit()`s — a 2 300-row export came back as
+  1 000 in the browser. `nextCursor` is set while a chunk is full (`>=`).
+- **`'use server'` modules export only async functions**: `parseShareIdentifier`
+  lives in `lib/share-identifier.ts` (same lesson as Plan 1's `normalizeDeviceId`).
+- **Task 5b added (user request mid-plan): station nickname + address** —
+  `devices.label`/`devices.address` (check constraints, column-list grant),
+  owner-only `updateDeviceProfileAction`, shown in chip/header/list/eyebrow/select;
+  Google Map + geocoding **deferred by decision** (spec §4.5b).
+- **Telegram link polling** uses `refetchIntervalInBackground: true` (users
+  switch to the Telegram app); unlink clears any consumed pending code; the QR
+  is a `next/image` with `unoptimized` (data URL) — no `eslint-disable`.
+- **Bot**: `@supabase/supabase-js` added to the function's `deno.json` import
+  map (deno lint forbids inline `npm:` specifiers); `SUPABASE_URL` /
+  `SUPABASE_SECRET_KEY` documented in `functions/.env.example`.
+- **Charts**: multi-day ranges use date ticks; precipitation is a `Bar`; the
+  wind panel shows the latest bearing as an `aside` on `ChartPanel`.
+- **Hidden-tab caveat for browser checks**: TanStack pauses `refetchInterval`
+  and Motion pauses animations when the extension tab is hidden — inspect DOM
+  state via JS rather than screenshots for those.
