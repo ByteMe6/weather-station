@@ -280,6 +280,31 @@ export const readingKeys = {
 - Use `as const` for type safety
 - Invalidating a prefix invalidates all descendant keys
 
+### Server actions inside hooks (REQUIRED)
+
+Server actions return `ActionResult`, never throw. TanStack needs a rejected
+promise for `isError`/`onError`, so every action call inside a query/mutation
+goes through `unwrapAction()` (`lib/actions/unwrap.ts`), which throws an
+`ActionError` carrying `code` and `fieldErrors`. Components use the hook —
+they do **not** call actions directly or hand-roll `pending` state:
+
+```typescript
+export const useShareDeviceMutation = (deviceId: string) => {
+  const invalidate = useInvalidateDevice(deviceId)
+  return useMutation({
+    mutationFn: async (input: { identifier: string; role: DeviceRole }) =>
+      unwrapAction(await shareDeviceAction({ deviceId, ...input })),
+    onSuccess: invalidate,
+  })
+}
+```
+
+Reads that must run on the server path (no client grant exists) are still
+`useQuery` + `unwrapAction` — e.g. `useDeviceMemberProfilesQuery`, which
+resolves member names from Clerk. Clerk profile data is never stored in
+Postgres: `device_members()` returns 4-char identifier tails, and names come
+live from `clerkClient().users.getUserList()` in a server action.
+
 ### Query Hook Example
 
 ```typescript
