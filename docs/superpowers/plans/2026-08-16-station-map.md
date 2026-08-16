@@ -1527,3 +1527,26 @@ git commit -m "docs: station map privacy rows and verification notes"
 **Placeholders:** none — every step carries the literal SQL, TypeScript, or command to run.
 
 **Type consistency:** `StationPin` is defined once (Task 5) and consumed by `StationMap` and `StationMapCard` with the same field names; `MyDevice.device.latitude/longitude` is declared in Task 3 and used identically in Tasks 4, 5, and 6; `updateDeviceProfileAction` takes coordinates as **strings** everywhere (Tasks 3, 4) and returns them as `number | null`; `parseCoordinateInput` returns `{ latitude, longitude? }` in both its definition (Task 2) and its use (Task 4).
+
+---
+
+## Amendments (during execution, 2026-08-16)
+
+- **Task 2's `formatCoordinate` assertion was wrong in the plan.**
+  `(-0.0000005).toFixed(6)` is `-0.000000`, not `-0.000001` — that value sits
+  below half in binary floating point. The test now asserts the real intent:
+  no exponent notation (`formatCoordinate(0.0000001) === '0.000000'`).
+- **Tile URL uses `https://tile.openstreetmap.org/...`**, not the `{s}`
+  subdomain form — subdomain sharding is deprecated for OSM's HTTP/2 tile CDN.
+- **`FitToPins` added (not in the plan).** `MapContainer` reads
+  `center`/`zoom`/`bounds` only at initialisation, so the map never refit when
+  a station gained coordinates. A child component calls `fitBounds`/`setView`
+  through `useMap()` whenever positions change, guarded by
+  `map.getContainer().isConnected` and `animate: false` so React's
+  double-invoked effects cannot crash Leaflet's animated pan.
+- **`.ws-pin-dot` needs `flex: none`** — inside the 12 px icon container the
+  label squeezed the dot to zero width.
+- **Attribution is restyled** for both themes; Leaflet's default white pill is
+  unreadable on the dark theme, and the tile policy requires it stay visible.
+- **The `react-leaflet` test stub records `fitBounds`/`setView` calls** and
+  exposes `getContainer()`, so the fitting behaviour is unit-testable in jsdom.
