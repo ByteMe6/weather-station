@@ -1,1 +1,78 @@
 @import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-archivo), system-ui, sans-serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, monospace;
+
+  /* Chrome — light values; `.dark` (set by next-themes, incl. system preference) overrides below.
+     Not light-dark(): Lightning CSS polyfills it with prefers-color-scheme, so a user toggle can't win. */
+  --color-paper: #f7f9fc;
+  --color-card: #ffffff;
+  --color-ink: #0b1526;
+  --color-slate: #5b6b82;
+  --color-line: #dce3ec;
+  --color-sky: #1e6fe8;
+  --color-danger: #d3323a;
+
+  /* Parameters — same in both themes; a colour always means "this parameter" */
+  --color-temp: #e4572e;
+  --color-hum: #1b9aaa;
+  --color-press: #7c5ce0;
+  --color-wind: #d9a21b;
+  --color-rain: #2f5fe0;
+
+  --radius-card: 14px;
+  --radius-control: 9px;
+  --shadow-card: 0 1px 2px rgb(11 21 38 / 4%);
+}
+
+:root {
+  color-scheme: light;
+}
+
+@layer base {
+  .dark {
+    color-scheme: dark;
+    --color-paper: #0b1220;
+    --color-card: #111a2c;
+    --color-ink: #e8eef7;
+    --color-slate: #8b9ab3;
+    --color-line: #1e2a3e;
+    --color-sky: #4d8dff;
+    --color-danger: #ff6b6b;
+  }
+  html {
+    font-family: var(--font-sans);
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-sky);
+    outline-offset: 2px;
+  }
+  /* Instrument numerals: narrow, tabular, tight */
+  .readout {
+    font-variation-settings: 'wdth' 82;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    font-weight: 600;
+  }
+  .readout-hero {
+    font-variation-settings: 'wdth' 75;
+    letter-spacing: -0.04em;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

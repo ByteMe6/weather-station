@@ -39,12 +39,26 @@ yarn install
 ### Run the web app
 
 ```bash
-yarn dev
+infisical run -- yarn workspace @ws/web dev
 ```
 
-Opens at http://localhost:3000. Requires `apps/web/.env.local` — copy from
-[`apps/web/.env.example`](apps/web/.env.example) and fill in the Clerk +
-Supabase dev keys.
+Opens at http://localhost:3000 (Infisical injects the Clerk + Supabase keys; a
+gitignored `apps/web/.env.local` copied from
+[`apps/web/.env.example`](apps/web/.env.example) works as a fallback).
+
+The dashboard reads Supabase directly from the browser with the Clerk session
+token, so two one-time settings are required:
+
+- **Supabase → Clerk third-party auth**: `infra/supabase-db/supabase/config.toml`
+  `[auth.third_party.clerk]` (local) / Authentication → Third-party auth (hosted),
+  pointing at the Clerk Frontend API domain.
+- **Clerk → session token claim**: Configure → Sessions → Customize session
+  token → `{"role": "authenticated"}` (or Integrations → Supabase). Without it
+  every RLS query runs as `anon`.
+
+Design spec and plans: `docs/superpowers/specs/2026-08-15-web-dashboard-ui-design.md`,
+`docs/superpowers/plans/2026-08-15-web-plan-1-foundation-mvp.md`, `…-plan-2-….md`;
+mockups in `docs/superpowers/mockups/2026-08-15-ui-direction/`.
 
 ### Run the Telegram bot locally
 

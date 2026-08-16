@@ -108,6 +108,14 @@ policy may ever expose it to any user path.
 | Server actions / API routes | `createServiceRoleClient()` from `@ws/supabase-db` | `SUPABASE_SECRET_KEY`                   | **Bypassed** |
 | Edge function (bot)         | service-role client created in-function            | `SUPABASE_SECRET_KEY` (function secret) | **Bypassed** |
 
+Realtime uses the same browser client: `readings` is in the
+`supabase_realtime` publication and RLS filters every delivery per
+subscriber (proven by `supabase/tests/realtime_publication.sql`). The
+dashboard hook (`services/readings/readings.realtime.ts`) refreshes the
+socket's Clerk token itself — supabase-js pins the constructor's first token
+as "manual" and stops refreshing it — and resubscribes with backoff when the
+server closes the channel.
+
 ### RLS Auth Flow (Clerk → Supabase)
 
 Clerk is the only web auth (no Supabase Auth). The browser client attaches the
@@ -515,6 +523,13 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 | `BOT_TOKEN`                            | Edge function | Telegram bot token                                  |
 | `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                       |
 | `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod) |
+
+Clerk routing (`/sign-in`, `/sign-up`, fallback `/dashboard`) is set in code
+(`apps/web/src/proxy.ts` + `RootProviders`), not env vars. Two dashboard-side
+prerequisites make the client path work: Supabase third-party auth for Clerk
+(`[auth.third_party.clerk]` in `config.toml` locally, dashboard in prod) and a
+`{"role":"authenticated"}` claim on the Clerk session token — without it every
+RLS query runs as `anon`.
 
 Secrets are managed with **Infisical**: inject them at runtime with
 `infisical run -- <command>` (e.g. `infisical run -- yarn workspace @ws/web dev`).

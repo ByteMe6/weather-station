@@ -1535,7 +1535,7 @@ git commit -m "feat(web): motion vocabulary — springs, NumberRoll, FreshnessPu
 ### Task 6: Clerk authentication — proxy, sign-in/up pages, appearance, env (MRP-17)
 
 **Files:**
-- Create: `apps/web/proxy.ts`
+- Create: `apps/web/src/proxy.ts` (the app uses a `src/` dir, so Next 16 looks for the proxy there)
 - Create: `apps/web/src/lib/auth/public-routes.ts`
 - Replace: `apps/web/src/lib/clerk-appearance.ts`
 - Create: `apps/web/src/app/sign-in/[[...sign-in]]/page.tsx`, `apps/web/src/app/sign-up/[[...sign-up]]/page.tsx`
@@ -1609,7 +1609,7 @@ export const isPublicPath = (pathname: string): boolean =>
   PUBLIC_MATCHERS.some((re) => re.test(pathname))
 ```
 
-`apps/web/proxy.ts` (Next 16 name for middleware; Clerk supports it):
+`apps/web/src/proxy.ts` (Next 16 name for middleware; Clerk supports it):
 
 ```ts
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
@@ -4363,3 +4363,43 @@ git push -u origin feature/web-mvp-ui
 ```
 
 Open a PR to `dev` titled "Web dashboard MVP — auth, registration, live dashboard, 24 h charts (MRP-17/19/22/25/27/32)"; link the spec, plan, and verification doc; move the six Linear tickets to In Review.
+
+---
+
+## Amendments (during execution, 2026-08-15)
+
+Deviations from the plan text above, all reflected in the branch and worth
+carrying into Plan 2:
+
+- **Clerk v7 (Core 3)**: `@clerk/types` is deprecated — the appearance type is
+  derived from `ComponentProps<typeof ClerkProvider>['appearance']`
+  (`lib/clerk-appearance.ts`), and variable names are the Core 3 ones
+  (`colorForeground`, `colorInput`, `colorBorder`, …). `createRouteMatcher`
+  is deprecated (still works); the `(app)` layout adds `await auth.protect()`
+  as the resource-level check. Routing paths are set in code
+  (`clerkMiddleware(handler, { signInUrl, signUpUrl })` + `ClerkProvider`
+  props), so the four `NEXT_PUBLIC_CLERK_*_URL` env vars are not used.
+- **`proxy.ts` lives in `apps/web/src/`** (the app uses a `src/` dir).
+- **`'use server'` modules export only async functions** — `normalizeDeviceId`
+  lives in `lib/device-id.ts`. Unit tests do not catch this; the browser does.
+- **Device ids are lowercase** (`ws-<12 hex>`, minted by
+  `scripts/provision-device.ts`); the action normalises with `toLowerCase()`.
+- **`claim_device` semantics**: rejects only when *another owner* exists;
+  promotes the sole remaining non-owner member; `USER_REQUIRED` for null user;
+  `FOR NO KEY UPDATE`; publication add is guarded. pgTAP replays
+  `realtime.apply_rls` to prove RLS applies to Realtime deliveries.
+- **Realtime auth**: supabase-js pins the constructor's first token as
+  "manual" and stops refreshing it — `useReadingsRealtime` refreshes with a
+  no-arg `setAuth()` every 30 s and resubscribes with backoff on `CLOSED`.
+- **Tokens are class-based** (`@theme` light values + `.dark` overrides), not
+  `light-dark()` — Lightning CSS polyfills it with `prefers-color-scheme` so
+  the toggle could not win. Spec §1.1 amended.
+- **Test infra**: `tests/integration/helpers/auth-client.ts` signs a local
+  HS256 JWT (`sub` = Clerk id, `role: authenticated`) for RLS assertions;
+  `@testing-library/dom` is an explicit dev dep; jsdom gets a `matchMedia`
+  polyfill; the `motion/react` stub renders MotionValue children via `.get()`.
+- **Import order**: the shared ESLint config classifies `@/` after relative
+  imports — comply (relative before `@/`) rather than change the config.
+- **Local prerequisites** now in place: `[auth.third_party.clerk]` in
+  `config.toml` (domain `trusted-longhorn-13.clerk.accounts.dev`) and the
+  Clerk session-token claim `{"role":"authenticated"}` (set in the dashboard).

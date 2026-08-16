@@ -1,5 +1,6 @@
-import type { ReactElement } from 'react'
+import { redirect } from 'next/navigation'
 
-const Home = (): ReactElement => <div>Weather Station</div>
+/** `/` is not a landing page (spec non-goal): send everyone to the dashboard; proxy handles sign-in. */
+const Home = (): never => redirect('/dashboard')
 
 export default Home

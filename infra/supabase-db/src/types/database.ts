@@ -171,6 +171,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_device: {
+        Args: { p_device_id: string; p_user_id: string }
+        Returns: undefined
+      }
       current_app_user_id: { Args: never; Returns: string }
     }
     Enums: {
