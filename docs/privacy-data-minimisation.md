@@ -11,6 +11,7 @@ Every stored personal field, why it exists, how long it lives. Reviewed
 | `schedules` | `user_id`, `time`, `timezone`, `days` | Alert slots the user asked for | Until deleted or account deletion | Required |
 | `telegram_link_codes` | `user_id`, code, timestamps, `failed_reason` | One-time proof of Telegram ownership | 10-minute TTL; row removed on account deletion (cascade); consumed/expired rows are inert | Required; consider a nightly purge of rows older than 1 day (nice-to-have) |
 | `devices` | `label`, `address` | Owner-entered nickname/address for a station | Until owner edits or the device is re-provisioned | Optional, user-entered, not tied to a person once the account is gone |
+| `devices` | `latitude`, `longitude` | Draw the owner's own stations on a map (`/devices`) | Until the owner clears them or the device is re-provisioned | Optional, user-entered, never geocoded or sent to a third party |
 | `readings` | sensor values, `device_id`, `timestamp` | The product | 12 months raw, then daily aggregates (MRP-36) | Not personal data on its own; becomes unlinked when accounts are deleted |
 | Clerk (external) | email, name, avatar | Sign-in | Managed by Clerk; deleted with the account | Not copied into our DB |
 

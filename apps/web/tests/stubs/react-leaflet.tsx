@@ -34,7 +34,16 @@ export const Popup = ({ children }: { children?: ReactNode }): ReactElement => (
   <div data-testid="popup">{children}</div>
 )
 
+export const mapCalls = {
+  fitBounds: [] as unknown[][],
+  setView: [] as unknown[][],
+}
+
 export const useMap = () => ({
-  fitBounds: () => undefined,
-  setView: () => undefined,
+  fitBounds: (...args: unknown[]) => {
+    mapCalls.fitBounds.push(args)
+  },
+  setView: (...args: unknown[]) => {
+    mapCalls.setView.push(args)
+  },
 })

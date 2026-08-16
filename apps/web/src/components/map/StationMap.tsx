@@ -3,8 +3,8 @@
 import { divIcon } from 'leaflet'
 import Link from 'next/link'
 import type { ReactElement } from 'react'
-import { useMemo } from 'react'
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { useEffect, useMemo } from 'react'
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
 
 import type { StationPin } from './stationPins'
 
@@ -32,6 +32,28 @@ const pinIcon = (name: string) =>
     iconSize: [12, 12],
     iconAnchor: [6, 6],
   })
+
+/**
+ * MapContainer applies `center`/`zoom`/`bounds` only when it initialises, so a
+ * station gaining coordinates would leave the view where it was (found in
+ * browser verification). This refits whenever the set of positions changes.
+ */
+const FitToPins = ({ positions }: { positions: [number, number][] }): null => {
+  const map = useMap()
+  useEffect(() => {
+    const first = positions[0]
+    if (!first) return
+    if (positions.length === 1) {
+      map.setView(first, SINGLE_PIN_ZOOM)
+      return
+    }
+    map.fitBounds(positions, {
+      padding: [40, 40],
+      maxZoom: MAX_FIT_ZOOM,
+    })
+  }, [map, positions])
+  return null
+}
 
 export const StationMap = ({
   pins,
@@ -68,6 +90,7 @@ export const StationMap = ({
         scrollWheelZoom={false}
         className="size-full"
       >
+        <FitToPins positions={bounds} />
         <TileLayer attribution={ATTRIBUTION} url={TILE_URL} />
         {pins.map((p) => (
           <Marker

@@ -46,8 +46,8 @@ export const PrivacyPolicy = ({ testId }: { testId: string }): ReactElement => (
         </li>
         <li>
           <b className="text-ink">Your choices</b> — which stations you can see,
-          the roles you grant to others, alert times and days, an optional
-          station nickname and address you enter.
+          the roles you grant to others, alert times and days, and an optional
+          station nickname, address and map coordinates you enter.
         </li>
       </ul>
     </Section>
@@ -76,6 +76,12 @@ export const PrivacyPolicy = ({ testId }: { testId: string }): ReactElement => (
         never public. Our providers process data on our behalf: Clerk (sign-in),
         Supabase (database and bot hosting), Vercel (web hosting), Telegram
         (message delivery).
+      </p>
+      <p>
+        Station coordinates are optional and typed in by you; they are never
+        sent to a geocoding service. Showing the map does mean your browser
+        requests map tiles from OpenStreetMap, which reveals the map area you
+        are looking at to them — never a station, an account, or a reading.
       </p>
     </Section>
 

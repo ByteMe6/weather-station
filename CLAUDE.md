@@ -90,12 +90,13 @@ directly and RLS isolates per-user data via `device_users`.
 
 Server paths in this project are exactly (PRD B1/B2, W5):
 
-| Use client path when…                      | Use server path when…                                 |
-| ------------------------------------------ | ----------------------------------------------------- |
-| **All reads** (readings, charts, devices)  | Device ingest `POST /api/v1/readings` (HMAC verify)   |
-| **All user-scoped writes** RLS can enforce | Device registration / sharing (`device_users` writes) |
-| Realtime subscriptions (dashboard)         | Telegram account linking, account settings            |
-| Paginated/filtered history queries         | CSV export (server action)                            |
+| Use client path when…                                                         | Use server path when…                                  |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------ |
+| **All reads** (readings, charts, devices)                                     | Device ingest `POST /api/v1/readings` (HMAC verify)    |
+| **All user-scoped writes** RLS can enforce                                    | Device registration / sharing (`device_users` writes)  |
+| Realtime subscriptions (dashboard)                                            | Telegram account linking, account settings             |
+| Station map (`/devices`) — reuses the `deviceKeys.mine` cache, no extra query | Device profile writes (nickname, address, coordinates) |
+| Paginated/filtered history queries                                            | CSV export (server action)                             |
 
 The `devices.secret` column (HMAC keys) is **service-role only** — no RLS
 policy may ever expose it to any user path.

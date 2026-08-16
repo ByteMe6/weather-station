@@ -86,6 +86,9 @@
   white-space: nowrap;
 }
 .ws-pin-dot {
+  /* The icon container is 12px wide; without flex:none the dot is squeezed to
+     zero by the label sitting next to it (found in browser verification). */
+  flex: none;
   width: 12px;
   height: 12px;
   border-radius: 9999px;
@@ -105,4 +108,15 @@
 }
 .leaflet-container {
   background: var(--color-card);
+}
+/* Attribution is required to stay visible, so it gets real contrast in both
+   themes rather than Leaflet's white-on-anything default. */
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--color-card) 85%, transparent) !important;
+  color: var(--color-slate) !important;
+  font-size: 11px;
+}
+.leaflet-control-attribution a {
+  color: var(--color-slate) !important;
+  text-decoration: underline;
 }
