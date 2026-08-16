@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>01 · Instrument — Weather Station</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{ color-scheme: light dark;
+    --paper:light-dark(#F7F9FC,#0B1220); --card:light-dark(#FFFFFF,#111A2C); --ink:light-dark(#0B1526,#E8EEF7); --slate:light-dark(#5B6B82,#8B9AB3); --line:light-dark(#DCE3EC,#1E2A3E); --sky:light-dark(#1E6FE8,#4D8DFF);
+    --temp:#E4572E; --hum:#1B9AAA; --press:#7C5CE0; --wind:#D9A21B; --rain:#2F5FE0;
+    --r:14px;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:"Archivo",system-ui,sans-serif;font-variation-settings:"wdth" 100;-webkit-font-smoothing:antialiased}
+  .mono{font-family:"DM Mono",ui-monospace,monospace}
+  a{color:inherit;text-decoration:none}
+
+  /* nav */
+  header{position:sticky;top:0;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:9}
+  .nav{max-width:1180px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
+  .brand i{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--sky),#7FB2FF);display:inline-block}
+  .tabs{display:flex;gap:6px;margin-left:12px}
+  .tabs a{padding:8px 12px;border-radius:8px;color:var(--slate);font-size:14px;font-weight:500;position:relative}
+  .tabs a.on{color:var(--ink)}
+  .tabs a.on::after{content:"";position:absolute;left:12px;right:12px;bottom:-9px;height:2px;background:var(--sky);border-radius:2px}
+  .spacer{flex:1}
+  .device{font-size:12px;color:var(--slate);display:flex;align-items:center;gap:8px}
+  .device b{color:var(--ink);font-weight:500}
+  .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#FFB86B,#E4572E)}
+
+  main{max-width:1180px;margin:0 auto;padding:28px 24px 60px}
+
+  /* conditions strip */
+  .strip{display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:end;padding:8px 4px 28px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-size:12px;color:var(--slate);display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .live{width:8px;height:8px;border-radius:50%;background:var(--sky);box-shadow:0 0 0 0 color-mix(in srgb,var(--sky) 45%,transparent);animation:pulse 2.4s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--sky) 45%,transparent)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  .big{font-size:112px;line-height:.9;font-weight:600;letter-spacing:-.04em;font-variation-settings:"wdth" 75;font-variant-numeric:tabular-nums;display:flex;align-items:flex-start;gap:6px}
+  .big sup{font-size:28px;font-weight:500;letter-spacing:0;color:var(--slate);margin-top:14px;font-variation-settings:"wdth" 100}
+  .big .roll{display:inline-block;animation:roll .7s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes roll{from{transform:translateY(18px);opacity:0;filter:blur(2px)}to{transform:none;opacity:1;filter:none}}
+  .inline{display:flex;gap:36px;flex-wrap:wrap;padding-bottom:10px}
+  .inline div{display:flex;flex-direction:column;gap:2px}
+  .inline .k{font-size:12px;color:var(--slate)}
+  .inline .v{font-size:26px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-variation-settings:"wdth" 88}
+  .inline .v small{font-size:13px;color:var(--slate);font-weight:500;margin-left:4px}
+  .trend{font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:4px}
+  .up{color:var(--temp)} .down{color:var(--rain)} .flat{color:var(--slate)}
+
+  /* cards */
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:24px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 16px 12px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(11,21,38,.04)}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+  .card .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--slate)}
+  .card .v{font-size:32px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums;font-variation-settings:"wdth" 82;margin:8px 0 2px}
+  .card .v small{font-size:13px;color:var(--slate);font-weight:500;margin-left:3px;font-variation-settings:"wdth" 100}
+  .card svg{display:block;width:100%;height:28px;margin-top:8px}
+  .card .foot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:12px;color:var(--slate)}
+  .muted{opacity:.55}
+
+  /* chart */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px 12px}
+  .panel-h{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .panel-h h2{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--slate)}
+  .legend i{width:10px;height:3px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:middle}
+  .seg{margin-left:auto;display:inline-flex;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+  .seg a{padding:5px 12px;border-radius:7px;font-size:13px;color:var(--slate);font-weight:500}
+  .seg a.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(11,21,38,.08)}
+  .chart{position:relative}
+  .chart svg{width:100%;height:auto;display:block}
+  .axis{font-size:7.5px;fill:var(--slate);font-family:"DM Mono",monospace}
+  .gridline{stroke:var(--line);stroke-width:1}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:9px;background:var(--ink);color:var(--paper);font-size:13px;font-weight:600}
+  .ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .toolbar{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+  @media (prefers-reduced-motion: reduce){ .live,.roll{animation:none} }
+  @media (max-width:900px){ .grid{grid-template-columns:repeat(2,1fr)} .strip{grid-template-columns:1fr} .big{font-size:88px} }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <a class="brand" href="#"><i></i>Weather Station</a>
+    <nav class="tabs"><a class="on" href="#">Dashboard</a><a href="#">Alerts</a><a href="#">Devices</a><a href="#">Settings</a></nav>
+    <span class="spacer"></span>
+    <span class="device mono">Backyard · <b>WS-7F3A</b></span>
+    <span class="avatar"></span>
+  </div>
+</header>
+
+<main>
+  <section class="strip">
+    <div>
+      <div class="eyebrow"><span class="live"></span><span class="mono">Updated 12:35 · 2 min ago</span></div>
+      <div class="big"><span class="roll">21.4</span><sup>°C</sup></div>
+    </div>
+    <div class="inline">
+      <div><span class="k">Humidity</span><span class="v">58<small>%</small></span><span class="trend down">▾ 3 in 3 h</span></div>
+      <div><span class="k">Pressure</span><span class="v">1013.2<small>hPa</small></span><span class="trend down">▾ 1.8 · falling</span></div>
+      <div><span class="k">Wind</span><span class="v">12<small>km/h NW</small></span><span class="trend flat">— steady</span></div>
+      <div><span class="k">Rain today</span><span class="v">0.0<small>mm</small></span><span class="trend flat">dry</span></div>
+      <div><span class="k">24 h range</span><span class="v">14.1<small>–</small>23.2<small>°C</small></span><span class="trend flat">05:00 → 16:45</span></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="card" style="--c:var(--temp)"><div class="k">Temperature</div><div class="v">21.4<small>°C</small></div>
+      <svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 18 L8 16 L16 17 L24 12 L32 10 L40 11 L48 7 L56 6 L60 5" fill="none" stroke="var(--temp)" stroke-width="1.6"/></svg>
+      <div class="foot"><span>last 3 h</span><span class="trend up">▴ 0.6</span></div></article>
+    <article class="card" style="--c:var(--hum)"><div class="k">Humidity</div><div class="v">58<small>%</small></div>
+      <svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 6 L8 8 L16 7 L24 10 L32 12 L40 11 L48 14 L56 15 L60 16" fill="none" stroke="var(--hum)" stroke-width="1.6"/></svg>
+      <div class="foot"><span>last 3 h</span><span class="trend down">▾ 3</span></div></article>
+    <article class="card" style="--c:var(--press)"><div class="k">Pressure</div><div class="v">1013.2<small>hPa</small></div>
+      <svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 4 L8 5 L16 5 L24 7 L32 9 L40 10 L48 13 L56 15 L60 17" fill="none" stroke="var(--press)" stroke-width="1.6"/></svg>
+      <div class="foot"><span>last 3 h</span><span class="trend down">▾ 1.8</span></div></article>
+    <article class="card" style="--c:var(--wind)"><div class="k">Wind</div><div class="v">12<small>km/h</small></div>
+      <svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 14 L8 10 L16 15 L24 9 L32 12 L40 8 L48 13 L56 10 L60 12" fill="none" stroke="var(--wind)" stroke-width="1.6"/></svg>
+      <div class="foot"><span>NW · 315°</span><span class="trend flat">gust 19</span></div></article>
+    <article class="card muted" style="--c:var(--rain)"><div class="k">Precipitation</div><div class="v">0.0<small>mm</small></div>
+      <svg viewBox="0 0 60 24" preserveAspectRatio="none"><path d="M0 20 L60 20" fill="none" stroke="var(--rain)" stroke-width="1.6" stroke-dasharray="2 3"/></svg>
+      <div class="foot"><span>today</span><span class="trend flat">sensor not fitted</span></div></article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-h">
+      <h2>Temperature</h2>
+      <div class="legend"><span><i style="background:var(--temp)"></i>°C</span><span class="mono">min 14.1 · max 23.2</span></div>
+      <div class="seg"><a class="on" href="#">24 h</a><a href="#">7 d</a><a href="#">30 d</a></div>
+    </div>
+    <div class="chart">
+      <svg viewBox="0 0 600 190">
+        <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--temp)" stop-opacity=".18"/><stop offset="1" stop-color="var(--temp)" stop-opacity="0"/></linearGradient></defs>
+        <g class="gridline"><line x1="8" x2="592" y1="8" y2="8"/><line x1="8" x2="592" y1="56" y2="56"/><line x1="8" x2="592" y1="104" y2="104"/><line x1="8" x2="592" y1="152" y2="152"/></g>
+        <path d="M8.0 107.5 L14.1 109.8 L20.2 118.2 L26.3 123.4 L32.3 126.0 L38.4 125.7 L44.5 133.1 L50.6 135.2 L56.7 134.5 L62.8 140.5 L68.8 140.8 L74.9 141.3 L81.0 142.2 L87.1 146.8 L93.2 149.6 L99.3 149.5 L105.3 150.1 L111.4 149.5 L117.5 151.8 L123.6 147.6 L129.7 152.0 L135.8 146.3 L141.8 150.4 L147.9 147.1 L154.0 144.4 L160.1 141.8 L166.2 139.1 L172.3 136.1 L178.3 132.8 L184.4 132.5 L190.5 125.9 L196.6 128.1 L202.7 124.3 L208.8 118.2 L214.8 110.9 L220.9 112.3 L227.0 103.2 L233.1 99.9 L239.2 93.9 L245.3 92.8 L251.3 85.6 L257.4 80.7 L263.5 77.6 L269.6 72.5 L275.7 70.5 L281.8 61.8 L287.8 58.4 L293.9 53.6 L300.0 50.6 L306.1 47.7 L312.2 41.8 L318.3 41.2 L324.3 38.1 L330.4 32.6 L336.5 31.3 L342.6 27.0 L348.7 23.4 L354.8 18.1 L360.8 19.2 L366.9 18.7 L373.0 13.4 L379.1 11.6 L385.2 8.9 L391.3 14.3 L397.3 8.9 L403.4 12.4 L409.5 11.1 L415.6 8.0 L421.7 12.1 L427.8 14.9 L433.8 13.2 L439.9 11.9 L446.0 15.6 L452.1 21.4 L458.2 23.4 L464.3 24.2 L470.3 22.3 L476.4 28.8 L482.5 30.7 L488.6 34.0 L494.7 39.2 L500.8 45.6 L506.8 46.1 L512.9 51.1 L519.0 51.4 L525.1 62.1 L531.2 61.2 L537.3 66.2 L543.3 71.9 L549.4 80.2 L555.5 79.4 L561.6 85.7 L567.7 90.6 L573.8 94.4 L579.8 100.4 L585.9 102.9 L592.0 107.9 L592.0 160 L8.0 160 Z" fill="url(#g)"/>
+        <path d="M8.0 107.5 L14.1 109.8 L20.2 118.2 L26.3 123.4 L32.3 126.0 L38.4 125.7 L44.5 133.1 L50.6 135.2 L56.7 134.5 L62.8 140.5 L68.8 140.8 L74.9 141.3 L81.0 142.2 L87.1 146.8 L93.2 149.6 L99.3 149.5 L105.3 150.1 L111.4 149.5 L117.5 151.8 L123.6 147.6 L129.7 152.0 L135.8 146.3 L141.8 150.4 L147.9 147.1 L154.0 144.4 L160.1 141.8 L166.2 139.1 L172.3 136.1 L178.3 132.8 L184.4 132.5 L190.5 125.9 L196.6 128.1 L202.7 124.3 L208.8 118.2 L214.8 110.9 L220.9 112.3 L227.0 103.2 L233.1 99.9 L239.2 93.9 L245.3 92.8 L251.3 85.6 L257.4 80.7 L263.5 77.6 L269.6 72.5 L275.7 70.5 L281.8 61.8 L287.8 58.4 L293.9 53.6 L300.0 50.6 L306.1 47.7 L312.2 41.8 L318.3 41.2 L324.3 38.1 L330.4 32.6 L336.5 31.3 L342.6 27.0 L348.7 23.4 L354.8 18.1 L360.8 19.2 L366.9 18.7 L373.0 13.4 L379.1 11.6 L385.2 8.9 L391.3 14.3 L397.3 8.9 L403.4 12.4 L409.5 11.1 L415.6 8.0 L421.7 12.1 L427.8 14.9 L433.8 13.2 L439.9 11.9 L446.0 15.6 L452.1 21.4 L458.2 23.4 L464.3 24.2 L470.3 22.3 L476.4 28.8 L482.5 30.7 L488.6 34.0 L494.7 39.2 L500.8 45.6 L506.8 46.1 L512.9 51.1 L519.0 51.4 L525.1 62.1 L531.2 61.2 L537.3 66.2 L543.3 71.9 L549.4 80.2 L555.5 79.4 L561.6 85.7 L567.7 90.6 L573.8 94.4 L579.8 100.4 L585.9 102.9 L592.0 107.9" fill="none" stroke="var(--temp)" stroke-width="2" stroke-linejoin="round"/>
+        <circle cx="592" cy="107.9" r="4" fill="var(--temp)"/><circle cx="592" cy="107.9" r="9" fill="var(--temp)" opacity=".18"/>
+        <g class="axis"><text x="8" y="182">12:00</text><text x="150" y="182">18:00</text><text x="292" y="182">00:00</text><text x="434" y="182">06:00</text><text x="566" y="182">now</text></g>
+        <g class="axis"><text x="8" y="14">23.2</text><text x="8" y="150">14.1</text></g>
+      </svg>
+    </div>
+  </section>
+
+  <div class="toolbar"><a class="btn ghost" href="#">Export CSV</a><a class="btn" href="#">Register a device</a></div>
+</main>
+
+<button id="theme-toggle" type="button" aria-label="Toggle light/dark" style="position:fixed;left:16px;bottom:16px;z-index:99;width:40px;height:40px;border-radius:50%;border:1px solid rgba(127,127,127,.35);background:rgba(127,127,127,.15);backdrop-filter:blur(8px);color:inherit;font-size:18px;cursor:pointer">◐</button>
+<script>
+  (()=>{const r=document.documentElement,b=document.getElementById('theme-toggle');
+  const sys=()=>matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  let mode=r.dataset.defaultTheme||sys();r.style.colorScheme=mode;
+  b.onclick=()=>{mode=mode==='dark'?'light':'dark';r.style.colorScheme=mode;};})();
+</script>
+</body>
+</html>

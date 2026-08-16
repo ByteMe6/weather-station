@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UI direction — pick one of five</title>
+<style>
+  :root{--bg:#F4F6F9;--ink:#0B1526;--soft:#5B6B82;--line:#DCE3EC;--card:#fff}
+  @media (prefers-color-scheme: dark){:root{--bg:#0B1220;--ink:#E8EEF7;--soft:#8B9AB3;--line:#1E2A3E;--card:#111A2C}}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;padding:32px 24px 80px}
+  h1{font-size:22px;letter-spacing:-.01em;margin-bottom:6px}
+  p.lead{color:var(--soft);font-size:14px;max-width:70ch;margin-bottom:26px}
+  .list{display:grid;gap:28px;max-width:1280px}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .head{display:flex;align-items:baseline;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .head b{font-size:16px}
+  .head span{color:var(--soft);font-size:13px}
+  .head a{margin-left:auto;font-size:13px;color:var(--ink);text-decoration:underline}
+  iframe{width:100%;height:760px;border:0;display:block;background:#fff}
+  .tags{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--line);font-size:12px;color:var(--soft)}
+  .tags i{font-style:normal;padding:3px 8px;border:1px solid var(--line);border-radius:999px}
+</style>
+</head>
+<body>
+<h1>Weather Station — five UI directions</h1>
+<p class="lead">Same device, same readings, same 24 h series in every mockup — only the direction changes. Each one already includes a light and a dark theme (follows your OS). Toggle your system appearance to compare. Tell me the number you want (or mix: “3’s type, 1’s cards”).</p>
+
+<div class="list">
+  <section class="item">
+    <div class="head"><b>01 · Instrument</b><span>Neutral chrome, parameter colours carry meaning; Archivo (narrow tabular numerals) + DM Mono; conditions strip hero; quiet cards.</span><a href="01-instrument.html" target="_blank">open ↗</a></div>
+    <iframe src="01-instrument.html" title="01 Instrument"></iframe>
+    <div class="tags"><i>light-first</i><i>data-tool</i><i>no overshoot springs</i><i>signature: “reading arrives”</i></div>
+  </section>
+
+  <section class="item">
+    <div class="head"><b>02 · Ops console</b><span>Dark-first navy, icon rail, grid backdrop, IBM Plex Mono readouts, arc gauges, LIVE status pills — an operations panel.</span><a href="02-ops-console.html" target="_blank">open ↗</a></div>
+    <iframe src="02-ops-console.html" title="02 Ops console"></iframe>
+    <div class="tags"><i>dark-first</i><i>gauges</i><i>dense</i><i>mono numerals</i></div>
+  </section>
+
+  <section class="item">
+    <div class="head"><b>03 · Editorial sky</b><span>Light, airy, Fraunces serif display at large size, sky-gradient hero with a plain-language summary line, hairline dividers instead of cards.</span><a href="03-editorial-sky.html" target="_blank">open ↗</a></div>
+    <iframe src="03-editorial-sky.html" title="03 Editorial sky"></iframe>
+    <div class="tags"><i>light-first</i><i>consumer</i><i>serif</i><i>whitespace</i></div>
+  </section>
+
+  <section class="item">
+    <div class="head"><b>04 · Synoptic</b><span>Meteorological vernacular: isobar contours, WMO station-plot glyph with wind barb, observation-log table, condensed uppercase labels, red temperature trace.</span><a href="04-synoptic.html" target="_blank">open ↗</a></div>
+    <iframe src="04-synoptic.html" title="04 Synoptic"></iframe>
+    <div class="tags"><i>light-first</i><i>enthusiast / scientific</i><i>tabular</i><i>signature: station plot</i></div>
+  </section>
+
+  <section class="item">
+    <div class="head"><b>05 · Atmosphere</b><span>Frosted-glass cards over a soft sky gradient, floating pill nav, Sora at light weight, rounded 24–28 px, friendly summary copy — modern consumer weather.</span><a href="05-atmosphere.html" target="_blank">open ↗</a></div>
+    <iframe src="05-atmosphere.html" title="05 Atmosphere"></iframe>
+    <div class="tags"><i>light-first</i><i>glassmorphism</i><i>rounded</i><i>consumer-modern</i></div>
+  </section>
+</div>
+</body>
+</html>
