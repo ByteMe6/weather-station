@@ -110,3 +110,35 @@ export const fetchMemberRole = async (
   }
   return (data?.role as DeviceRole | undefined) ?? null
 }
+
+export interface DeviceMemberIdentity {
+  userId: string
+  clerkUserId: string | null
+}
+
+/**
+ * Members of a device with their full Clerk ids. Server path only — the
+ * service-role client bypasses RLS and `users` is own-row-only for clients.
+ * Used to resolve display names from Clerk without ever storing them.
+ */
+export const fetchDeviceMemberIdentities = async (
+  supabase: SupabaseClient<Database>,
+  params: { deviceId: string },
+): Promise<DeviceMemberIdentity[]> => {
+  const { data, error } = await supabase
+    .from('device_users')
+    .select('userId:user_id, user:users ( clerkUserId:clerk_user_id )')
+    .eq('device_id', params.deviceId)
+
+  if (error) {
+    throw new ServiceError(
+      `Failed to fetch device member identities: ${error.message}`,
+      error.code,
+      error.details,
+    )
+  }
+  return (data ?? []).map((row) => ({
+    userId: row.userId,
+    clerkUserId: row.user?.clerkUserId ?? null,
+  }))
+}

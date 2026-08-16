@@ -1,4 +1,5 @@
 import type { DeviceRole } from '@ws/shared'
+import Link from 'next/link'
 import type { ReactElement, ReactNode } from 'react'
 
 import { Badge } from '@/components/ui/Badge'
@@ -23,6 +24,13 @@ export const DeviceHeader = ({
 }): ReactElement => (
   <div data-testid={testId} className="flex flex-wrap items-start gap-3">
     <div className="flex flex-col gap-1">
+      <Link
+        data-testid={`${testId}-back`}
+        href="/devices"
+        className="text-slate hover:text-ink w-fit text-[13px] underline-offset-2 hover:underline"
+      >
+        ← All stations
+      </Link>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold tracking-tight">
           {label ?? deviceId}

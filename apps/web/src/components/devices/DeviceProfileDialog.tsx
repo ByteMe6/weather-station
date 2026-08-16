@@ -1,16 +1,15 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
 import type { FormEvent, ReactElement } from 'react'
 import { useCallback, useState } from 'react'
 
-import { updateDeviceProfileAction } from '@/actions/devices.action'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
-import { deviceKeys } from '@/services/devices/devices.queries'
+import { ActionError } from '@/lib/actions/unwrap'
+import { useUpdateDeviceProfileMutation } from '@/services/devices/devices.queries'
 
 interface DeviceProfileDialogProps {
   testId: string
@@ -29,12 +28,11 @@ export const DeviceProfileDialog = ({
   open,
   onOpenChange,
 }: DeviceProfileDialogProps): ReactElement => {
-  const queryClient = useQueryClient()
   const { toast } = useToast()
+  const save = useUpdateDeviceProfileMutation(deviceId)
   const [labelValue, setLabelValue] = useState(label ?? '')
   const [addressValue, setAddressValue] = useState(address ?? '')
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [pending, setPending] = useState(false)
 
   const onLabel = useCallback(
     (e: FormEvent<HTMLInputElement>) => setLabelValue(e.currentTarget.value),
@@ -48,23 +46,21 @@ export const DeviceProfileDialog = ({
   const onSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      setPending(true)
       setErrors({})
-      const res = await updateDeviceProfileAction({
-        deviceId,
-        label: labelValue,
-        address: addressValue,
-      })
-      setPending(false)
-      if (!res.ok) {
-        setErrors(res.fieldErrors ?? { label: res.message })
+      try {
+        await save.mutateAsync({ label: labelValue, address: addressValue })
+      } catch (err) {
+        setErrors(
+          err instanceof ActionError
+            ? (err.fieldErrors ?? { label: err.message })
+            : { label: 'Could not save the station details. Try again.' },
+        )
         return
       }
-      await queryClient.invalidateQueries({ queryKey: deviceKeys.all })
       toast({ title: 'Station details saved', tone: 'success' })
       onOpenChange(false)
     },
-    [deviceId, labelValue, addressValue, queryClient, toast, onOpenChange],
+    [labelValue, addressValue, save, toast, onOpenChange],
   )
 
   return (
@@ -109,7 +105,11 @@ export const DeviceProfileDialog = ({
           />
         </Field>
         <div className="flex justify-end">
-          <Button testId={`${testId}-save`} type="submit" loading={pending}>
+          <Button
+            testId={`${testId}-save`}
+            type="submit"
+            loading={save.isPending}
+          >
             Save
           </Button>
         </div>

@@ -7,17 +7,17 @@ import { toDataURL } from 'qrcode'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 
-import {
-  startTelegramLinkAction,
-  unlinkTelegramAction,
-} from '@/actions/telegram.action'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Dialog } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/Toast'
-import { useTelegramLinkStatusQuery } from '@/services/telegram/telegram.queries'
+import {
+  useStartTelegramLinkMutation,
+  useTelegramLinkStatusQuery,
+  useUnlinkTelegramMutation,
+} from '@/services/telegram/telegram.queries'
 import { useCurrentUserQuery, userKeys } from '@/services/users/users.queries'
 
 interface PendingLink {
@@ -50,9 +50,10 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const { toast } = useToast()
   const { isLoaded } = useUser()
   const me = useCurrentUserQuery()
+  const startLink = useStartTelegramLinkMutation()
+  const unlinkTelegram = useUnlinkTelegramMutation()
   const [pending, setPending] = useState<PendingLink | null>(null)
   const [qr, setQr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   const [unlinkOpen, setUnlinkOpen] = useState(false)
   const countdown = useCountdown(pending?.expiresAt ?? null)
 
@@ -81,19 +82,16 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   }, [pending])
 
   const start = useCallback(async () => {
-    setBusy(true)
-    const res = await startTelegramLinkAction()
-    setBusy(false)
-    if (!res.ok) {
+    try {
+      setPending(await startLink.mutateAsync())
+    } catch (err) {
       toast({
         title: "Couldn't start linking",
-        description: res.message,
+        description: err instanceof Error ? err.message : undefined,
         tone: 'danger',
       })
-      return
     }
-    setPending(res.data)
-  }, [toast])
+  }, [startLink, toast])
 
   const cancelPending = useCallback(() => {
     setPending(null)
@@ -104,14 +102,13 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const closeUnlink = useCallback((o: boolean) => setUnlinkOpen(o), [])
   const cancelUnlink = useCallback(() => setUnlinkOpen(false), [])
   const unlink = useCallback(async () => {
-    setBusy(true)
-    const res = await unlinkTelegramAction()
-    setBusy(false)
     setUnlinkOpen(false)
-    if (!res.ok) {
+    try {
+      await unlinkTelegram.mutateAsync()
+    } catch (err) {
       toast({
         title: "Couldn't unlink",
-        description: res.message,
+        description: err instanceof Error ? err.message : undefined,
         tone: 'danger',
       })
       return
@@ -120,8 +117,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
     setPending(null)
     setQr(null)
     toast({ title: 'Telegram unlinked', tone: 'success' })
-    void queryClient.invalidateQueries({ queryKey: userKeys.current })
-  }, [queryClient, toast])
+  }, [unlinkTelegram, toast])
 
   const linkedId = me.data?.telegramId ?? null
   const showPending = linkedId === null ? pending : null
@@ -223,7 +219,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
             <Button
               testId={`${testId}-link`}
               size="sm"
-              loading={busy}
+              loading={startLink.isPending}
               onClick={start}
             >
               Link Telegram
@@ -249,7 +245,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
           <Button
             testId={`${testId}-unlink-confirm`}
             variant="danger"
-            loading={busy}
+            loading={unlinkTelegram.isPending}
             onClick={unlink}
           >
             Unlink

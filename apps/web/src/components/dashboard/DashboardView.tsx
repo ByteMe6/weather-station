@@ -7,7 +7,6 @@ import { useCallback, useState } from 'react'
 
 import { ConditionsStrip } from './ConditionsStrip'
 import { DashboardSkeleton } from './DashboardSkeleton'
-import { DeviceSelect } from './DeviceSelect'
 import { NoDeviceState } from './NoDeviceState'
 import { ParameterCardGrid } from './ParameterCardGrid'
 import { useDashboardData } from './useDashboardData'
@@ -24,8 +23,6 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
     isLoading,
     deviceId,
     deviceLabel,
-    devices,
-    setDeviceId,
     latest,
     points,
     status,
@@ -96,14 +93,6 @@ export const DashboardView = ({ testId }: { testId: string }): ReactElement => {
               stationLabel={deviceLabel}
             />
             <div className="absolute top-0 right-0 flex items-center gap-2">
-              {devices.length > 1 ? (
-                <DeviceSelect
-                  testId={`${testId}-device-select`}
-                  devices={devices}
-                  value={deviceId}
-                  onChange={setDeviceId}
-                />
-              ) : null}
               <Button
                 testId={`${testId}-export`}
                 variant="ghost"

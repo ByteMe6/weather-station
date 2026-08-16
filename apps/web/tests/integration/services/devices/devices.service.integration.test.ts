@@ -4,6 +4,7 @@ import type { Database } from '@ws/supabase-db'
 import { createUserClient } from '../../helpers/auth-client'
 
 import {
+  fetchDeviceMemberIdentities,
   fetchDeviceMembers,
   fetchMemberRole,
   fetchMyDevices,
@@ -115,6 +116,24 @@ describe('devices service (integration)', () => {
     expect(
       await fetchMemberRole(db, { deviceId: DEVICE_ID, userId: a!.id }),
     ).toBe('owner')
+
+    // Server path (service role) gets full Clerk ids for the name lookup…
+    expect(
+      (await fetchDeviceMemberIdentities(db, { deviceId: DEVICE_ID })).sort(
+        (x, y) => x.userId.localeCompare(y.userId),
+      ),
+    ).toEqual(
+      [
+        { userId: a!.id, clerkUserId: CLERK_A },
+        { userId: b!.id, clerkUserId: CLERK_B },
+      ].sort((x, y) => x.userId.localeCompare(y.userId)),
+    )
+    // …but a client (even the owner) cannot: users is own-row-only under RLS.
+    expect(
+      (await fetchDeviceMemberIdentities(ownerClient, { deviceId: DEVICE_ID }))
+        .filter((m) => m.userId === b!.id)
+        .map((m) => m.clerkUserId),
+    ).toEqual([])
 
     const viewerClient = createUserClient(CLERK_B)
     const asViewer = await fetchDeviceMembers(viewerClient, {

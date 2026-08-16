@@ -1,24 +1,24 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
 import type { DeviceRole } from '@ws/shared'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactElement } from 'react'
 import { useCallback, useState } from 'react'
 
 import { maskIdentifier } from './maskIdentifier'
+import { MemberAvatar } from './MemberAvatar'
 
-import {
-  removeMemberAction,
-  updateMemberRoleAction,
-} from '@/actions/devices.action'
+import type { MemberProfiles } from '@/actions/devices.action'
 import { springs } from '@/components/motion/variants'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
-import { deviceKeys } from '@/services/devices/devices.queries'
+import {
+  useRemoveMemberMutation,
+  useUpdateMemberRoleMutation,
+} from '@/services/devices/devices.queries'
 import type { DeviceMember } from '@/services/devices/devices.service'
 
 const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
@@ -29,6 +29,7 @@ const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
 
 interface MemberRowProps {
   member: DeviceMember
+  profile: MemberProfiles[string] | null
   isSelf: boolean
   canManage: boolean
   onRoleChange: (userId: string, role: DeviceRole) => void
@@ -38,6 +39,7 @@ interface MemberRowProps {
 
 const MemberRow = ({
   member,
+  profile,
   isSelf,
   canManage,
   onRoleChange,
@@ -59,7 +61,21 @@ const MemberRow = ({
       transition={springs.default}
       className="border-line flex items-center gap-3 border-b py-3 last:border-b-0"
     >
-      <span className="font-mono text-sm">{maskIdentifier(member)}</span>
+      <MemberAvatar testId={`${testId}-avatar`} profile={profile} />
+      <span className="flex min-w-0 flex-col">
+        <span
+          data-testid={`${testId}-name`}
+          className="truncate text-sm font-medium"
+        >
+          {memberDisplayName(member, profile)}
+        </span>
+        <span
+          data-testid={`${testId}-handle`}
+          className="text-slate font-mono text-[11px]"
+        >
+          {maskIdentifier(member)}
+        </span>
+      </span>
       {isSelf ? <Badge testId={`${testId}-you`}>you</Badge> : null}
       <span className="flex-1" />
       {canManage ? (
@@ -87,10 +103,22 @@ const MemberRow = ({
   )
 }
 
+/** Name from Clerk when we have one; otherwise say what kind of account it is. */
+export const memberDisplayName = (
+  member: Pick<DeviceMember, 'clerkTail' | 'telegramTail'>,
+  profile: MemberProfiles[string] | null,
+): string => {
+  if (profile?.name) return profile.name
+  if (member.telegramTail && !member.clerkTail) return 'Telegram user'
+  return 'Member'
+}
+
 interface MembersListProps {
   testId: string
   deviceId: string
   members: DeviceMember[]
+  /** Clerk display data keyed by users.id; undefined while loading, {} when none. */
+  profiles: MemberProfiles | undefined
   viewerUserId: string | null
   canManage: boolean
 }
@@ -99,35 +127,30 @@ export const MembersList = ({
   testId,
   deviceId,
   members,
+  profiles,
   viewerUserId,
   canManage,
 }: MembersListProps): ReactElement => {
-  const queryClient = useQueryClient()
   const { toast } = useToast()
+  const updateRole = useUpdateMemberRoleMutation(deviceId)
+  const removeMember = useRemoveMemberMutation(deviceId)
   const [pendingRemove, setPendingRemove] = useState<DeviceMember | null>(null)
-
-  const refresh = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: deviceKeys.members(deviceId),
-    })
-    await queryClient.invalidateQueries({ queryKey: deviceKeys.mine })
-  }, [deviceId, queryClient])
 
   const onRoleChange = useCallback(
     async (userId: string, role: DeviceRole) => {
-      const res = await updateMemberRoleAction({ deviceId, userId, role })
-      if (!res.ok) {
+      try {
+        await updateRole.mutateAsync({ userId, role })
+      } catch (err) {
         toast({
           title: "Couldn't change the role",
-          description: res.message,
+          description: err instanceof Error ? err.message : undefined,
           tone: 'danger',
         })
         return
       }
       toast({ title: 'Role updated', tone: 'success' })
-      await refresh()
     },
-    [deviceId, refresh, toast],
+    [updateRole, toast],
   )
 
   const askRemove = useCallback(
@@ -140,22 +163,20 @@ export const MembersList = ({
   const cancelRemove = useCallback(() => setPendingRemove(null), [])
   const confirmRemove = useCallback(async () => {
     if (!pendingRemove) return
-    const res = await removeMemberAction({
-      deviceId,
-      userId: pendingRemove.userId,
-    })
+    const userId = pendingRemove.userId
     setPendingRemove(null)
-    if (!res.ok) {
+    try {
+      await removeMember.mutateAsync({ userId })
+    } catch (err) {
       toast({
         title: "Couldn't remove access",
-        description: res.message,
+        description: err instanceof Error ? err.message : undefined,
         tone: 'danger',
       })
       return
     }
     toast({ title: 'Access removed', tone: 'success' })
-    await refresh()
-  }, [deviceId, pendingRemove, refresh, toast])
+  }, [pendingRemove, removeMember, toast])
 
   return (
     <>
@@ -166,6 +187,7 @@ export const MembersList = ({
               key={m.userId}
               testId={`${testId}-row-${m.userId}`}
               member={m}
+              profile={profiles?.[m.userId] ?? null}
               isSelf={m.userId === viewerUserId}
               canManage={canManage}
               onRoleChange={onRoleChange}
@@ -181,7 +203,7 @@ export const MembersList = ({
         title="Remove access?"
         description={
           pendingRemove
-            ? `${maskIdentifier(pendingRemove)} will no longer see this station.`
+            ? `${memberDisplayName(pendingRemove, profiles?.[pendingRemove.userId] ?? null)} (${maskIdentifier(pendingRemove)}) will no longer see this station.`
             : undefined
         }
       >

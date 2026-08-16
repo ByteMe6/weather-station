@@ -12,8 +12,11 @@ import { ensureCurrentUserAction } from './users.action'
 
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
+import type { ClerkProfile } from '@/lib/clerk/profiles'
+import { fetchClerkProfiles } from '@/lib/clerk/profiles'
 import { normalizeDeviceId } from '@/lib/device-id'
 import { parseShareIdentifier } from '@/lib/share-identifier'
+import { fetchDeviceMemberIdentities } from '@/services/devices/devices.service'
 
 const inputSchema = z.object({
   deviceId: z
@@ -314,4 +317,49 @@ export const updateDeviceProfileAction = async (input: {
     )
   }
   return actionOk({ label: parsed.data.label, address: parsed.data.address })
+}
+
+export type MemberProfiles = Record<string, ClerkProfile>
+
+const profilesSchema = z.object({ deviceId: deviceIdSchema })
+
+/**
+ * Display names/avatars for the members the caller may see (owner: everyone,
+ * other members: themselves), keyed by internal users.id. Resolved live from
+ * Clerk on the server — the browser never receives a Clerk id, and nothing is
+ * stored. Telegram-only members have no Clerk profile and are simply absent.
+ */
+export const getDeviceMemberProfilesAction = async (input: {
+  deviceId: string
+}): Promise<ActionResult<MemberProfiles>> => {
+  const { userId: clerkUserId } = await auth()
+  if (!clerkUserId) return actionError('UNAUTHORIZED', 'Sign in to continue')
+  const parsed = profilesSchema.safeParse(input)
+  if (!parsed.success) return actionError('INVALID_INPUT', 'Unknown station')
+  const { deviceId } = parsed.data
+  const service = createServiceRoleClient()
+  try {
+    const userId = await resolveCurrentUserId(service, clerkUserId)
+    if (!userId) return actionError('UNAUTHORIZED', 'Sign in to continue')
+    const role = await resolveMemberRole(service, userId, deviceId)
+    if (!role)
+      return actionError('FORBIDDEN', "You don't have access to this station")
+    const identities = await fetchDeviceMemberIdentities(service, { deviceId })
+    const visible =
+      role === 'owner'
+        ? identities
+        : identities.filter((m) => m.userId === userId)
+    const profiles = await fetchClerkProfiles(
+      visible.flatMap((m) => (m.clerkUserId ? [m.clerkUserId] : [])),
+    )
+    const out: MemberProfiles = {}
+    for (const m of visible) {
+      const profile = m.clerkUserId ? profiles.get(m.clerkUserId) : undefined
+      if (profile) out[m.userId] = profile
+    }
+    return actionOk(out)
+  } catch (err) {
+    console.error('getDeviceMemberProfilesAction failed', err)
+    return actionError('UNKNOWN', 'Could not load member names')
+  }
 }

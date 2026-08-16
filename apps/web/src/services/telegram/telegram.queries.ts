@@ -1,8 +1,14 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getTelegramLinkStatusAction } from '@/actions/telegram.action'
+import {
+  getTelegramLinkStatusAction,
+  startTelegramLinkAction,
+  unlinkTelegramAction,
+} from '@/actions/telegram.action'
+import { unwrapAction } from '@/lib/actions/unwrap'
+import { userKeys } from '@/services/users/users.queries'
 
 export const telegramKeys = {
   all: ['telegram'] as const,
@@ -29,3 +35,19 @@ export const useTelegramLinkStatusQuery = (code: string | null) =>
       return d && d.ok && d.data.state === 'pending' ? POLL_MS : false
     },
   })
+
+/** Mints a link code + deep link; the card then polls `useTelegramLinkStatusQuery`. */
+export const useStartTelegramLinkMutation = () =>
+  useMutation({
+    mutationFn: async () => unwrapAction(await startTelegramLinkAction()),
+  })
+
+export const useUnlinkTelegramMutation = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => unwrapAction(await unlinkTelegramAction()),
+    // The linked state is derived from users.telegramId, so refresh that row.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: userKeys.current }),
+  })
+}

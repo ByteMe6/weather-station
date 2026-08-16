@@ -3,6 +3,7 @@ import type { Database } from '@ws/supabase-db'
 
 import { ServiceError } from '@/services/database/types'
 import {
+  fetchDeviceMemberIdentities,
   fetchDeviceMembers,
   fetchMemberRole,
   fetchMyDevices,
@@ -134,5 +135,33 @@ describe('fetchMemberRole', () => {
         { deviceId: 'ws-1', userId: 'u-a' },
       ),
     ).rejects.toBeInstanceOf(ServiceError)
+  })
+})
+
+describe('fetchDeviceMemberIdentities', () => {
+  it('joins users for the full clerk id and nulls Telegram-only members', async () => {
+    const eq = jest.fn(async () => ({
+      data: [
+        { userId: 'u-a', user: { clerkUserId: 'user_2abc' } },
+        { userId: 'u-b', user: { clerkUserId: null } },
+        { userId: 'u-c', user: null },
+      ],
+      error: null,
+    }))
+    const select = jest.fn(() => ({ eq }))
+    const client = {
+      from: jest.fn(() => ({ select })),
+    } as unknown as SupabaseClient<Database>
+    await expect(
+      fetchDeviceMemberIdentities(client, { deviceId: 'ws-1' }),
+    ).resolves.toEqual([
+      { userId: 'u-a', clerkUserId: 'user_2abc' },
+      { userId: 'u-b', clerkUserId: null },
+      { userId: 'u-c', clerkUserId: null },
+    ])
+    expect(select).toHaveBeenCalledWith(
+      'userId:user_id, user:users ( clerkUserId:clerk_user_id )',
+    )
+    expect(eq).toHaveBeenCalledWith('device_id', 'ws-1')
   })
 })

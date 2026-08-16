@@ -15,6 +15,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import {
+  useDeviceMemberProfilesQuery,
   useDeviceMembersQuery,
   useMyDevicesQuery,
 } from '@/services/devices/devices.queries'
@@ -31,6 +32,7 @@ export const DeviceDetail = ({
   const me = useCurrentUserQuery()
   const mine = useMyDevicesQuery()
   const members = useDeviceMembersQuery(deviceId)
+  const profiles = useDeviceMemberProfilesQuery(deviceId)
   const [shareOpen, setShareOpen] = useState(false)
   const openShare = useCallback(() => setShareOpen(true), [])
   const [profileOpen, setProfileOpen] = useState(false)
@@ -113,6 +115,7 @@ export const DeviceDetail = ({
             testId={`${testId}-list`}
             deviceId={deviceId}
             members={members.data ?? []}
+            profiles={profiles.data}
             viewerUserId={me.data?.id ?? null}
             canManage={canManage}
           />

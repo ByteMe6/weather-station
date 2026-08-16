@@ -89,11 +89,11 @@ export const PrivacyPolicy = ({ testId }: { testId: string }): ReactElement => (
         >
           Settings
         </Link>
-        . Deletion removes your account, station links, alerts and Telegram link
-        immediately; readings stay with the station (they are not linked to you
-        once your account is gone) and the station becomes claimable again. If
-        you only use the Telegram bot, email us and we will remove your Telegram
-        id and alerts.
+        . Deletion removes your sign-in account (held by Clerk), station links,
+        alerts and Telegram link immediately; readings stay with the station
+        (they are not linked to you once your account is gone) and the station
+        becomes claimable again. If you only use the Telegram bot, email us and
+        we will remove your Telegram id and alerts.
       </p>
     </Section>
 

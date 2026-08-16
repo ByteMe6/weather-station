@@ -1,18 +1,17 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
 import type { DeviceRole } from '@ws/shared'
 import type { FormEvent, ReactElement } from 'react'
 import { useCallback, useState } from 'react'
 
-import { shareDeviceAction } from '@/actions/devices.action'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
-import { deviceKeys } from '@/services/devices/devices.queries'
+import { ActionError } from '@/lib/actions/unwrap'
+import { useShareDeviceMutation } from '@/services/devices/devices.queries'
 
 const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
   { value: 'viewer', label: 'Viewer — can see readings' },
@@ -31,12 +30,11 @@ export const ShareDialog = ({
   open: boolean
   onOpenChange: (o: boolean) => void
 }): ReactElement => {
-  const queryClient = useQueryClient()
   const { toast } = useToast()
+  const share = useShareDeviceMutation(deviceId)
   const [identifier, setIdentifier] = useState('')
   const [role, setRole] = useState<DeviceRole>('viewer')
   const [error, setError] = useState<string | undefined>()
-  const [pending, setPending] = useState(false)
 
   const onIdentifier = useCallback(
     (e: FormEvent<HTMLInputElement>) => setIdentifier(e.currentTarget.value),
@@ -46,22 +44,22 @@ export const ShareDialog = ({
   const onSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      setPending(true)
       setError(undefined)
-      const res = await shareDeviceAction({ deviceId, identifier, role })
-      setPending(false)
-      if (!res.ok) {
-        setError(res.fieldErrors?.identifier ?? res.message)
+      try {
+        await share.mutateAsync({ identifier, role })
+      } catch (err) {
+        setError(
+          err instanceof ActionError
+            ? (err.fieldErrors?.identifier ?? err.message)
+            : 'Could not share the station. Try again.',
+        )
         return
       }
-      await queryClient.invalidateQueries({
-        queryKey: deviceKeys.members(deviceId),
-      })
       toast({ title: 'Access granted', tone: 'success' })
       setIdentifier('')
       onOpenChange(false)
     },
-    [deviceId, identifier, role, queryClient, toast, onOpenChange],
+    [identifier, role, share, toast, onOpenChange],
   )
 
   return (
@@ -103,7 +101,7 @@ export const ShareDialog = ({
           <Button
             testId={`${testId}-submit`}
             type="submit"
-            loading={pending}
+            loading={share.isPending}
             disabled={identifier.trim().length === 0}
           >
             Share access

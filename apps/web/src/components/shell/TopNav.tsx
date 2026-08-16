@@ -15,13 +15,21 @@ import { ThemeToggle } from './ThemeToggle'
 
 import { springs } from '@/components/motion/variants'
 import { cn } from '@/lib/utils'
+import type { MyDevice } from '@/services/devices/devices.service'
 
 export const TopNav = ({
   testId,
+  devices,
+  selectedDeviceId,
+  onSelectDevice,
   deviceLabel,
   devicesLoading = false,
 }: {
   testId: string
+  devices: MyDevice[]
+  selectedDeviceId: string | null
+  onSelectDevice: (deviceId: string) => void
+  /** Name of the active station, for the mobile drawer title. */
   deviceLabel: string | null
   devicesLoading?: boolean
 }): ReactElement => {
@@ -78,7 +86,9 @@ export const TopNav = ({
         <span className="flex-1" />
         <DeviceChip
           testId={`${testId}-device`}
-          label={deviceLabel}
+          devices={devices}
+          selectedDeviceId={selectedDeviceId}
+          onSelect={onSelectDevice}
           loading={devicesLoading}
         />
         <ThemeToggle testId={`${testId}-theme`} />

@@ -1,17 +1,16 @@
 'use client'
 
-import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import type { FormEvent, ReactElement } from 'react'
 import { useCallback, useState } from 'react'
 
-import { registerDeviceAction } from '@/actions/devices.action'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
-import { deviceKeys } from '@/services/devices/devices.queries'
+import { ActionError } from '@/lib/actions/unwrap'
+import { useRegisterDeviceMutation } from '@/services/devices/devices.queries'
 
 export const RegisterDeviceForm = ({
   testId,
@@ -19,11 +18,10 @@ export const RegisterDeviceForm = ({
   testId: string
 }): ReactElement => {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const { toast } = useToast()
+  const register = useRegisterDeviceMutation()
   const [deviceId, setDeviceId] = useState('')
   const [error, setError] = useState<string | undefined>()
-  const [pending, setPending] = useState(false)
 
   const onChange = useCallback(
     (e: FormEvent<HTMLInputElement>) => setDeviceId(e.currentTarget.value),
@@ -33,23 +31,26 @@ export const RegisterDeviceForm = ({
   const onSubmit = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      setPending(true)
       setError(undefined)
-      const result = await registerDeviceAction({ deviceId })
-      setPending(false)
-      if (!result.ok) {
-        setError(result.fieldErrors?.deviceId ?? result.message)
+      let registered: { deviceId: string }
+      try {
+        registered = await register.mutateAsync({ deviceId })
+      } catch (err) {
+        setError(
+          err instanceof ActionError
+            ? (err.fieldErrors?.deviceId ?? err.message)
+            : 'Could not register the station. Try again.',
+        )
         return
       }
-      await queryClient.invalidateQueries({ queryKey: deviceKeys.all })
       toast({
         title: 'Station registered',
-        description: `${result.data.deviceId} is now yours.`,
+        description: `${registered.deviceId} is now yours.`,
         tone: 'success',
       })
       router.replace('/dashboard')
     },
-    [deviceId, queryClient, router, toast],
+    [deviceId, register, router, toast],
   )
 
   return (
@@ -83,7 +84,7 @@ export const RegisterDeviceForm = ({
           <Button
             testId={`${testId}-submit`}
             type="submit"
-            loading={pending}
+            loading={register.isPending}
             disabled={deviceId.trim().length === 0}
           >
             Register device

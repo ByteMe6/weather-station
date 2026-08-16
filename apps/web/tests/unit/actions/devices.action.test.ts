@@ -5,6 +5,21 @@ jest.mock('@/actions/users.action', () => ({
   ensureCurrentUserAction: () => ensure(),
 }))
 const rpc = jest.fn<Promise<{ error: unknown }>, unknown[]>()
+const identities = jest.fn<
+  Promise<unknown[]>,
+  [unknown, { deviceId: string }]
+>()
+jest.mock('@/services/devices/devices.service', () => ({
+  fetchDeviceMemberIdentities: (c: unknown, p: { deviceId: string }) =>
+    identities(c, p),
+}))
+const clerkProfiles = jest.fn<
+  Promise<Map<string, unknown>>,
+  [readonly string[]]
+>()
+jest.mock('@/lib/clerk/profiles', () => ({
+  fetchClerkProfiles: (ids: readonly string[]) => clerkProfiles(ids),
+}))
 const helpers = {
   resolveCurrentUserId: jest.fn<Promise<string | null>, unknown[]>(),
   resolveMemberRole: jest.fn<Promise<string | null>, unknown[]>(),
@@ -15,6 +30,7 @@ jest.mock('@ws/supabase-db', () => ({
 }))
 
 import {
+  getDeviceMemberProfilesAction,
   registerDeviceAction,
   removeMemberAction,
   shareDeviceAction,
@@ -174,5 +190,61 @@ describe('updateDeviceProfileAction', () => {
         address: '',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+  })
+})
+
+describe('getDeviceMemberProfilesAction', () => {
+  const all = [
+    { userId: 'u-owner', clerkUserId: 'user_owner' },
+    { userId: 'u-viewer', clerkUserId: 'user_viewer' },
+    { userId: 'u-tg', clerkUserId: null },
+  ]
+  beforeEach(() => {
+    jest.clearAllMocks()
+    auth.mockResolvedValue({ userId: 'user_owner' })
+    helpers.resolveCurrentUserId.mockResolvedValue('u-owner')
+    identities.mockResolvedValue(all)
+    clerkProfiles.mockResolvedValue(
+      new Map([
+        ['user_owner', { name: 'Olive Owner', avatarUrl: 'o.png' }],
+        ['user_viewer', { name: 'Vic Viewer', avatarUrl: null }],
+      ]),
+    )
+  })
+  it('owner gets every member with a Clerk profile, keyed by internal id; Telegram-only members are absent', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    await expect(
+      getDeviceMemberProfilesAction({ deviceId: 'ws-1' }),
+    ).resolves.toEqual({
+      ok: true,
+      data: {
+        'u-owner': { name: 'Olive Owner', avatarUrl: 'o.png' },
+        'u-viewer': { name: 'Vic Viewer', avatarUrl: null },
+      },
+    })
+    expect(clerkProfiles).toHaveBeenCalledWith(['user_owner', 'user_viewer'])
+  })
+  it('a non-owner member only gets their own profile — no other Clerk id is even looked up', async () => {
+    helpers.resolveCurrentUserId.mockResolvedValue('u-viewer')
+    helpers.resolveMemberRole.mockResolvedValue('viewer')
+    const res = await getDeviceMemberProfilesAction({ deviceId: 'ws-1' })
+    expect(res).toMatchObject({ ok: true, data: { 'u-viewer': {} } })
+    expect(res.ok && Object.keys(res.data)).toEqual(['u-viewer'])
+    expect(clerkProfiles).toHaveBeenCalledWith(['user_viewer'])
+  })
+  it('non-members are refused before any lookup', async () => {
+    helpers.resolveMemberRole.mockResolvedValue(null)
+    await expect(
+      getDeviceMemberProfilesAction({ deviceId: 'ws-1' }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(identities).not.toHaveBeenCalled()
+    expect(clerkProfiles).not.toHaveBeenCalled()
+  })
+  it('a Clerk outage is UNKNOWN, not a crash', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    clerkProfiles.mockRejectedValue(new Error('clerk 503'))
+    await expect(
+      getDeviceMemberProfilesAction({ deviceId: 'ws-1' }),
+    ).resolves.toMatchObject({ ok: false, code: 'UNKNOWN' })
   })
 })
