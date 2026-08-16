@@ -7,6 +7,8 @@
 // Command handlers (T1–T7) land in subsequent tickets.
 import { Bot, webhookCallback } from 'grammy'
 
+import { handleLinkCode, LINK_PREFIX } from './link.ts'
+
 const token = Deno.env.get('BOT_TOKEN')
 if (!token) {
   throw new Error('BOT_TOKEN is not set — see supabase/functions/.env.example')
@@ -24,9 +26,16 @@ if (!webhookSecret) {
 
 const bot = new Bot(token)
 
-bot.command('start', (ctx) =>
-  ctx.reply('Weather Station bot — registration flow coming soon.'),
-)
+bot.command('start', async (ctx) => {
+  const payload = ctx.match?.trim() ?? ''
+  // Deep link from the web app's Telegram-linking flow (MRP-37).
+  if (payload.startsWith(LINK_PREFIX) && ctx.from) {
+    return ctx.reply(
+      await handleLinkCode(payload.slice(LINK_PREFIX.length), ctx.from.id),
+    )
+  }
+  return ctx.reply('Weather Station bot — registration flow coming soon.')
+})
 
 const handleUpdate = webhookCallback(bot, 'std/http', {
   secretToken: webhookSecret,

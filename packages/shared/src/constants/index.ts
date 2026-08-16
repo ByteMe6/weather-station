@@ -59,3 +59,7 @@ export const SENSOR_BOUNDS = {
   windDirection: { min: 0, max: 360 }, // degrees
   precipitation: { min: 0, max: 500 }, // mm
 } as const
+
+/** Web ↔ bot Telegram account linking (PRD W2b). The bot receives `/start link_<code>`. */
+export const TELEGRAM_LINK_PREFIX = 'link_'
+export const TELEGRAM_LINK_TTL_MS = 10 * 60_000
