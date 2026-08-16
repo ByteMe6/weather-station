@@ -57,36 +57,34 @@ export const useReadingsRealtime = (
     let cancelled = false
     let retryTimer: number | null = null
 
-    const channel = client
-      .channel(`readings:${deviceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'readings',
-          filter: `device_id=eq.${deviceId}`,
-        },
-        (payload: RealtimePostgresInsertPayload<ReadingRow>) => {
-          const reading = toReading(payload.new)
-          queryClient.setQueryData<Reading | null>(
-            readingKeys.latest(deviceId),
-            (prev) =>
-              prev && prev.timestamp > reading.timestamp ? prev : reading,
-          )
-          queryClient.setQueryData<Reading[] | undefined>(
-            readingKeys.history(deviceId, '24h'),
-            (prev) => {
-              if (prev === undefined || prev.some((r) => r.id === reading.id))
-                return prev
-              const next = [...prev, reading]
-              // Backfilled rows can arrive out of order; keep the series sorted.
-              return next.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-            },
-          )
-          setLastEventAt(Date.now())
-        },
-      )
+    const channel = client.channel(`readings:${deviceId}`).on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'readings',
+        filter: `device_id=eq.${deviceId}`,
+      },
+      (payload: RealtimePostgresInsertPayload<ReadingRow>) => {
+        const reading = toReading(payload.new)
+        queryClient.setQueryData<Reading | null>(
+          readingKeys.latest(deviceId),
+          (prev) =>
+            prev && prev.timestamp > reading.timestamp ? prev : reading,
+        )
+        queryClient.setQueryData<Reading[] | undefined>(
+          readingKeys.history(deviceId, '24h'),
+          (prev) => {
+            if (prev === undefined || prev.some((r) => r.id === reading.id))
+              return prev
+            const next = [...prev, reading]
+            // Backfilled rows can arrive out of order; keep the series sorted.
+            return next.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+          },
+        )
+        setLastEventAt(Date.now())
+      },
+    )
 
     const start = async () => {
       await client.realtime.setAuth()
