@@ -19,9 +19,11 @@ import { cn } from '@/lib/utils'
 export const TopNav = ({
   testId,
   deviceLabel,
+  devicesLoading = false,
 }: {
   testId: string
   deviceLabel: string | null
+  devicesLoading?: boolean
 }): ReactElement => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -74,7 +76,11 @@ export const TopNav = ({
           })}
         </nav>
         <span className="flex-1" />
-        <DeviceChip testId={`${testId}-device`} label={deviceLabel} />
+        <DeviceChip
+          testId={`${testId}-device`}
+          label={deviceLabel}
+          loading={devicesLoading}
+        />
         <ThemeToggle testId={`${testId}-theme`} />
         <UserButton />
         <button

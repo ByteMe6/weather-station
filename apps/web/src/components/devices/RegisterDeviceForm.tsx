@@ -11,6 +11,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Toast'
+import { deviceKeys } from '@/services/devices/devices.queries'
 
 export const RegisterDeviceForm = ({
   testId,
@@ -40,7 +41,7 @@ export const RegisterDeviceForm = ({
         setError(result.fieldErrors?.deviceId ?? result.message)
         return
       }
-      await queryClient.invalidateQueries({ queryKey: ['devices'] })
+      await queryClient.invalidateQueries({ queryKey: deviceKeys.all })
       toast({
         title: 'Station registered',
         description: `${result.data.deviceId} is now yours.`,

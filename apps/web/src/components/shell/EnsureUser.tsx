@@ -24,7 +24,7 @@ export const EnsureUser = ({
   const { user, isLoaded } = useUser()
   const queryClient = useQueryClient()
   const mutation = useMutation({
-    mutationKey: ['users', 'ensure', user?.id ?? null],
+    mutationKey: [...userKeys.all, 'ensure', user?.id ?? null],
     mutationFn: ensureCurrentUserAction,
     onSuccess: (result) => {
       if (result.ok)

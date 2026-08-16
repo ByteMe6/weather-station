@@ -23,6 +23,11 @@ const AUTH_REFRESH_MS = 30_000
 const RESUBSCRIBE_BASE_MS = 2_000
 const RESUBSCRIBE_MAX_MS = 30_000
 
+/**
+ * Realtime delivers raw snake_case rows (no .select() aliasing is possible),
+ * so this is the one place rows are mapped by hand; `numeric` columns arrive
+ * as strings despite the typed payload, hence Number().
+ */
 const toReading = (row: ReadingRow): Reading => ({
   id: row.id,
   deviceId: row.device_id,
@@ -49,7 +54,10 @@ export const useReadingsRealtime = (
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<RealtimeStatus>('idle')
   const [lastEventAt, setLastEventAt] = useState<number | null>(null)
-  const [attempt, setAttempt] = useState(0)
+  // Bumping retryTick re-runs the effect (resubscribe); attempts live in a ref
+  // so resetting them on SUBSCRIBED does not itself trigger a resubscribe.
+  const [retryTick, setRetryTick] = useState(0)
+  const attempts = useRef(0)
   const wasSubscribed = useRef(false)
 
   useEffect(() => {
@@ -101,6 +109,7 @@ export const useReadingsRealtime = (
             })
           }
           wasSubscribed.current = true
+          attempts.current = 0
           setStatus('live')
         } else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') {
           setStatus('reconnecting')
@@ -108,9 +117,13 @@ export const useReadingsRealtime = (
           setStatus('offline')
           const delay = Math.min(
             RESUBSCRIBE_MAX_MS,
-            RESUBSCRIBE_BASE_MS * 2 ** Math.min(attempt, 4),
+            RESUBSCRIBE_BASE_MS * 2 ** Math.min(attempts.current, 4),
           )
-          retryTimer = window.setTimeout(() => setAttempt((a) => a + 1), delay)
+          attempts.current += 1
+          retryTimer = window.setTimeout(
+            () => setRetryTick((t) => t + 1),
+            delay,
+          )
         }
       })
     }
@@ -126,7 +139,7 @@ export const useReadingsRealtime = (
       if (retryTimer !== null) window.clearTimeout(retryTimer)
       void client.removeChannel(channel)
     }
-  }, [client, deviceId, queryClient, attempt])
+  }, [client, deviceId, queryClient, retryTick])
 
   return { status, lastEventAt }
 }
