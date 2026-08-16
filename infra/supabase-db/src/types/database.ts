@@ -51,6 +51,8 @@ export type Database = {
           created_at: string
           device_id: string
           label: string | null
+          latitude: number | null
+          longitude: number | null
           secret: string
           status: string
         }
@@ -59,6 +61,8 @@ export type Database = {
           created_at?: string
           device_id: string
           label?: string | null
+          latitude?: number | null
+          longitude?: number | null
           secret: string
           status?: string
         }
@@ -67,6 +71,8 @@ export type Database = {
           created_at?: string
           device_id?: string
           label?: string | null
+          latitude?: number | null
+          longitude?: number | null
           secret?: string
           status?: string
         }
