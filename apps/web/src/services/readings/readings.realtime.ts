@@ -13,6 +13,16 @@ import { useSupabaseClient } from '@/lib/supabase'
 export type RealtimeStatus = 'idle' | 'live' | 'reconnecting' | 'offline'
 type ReadingRow = Database['public']['Tables']['readings']['Row']
 
+/**
+ * Clerk session tokens live 60 s. supabase-js's constructor pins the first
+ * token as "manual" (setAuth(token)), which silently disables its own
+ * heartbeat refresh — so we refresh ourselves: a no-arg setAuth() re-runs the
+ * accessToken callback and clears that flag.
+ */
+const AUTH_REFRESH_MS = 30_000
+const RESUBSCRIBE_BASE_MS = 2_000
+const RESUBSCRIBE_MAX_MS = 30_000
+
 const toReading = (row: ReadingRow): Reading => ({
   id: row.id,
   deviceId: row.device_id,
@@ -29,7 +39,8 @@ const toReading = (row: ReadingRow): Reading => ({
 /**
  * Subscribes to INSERTs on readings for one device (MRP-25). New rows are
  * written straight into the TanStack cache (latest + 24h history); after a
- * reconnect the queries are invalidated to fill any gap.
+ * reconnect the queries are invalidated to fill any gap. A channel the server
+ * closes (token expiry, network) is resubscribed with capped backoff.
  */
 export const useReadingsRealtime = (
   deviceId: string | undefined,
@@ -38,11 +49,13 @@ export const useReadingsRealtime = (
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<RealtimeStatus>('idle')
   const [lastEventAt, setLastEventAt] = useState<number | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const wasSubscribed = useRef(false)
 
   useEffect(() => {
     if (!deviceId) return
     let cancelled = false
+    let retryTimer: number | null = null
 
     const channel = client
       .channel(`readings:${deviceId}`)
@@ -58,27 +71,28 @@ export const useReadingsRealtime = (
           const reading = toReading(payload.new)
           queryClient.setQueryData<Reading | null>(
             readingKeys.latest(deviceId),
-            reading,
+            (prev) =>
+              prev && prev.timestamp > reading.timestamp ? prev : reading,
           )
           queryClient.setQueryData<Reading[] | undefined>(
             readingKeys.history(deviceId, '24h'),
-            (prev) =>
-              prev === undefined
-                ? prev
-                : prev.some((r) => r.id === reading.id)
-                  ? prev
-                  : [...prev, reading],
+            (prev) => {
+              if (prev === undefined || prev.some((r) => r.id === reading.id))
+                return prev
+              const next = [...prev, reading]
+              // Backfilled rows can arrive out of order; keep the series sorted.
+              return next.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+            },
           )
           setLastEventAt(Date.now())
         },
       )
 
     const start = async () => {
-      // No-arg setAuth makes supabase-js run the accessToken callback (Clerk JWT);
-      // it re-runs on heartbeat so the socket outlives Clerk's 60 s tokens.
       await client.realtime.setAuth()
       if (cancelled) return
       channel.subscribe((s) => {
+        if (cancelled) return
         if (s === 'SUBSCRIBED') {
           if (wasSubscribed.current) {
             void queryClient.invalidateQueries({
@@ -94,16 +108,27 @@ export const useReadingsRealtime = (
           setStatus('reconnecting')
         } else if (s === 'CLOSED') {
           setStatus('offline')
+          const delay = Math.min(
+            RESUBSCRIBE_MAX_MS,
+            RESUBSCRIBE_BASE_MS * 2 ** Math.min(attempt, 4),
+          )
+          retryTimer = window.setTimeout(() => setAttempt((a) => a + 1), delay)
         }
       })
     }
     void start()
 
+    const refresh = window.setInterval(() => {
+      void client.realtime.setAuth()
+    }, AUTH_REFRESH_MS)
+
     return () => {
       cancelled = true
+      window.clearInterval(refresh)
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
       void client.removeChannel(channel)
     }
-  }, [client, deviceId, queryClient])
+  }, [client, deviceId, queryClient, attempt])
 
   return { status, lastEventAt }
 }

@@ -107,4 +107,49 @@ describe('useReadingsRealtime', () => {
     unmount()
     expect(fake.removed).toBe(true)
   })
+
+  it('refreshes realtime auth on an interval and resubscribes after CLOSED', async () => {
+    jest.useFakeTimers()
+    try {
+      const qc = new QueryClient()
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      )
+      channel.subscribe.mockClear()
+      fake.setAuth.mockClear()
+      const { result, unmount } = renderHook(
+        () => useReadingsRealtime('WS-2'),
+        { wrapper },
+      )
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(channel.subscribe).toHaveBeenCalledTimes(1)
+      const authCallsAfterMount = fake.setAuth.mock.calls.length
+
+      // Interval refresh: no-arg setAuth() re-runs the accessToken callback and clears
+      // supabase-js's "manual token" flag (which otherwise disables heartbeat refresh).
+      await act(async () => {
+        jest.advanceTimersByTime(30_000)
+      })
+      expect(fake.setAuth.mock.calls.length).toBeGreaterThan(
+        authCallsAfterMount,
+      )
+      expect(fake.setAuth).toHaveBeenLastCalledWith()
+
+      // Server closed the channel (e.g. token expiry): resubscribe after backoff.
+      await act(async () => {
+        fake.statusCb?.('CLOSED')
+      })
+      expect(result.current.status).toBe('offline')
+      await act(async () => {
+        jest.advanceTimersByTime(2_000)
+        await Promise.resolve()
+      })
+      expect(channel.subscribe).toHaveBeenCalledTimes(2)
+      unmount()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
 })
