@@ -19,6 +19,10 @@ export const rangeWindow = (
   to: now.toISOString(),
 })
 
+/** 24h → raw rows; 7d → hourly buckets (168 pts); 30d → 6-hour buckets (120 pts). */
+export const bucketMinutesFor = (range: HistoryRange): number | null =>
+  range === '24h' ? null : range === '7d' ? 60 : 360
+
 export interface HistoryPoint {
   t: number
   temperature: number | null
@@ -27,7 +31,51 @@ export interface HistoryPoint {
   windSpeed: number | null
   windDirection: number | null
   precipitation: number | null
+  /** Min/max bands — present only for bucketed ranges. */
+  temperatureMin?: number | null
+  temperatureMax?: number | null
+  humidityMin?: number | null
+  humidityMax?: number | null
+  pressureMin?: number | null
+  pressureMax?: number | null
+  windSpeedMax?: number | null
 }
+
+/** One row of readings_bucketed(), camelCased. */
+export interface BucketedRow {
+  bucket: string
+  avgTemperature: number | null
+  minTemperature: number | null
+  maxTemperature: number | null
+  avgHumidity: number | null
+  minHumidity: number | null
+  maxHumidity: number | null
+  avgPressure: number | null
+  minPressure: number | null
+  maxPressure: number | null
+  avgWindSpeed: number | null
+  maxWindSpeed: number | null
+  totalPrecipitation: number | null
+  sampleCount: number
+}
+
+export const bucketedToPoints = (rows: BucketedRow[]): HistoryPoint[] =>
+  rows.map((r) => ({
+    t: new Date(r.bucket).getTime(),
+    temperature: r.avgTemperature,
+    temperatureMin: r.minTemperature,
+    temperatureMax: r.maxTemperature,
+    humidity: r.avgHumidity,
+    humidityMin: r.minHumidity,
+    humidityMax: r.maxHumidity,
+    pressure: r.avgPressure,
+    pressureMin: r.minPressure,
+    pressureMax: r.maxPressure,
+    windSpeed: r.avgWindSpeed,
+    windSpeedMax: r.maxWindSpeed,
+    windDirection: null,
+    precipitation: r.totalPrecipitation,
+  }))
 
 const nullPoint = (t: number): HistoryPoint => ({
   t,

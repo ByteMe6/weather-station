@@ -1,6 +1,8 @@
 import type { Reading } from '@ws/shared'
 
 import {
+  bucketMinutesFor,
+  bucketedToPoints,
   lastN,
   rangeWindow,
   toHistoryPoints,
@@ -63,5 +65,39 @@ describe('chart', () => {
       r('2026-08-15T11:00:00Z', 2),
     ])
     expect(lastN(pts, 3 * 3_600_000, now)).toHaveLength(1)
+  })
+  it('bucketMinutesFor maps ranges', () => {
+    expect(bucketMinutesFor('24h')).toBeNull()
+    expect(bucketMinutesFor('7d')).toBe(60)
+    expect(bucketMinutesFor('30d')).toBe(360)
+  })
+  it('bucketedToPoints maps averages and bands', () => {
+    const pts = bucketedToPoints([
+      {
+        bucket: '2026-08-01T00:00:00Z',
+        avgTemperature: 11,
+        minTemperature: 10,
+        maxTemperature: 12,
+        avgHumidity: 51,
+        minHumidity: 50,
+        maxHumidity: 52,
+        avgPressure: 1000.5,
+        minPressure: 1000,
+        maxPressure: 1001,
+        avgWindSpeed: null,
+        maxWindSpeed: null,
+        totalPrecipitation: null,
+        sampleCount: 2,
+      },
+    ])
+    expect(pts[0]).toMatchObject({
+      temperature: 11,
+      temperatureMin: 10,
+      temperatureMax: 12,
+      humidity: 51,
+      pressure: 1000.5,
+      windSpeed: null,
+      precipitation: null,
+    })
   })
 })

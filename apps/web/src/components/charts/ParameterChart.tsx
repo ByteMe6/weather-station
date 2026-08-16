@@ -5,8 +5,9 @@ import type { ReactElement } from 'react'
 import { useCallback } from 'react'
 import type { TooltipContentProps } from 'recharts'
 import {
+  Area,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -18,7 +19,7 @@ import { useChartData } from './useChartData'
 
 import { springs } from '@/components/motion/variants'
 import type { HistoryPoint, HistoryRange } from '@/lib/chart'
-import { formatTime } from '@/lib/format'
+import { formatDay, formatTime } from '@/lib/format'
 import type { ParameterMeta } from '@/lib/parameters'
 
 interface ParameterChartProps {
@@ -40,6 +41,7 @@ interface DotProps {
   value?: number | null
 }
 
+const BANDED_KEYS = new Set(['temperature', 'humidity', 'pressure'])
 const AXIS_TICK = {
   fontSize: 11,
   fill: 'var(--color-slate)',
@@ -57,6 +59,8 @@ export const ParameterChart = ({
 }: ParameterChartProps): ReactElement => {
   const { data, domain, ticks } = useChartData(points, range, now.getTime())
   const lastIndex = data.length - 1
+  // Bucketed ranges carry min/max bands (spec §4.2); raw 24h rows do not.
+  const banded = range !== '24h' && BANDED_KEYS.has(meta.key)
   const lastT = points[points.length - 1]?.t ?? 0
 
   // Only the newest point gets a dot — and it animates in ("the reading arrives").
@@ -102,8 +106,11 @@ export const ParameterChart = ({
   )
 
   const tickFormatter = useCallback(
-    (t: number) => formatTime(new Date(t).toISOString()),
-    [],
+    (t: number) =>
+      range === '24h'
+        ? formatTime(new Date(t).toISOString())
+        : formatDay(new Date(t).toISOString()),
+    [range],
   )
   const tooltip = useCallback(
     (p: TooltipContentProps) => (
@@ -118,7 +125,7 @@ export const ParameterChart = ({
   )
 
   const chart = (
-    <LineChart
+    <ComposedChart
       data={data}
       margin={{ top: 12, right: 28, bottom: 4, left: 0 }}
       width={width}
@@ -149,6 +156,30 @@ export const ParameterChart = ({
         cursor={{ stroke: 'var(--color-line)' }}
         isAnimationActive={false}
       />
+      {banded ? (
+        <>
+          <Area
+            type="monotone"
+            dataKey={`${meta.key}Max`}
+            stroke="none"
+            fill={meta.cssVar}
+            fillOpacity={0.12}
+            isAnimationActive={false}
+            connectNulls={false}
+            activeDot={false}
+          />
+          <Area
+            type="monotone"
+            dataKey={`${meta.key}Min`}
+            stroke="none"
+            fill="var(--color-card)"
+            fillOpacity={1}
+            isAnimationActive={false}
+            connectNulls={false}
+            activeDot={false}
+          />
+        </>
+      ) : null}
       <Line
         type="monotone"
         dataKey={meta.key}
@@ -159,7 +190,7 @@ export const ParameterChart = ({
         isAnimationActive={false}
         connectNulls={false}
       />
-    </LineChart>
+    </ComposedChart>
   )
 
   return (

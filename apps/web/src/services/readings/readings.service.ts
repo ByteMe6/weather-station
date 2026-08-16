@@ -4,8 +4,13 @@ import type { Database } from '@ws/supabase-db'
 
 import { ServiceError } from '../database/types'
 
-import type { HistoryRange } from '@/lib/chart'
-import { rangeWindow } from '@/lib/chart'
+import type { BucketedRow, HistoryPoint, HistoryRange } from '@/lib/chart'
+import {
+  bucketMinutesFor,
+  bucketedToPoints,
+  rangeWindow,
+  toHistoryPoints,
+} from '@/lib/chart'
 
 /** Aliased read columns — never select('*') on the big table (CLAUDE.md). */
 const READING_COLUMNS =
@@ -117,19 +122,70 @@ export const fetchReadingsRange = async (
   return data ?? []
 }
 
-/** History for a chart range. 24h = raw rows; 7d/30d switch to the bucketed RPC in Plan 2 (MRP-34). */
+type BucketedSqlRow =
+  Database['public']['Functions']['readings_bucketed']['Returns'][number]
+
+const toBucketedRow = (r: BucketedSqlRow): BucketedRow => ({
+  bucket: r.bucket,
+  avgTemperature: r.avg_temperature,
+  minTemperature: r.min_temperature,
+  maxTemperature: r.max_temperature,
+  avgHumidity: r.avg_humidity,
+  minHumidity: r.min_humidity,
+  maxHumidity: r.max_humidity,
+  avgPressure: r.avg_pressure,
+  minPressure: r.min_pressure,
+  maxPressure: r.max_pressure,
+  avgWindSpeed: r.avg_wind_speed,
+  maxWindSpeed: r.max_wind_speed,
+  totalPrecipitation: r.total_precipitation,
+  sampleCount: r.sample_count,
+})
+
+/**
+ * Bucketed aggregates via readings_bucketed() (MRP-34). rpc() cannot alias
+ * columns, so this is the one place RPC rows are mapped by hand.
+ */
+export const fetchReadingsBucketed = async (
+  supabase: SupabaseClient<Database>,
+  params: { deviceId: string; from: string; to: string; bucketMinutes: number },
+): Promise<BucketedRow[]> => {
+  const { data, error } = await supabase.rpc('readings_bucketed', {
+    p_device_id: params.deviceId,
+    p_from: params.from,
+    p_to: params.to,
+    p_bucket_minutes: params.bucketMinutes,
+  })
+  if (error) {
+    throw new ServiceError(
+      `Failed to fetch bucketed readings: ${error.message}`,
+      error.code,
+      error.details,
+    )
+  }
+  return (data ?? []).map(toBucketedRow)
+}
+
+/** History points for any chart range: 24h raw rows, 7d/30d bucketed averages with min/max bands. */
 export const fetchReadingsHistory = async (
   supabase: SupabaseClient<Database>,
   params: { deviceId: string; range: HistoryRange },
-): Promise<Reading[]> => {
-  if (params.range !== '24h') {
-    throw new ServiceError(
-      `Range ${params.range} is not available yet`,
-      'RANGE_NOT_SUPPORTED',
+): Promise<HistoryPoint[]> => {
+  const window = rangeWindow(params.range)
+  const bucketMinutes = bucketMinutesFor(params.range)
+  if (bucketMinutes === null) {
+    return toHistoryPoints(
+      await fetchReadingsRange(supabase, {
+        deviceId: params.deviceId,
+        ...window,
+      }),
     )
   }
-  return fetchReadingsRange(supabase, {
-    deviceId: params.deviceId,
-    ...rangeWindow(params.range),
-  })
+  return bucketedToPoints(
+    await fetchReadingsBucketed(supabase, {
+      deviceId: params.deviceId,
+      ...window,
+      bucketMinutes,
+    }),
+  )
 }

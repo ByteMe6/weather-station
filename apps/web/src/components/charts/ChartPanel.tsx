@@ -44,6 +44,11 @@ export const ChartPanel = ({
             style={{ background: meta.cssVar }}
           />
           {meta.unit}
+          {range === '7d'
+            ? ' · hourly avg'
+            : range === '30d'
+              ? ' · 6-hour avg'
+              : ''}
         </span>
         {stats ? (
           <span className="text-slate font-mono text-xs">

@@ -176,6 +176,30 @@ export type Database = {
         Returns: undefined
       }
       current_app_user_id: { Args: never; Returns: string }
+      readings_bucketed: {
+        Args: {
+          p_bucket_minutes: number
+          p_device_id: string
+          p_from: string
+          p_to: string
+        }
+        Returns: {
+          avg_humidity: number
+          avg_pressure: number
+          avg_temperature: number
+          avg_wind_speed: number
+          bucket: string
+          max_humidity: number
+          max_pressure: number
+          max_temperature: number
+          max_wind_speed: number
+          min_humidity: number
+          min_pressure: number
+          min_temperature: number
+          sample_count: number
+          total_precipitation: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

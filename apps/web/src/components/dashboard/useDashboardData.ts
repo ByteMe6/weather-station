@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useRangeParam } from '@/components/charts/useRangeParam'
 import type { HistoryPoint, HistoryRange } from '@/lib/chart'
-import { toHistoryPoints } from '@/lib/chart'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
 import {
   useLatestReadingQuery,
@@ -19,7 +18,6 @@ export interface DashboardData {
   isLoading: boolean
   deviceId: string | null
   latest: Reading | null
-  readings: Reading[]
   points: HistoryPoint[]
   status: RealtimeStatus
   now: Date
@@ -50,10 +48,9 @@ export const useDashboardData = (): DashboardData => {
     return () => window.clearInterval(id)
   }, [])
 
-  const readings = useMemo(() => history.data ?? [], [history.data])
-  const points = useMemo(() => toHistoryPoints(readings), [readings])
+  const points = useMemo(() => history.data ?? [], [history.data])
   const chartPoints = useMemo(
-    () => toHistoryPoints(chartHistory.data ?? []),
+    () => chartHistory.data ?? [],
     [chartHistory.data],
   )
 
@@ -66,7 +63,6 @@ export const useDashboardData = (): DashboardData => {
     isLoading,
     deviceId,
     latest: latest.data ?? null,
-    readings,
     points,
     status,
     now,

@@ -58,10 +58,68 @@ describe('fetchReadingsRange', () => {
 })
 
 describe('fetchReadingsHistory', () => {
-  it('rejects ranges Plan 1 does not support yet', async () => {
-    const client = makeClient({ data: [], error: null })
-    await expect(
-      fetchReadingsHistory(client, { deviceId: 'WS-1', range: '7d' }),
-    ).rejects.toMatchObject({ code: 'RANGE_NOT_SUPPORTED' })
+  it('24h returns raw rows as history points', async () => {
+    const client = makeClient({
+      data: [
+        {
+          id: 1,
+          deviceId: 'WS-1',
+          timestamp: '2026-08-15T12:00:00.000Z',
+          temperature: 20,
+          humidity: 50,
+          pressure: 1000,
+          windSpeed: null,
+          windDirection: null,
+          precipitation: null,
+        },
+      ],
+      error: null,
+    })
+    const pts = await fetchReadingsHistory(client, {
+      deviceId: 'WS-1',
+      range: '24h',
+    })
+    expect(pts[0]).toMatchObject({
+      temperature: 20,
+      t: new Date('2026-08-15T12:00:00.000Z').getTime(),
+    })
+  })
+
+  it('7d calls the bucketed RPC with 60-minute buckets and maps bands', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [
+        {
+          bucket: '2026-08-15T12:00:00+00:00',
+          avg_temperature: 11,
+          min_temperature: 10,
+          max_temperature: 12,
+          avg_humidity: null,
+          min_humidity: null,
+          max_humidity: null,
+          avg_pressure: 1000,
+          min_pressure: 1000,
+          max_pressure: 1000,
+          avg_wind_speed: null,
+          max_wind_speed: null,
+          total_precipitation: null,
+          sample_count: 2,
+        },
+      ],
+      error: null,
+    }))
+    const client = { rpc } as unknown as SupabaseClient<Database>
+    const pts = await fetchReadingsHistory(client, {
+      deviceId: 'WS-1',
+      range: '7d',
+    })
+    expect(rpc).toHaveBeenCalledWith(
+      'readings_bucketed',
+      expect.objectContaining({ p_device_id: 'WS-1', p_bucket_minutes: 60 }),
+    )
+    expect(pts[0]).toMatchObject({
+      temperature: 11,
+      temperatureMin: 10,
+      temperatureMax: 12,
+    })
   })
 })

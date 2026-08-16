@@ -88,7 +88,12 @@ describe('useReadingsRealtime', () => {
       deviceId: 'WS-1',
       temperature: 21.4,
     })
-    expect(qc.getQueryData(readingKeys.history('WS-1', '24h'))).toHaveLength(1)
+    expect(qc.getQueryData(readingKeys.history('WS-1', '24h'))).toEqual([
+      expect.objectContaining({
+        temperature: 21.4,
+        t: new Date('2026-08-15T12:35:00Z').getTime(),
+      }),
+    ])
 
     await act(async () => {
       fake.statusCb?.('CHANNEL_ERROR')

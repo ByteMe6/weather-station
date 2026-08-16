@@ -6,6 +6,7 @@ import { createUserClient } from '../../helpers/auth-client'
 import {
   fetchDeviceSecret,
   fetchLatestReading,
+  fetchReadingsBucketed,
   fetchReadingsHistory,
   fetchReadingsRange,
   insertReading,
@@ -164,9 +165,34 @@ describe('readings service (integration)', () => {
     ).toMatchObject({
       temperature: 22,
     })
-    await expect(
-      fetchReadingsHistory(asMember, { deviceId: DEVICE_ID, range: '7d' }),
-    ).rejects.toMatchObject({ code: 'RANGE_NOT_SUPPORTED' })
+    // 7d history is bucketed hourly via readings_bucketed(); the seeded rows are
+    // in 2026-07 (outside the live 7d window), so call the RPC directly.
+    const buckets = await fetchReadingsBucketed(asMember, {
+      deviceId: DEVICE_ID,
+      from: '2026-07-21T09:00:00.000Z',
+      to: '2026-07-21T13:00:00.000Z',
+      bucketMinutes: 60,
+    })
+    expect(buckets).toHaveLength(3)
+    expect(buckets[0]).toMatchObject({
+      avgTemperature: 20,
+      minTemperature: 20,
+      sampleCount: 1,
+    })
+    expect(
+      await fetchReadingsBucketed(createUserClient(CLERK_OTHER), {
+        deviceId: DEVICE_ID,
+        from: '2026-07-21T09:00:00.000Z',
+        to: '2026-07-21T13:00:00.000Z',
+        bucketMinutes: 60,
+      }),
+    ).toEqual([])
+    expect(
+      await fetchReadingsHistory(asMember, {
+        deviceId: DEVICE_ID,
+        range: '7d',
+      }),
+    ).toEqual([])
 
     const asOther = createUserClient(CLERK_OTHER)
     expect(

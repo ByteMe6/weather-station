@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react'
 
 import { readingKeys } from './readings.queries'
 
+import type { HistoryPoint } from '@/lib/chart'
+import { toHistoryPoints } from '@/lib/chart'
 import { useSupabaseClient } from '@/lib/supabase'
 
 export type RealtimeStatus = 'idle' | 'live' | 'reconnecting' | 'offline'
@@ -80,14 +82,14 @@ export const useReadingsRealtime = (
           (prev) =>
             prev && prev.timestamp > reading.timestamp ? prev : reading,
         )
-        queryClient.setQueryData<Reading[] | undefined>(
+        const point = toHistoryPoints([reading])[0]!
+        queryClient.setQueryData<HistoryPoint[] | undefined>(
           readingKeys.history(deviceId, '24h'),
           (prev) => {
-            if (prev === undefined || prev.some((r) => r.id === reading.id))
+            if (prev === undefined || prev.some((p) => p.t === point.t))
               return prev
-            const next = [...prev, reading]
             // Backfilled rows can arrive out of order; keep the series sorted.
-            return next.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+            return [...prev, point].sort((a, b) => a.t - b.t)
           },
         )
         setLastEventAt(Date.now())

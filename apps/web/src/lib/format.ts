@@ -31,6 +31,12 @@ export const formatTime = (
     timeZone: opts.timeZone,
   }).format(new Date(iso))
 
+/** Short day label for multi-day axes: "9 Aug". */
+export const formatDay = (iso: string): string =>
+  new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(
+    new Date(iso),
+  )
+
 export const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat(undefined, {
     day: 'numeric',

@@ -21,7 +21,6 @@ const state = {
   isLoading: false,
   deviceId: 'WS-7F3A' as string | null,
   latest: null as Reading | null,
-  readings: [] as Reading[],
   points: [] as HistoryPoint[],
   status: 'live' as RealtimeStatus,
   now: new Date('2026-08-15T12:37:00Z'),
