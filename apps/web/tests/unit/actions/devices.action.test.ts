@@ -9,10 +9,8 @@ jest.mock('@ws/supabase-db', () => ({
   createServiceRoleClient: () => ({ rpc: (...a: unknown[]) => rpc(...a) }),
 }))
 
-import {
-  normalizeDeviceId,
-  registerDeviceAction,
-} from '@/actions/devices.action'
+import { registerDeviceAction } from '@/actions/devices.action'
+import { normalizeDeviceId } from '@/lib/device-id'
 
 describe('registerDeviceAction', () => {
   beforeEach(() => {

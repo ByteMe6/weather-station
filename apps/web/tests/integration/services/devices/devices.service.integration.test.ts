@@ -38,13 +38,11 @@ describe('devices service (integration)', () => {
       .insert({ clerk_user_id: CLERK_B })
       .select('id')
       .single()
-    await db
-      .from('devices')
-      .insert({
-        device_id: DEVICE_ID,
-        secret: 'x'.repeat(64),
-        status: 'unregistered',
-      })
+    await db.from('devices').insert({
+      device_id: DEVICE_ID,
+      secret: 'x'.repeat(64),
+      status: 'unregistered',
+    })
 
     const { error: claimA } = await db.rpc('claim_device', {
       p_device_id: DEVICE_ID,

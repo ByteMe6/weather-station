@@ -10,10 +10,7 @@ import { ensureCurrentUserAction } from './users.action'
 
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
-
-/** Provisioning mints lowercase ids (ws-<12 hex>, see infra/supabase-db/scripts/provision-device.ts); match that. */
-export const normalizeDeviceId = (raw: string): string =>
-  raw.trim().toLowerCase()
+import { normalizeDeviceId } from '@/lib/device-id'
 
 const inputSchema = z.object({
   deviceId: z
