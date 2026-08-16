@@ -3,7 +3,7 @@ select plan(19);
 
 insert into public.users (id, clerk_user_id, telegram_id) values
   ('00000000-0000-0000-0000-00000000000a', 'user_a', null),
-  ('00000000-0000-0000-0000-00000000000b', 'user_b', 987654821),
+  ('00000000-0000-0000-0000-00000000000b', 'user_b', 900000004821),
   ('00000000-0000-0000-0000-00000000000c', 'user_c', null);
 insert into public.devices (device_id, secret, status) values
   ('ws-share0000001', 's', 'registered'),
