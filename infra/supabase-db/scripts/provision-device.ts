@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { randomBytes, randomUUID } from 'node:crypto'
 import { chmodSync, unlinkSync, writeFileSync } from 'node:fs'
 
 import { createClient } from '@supabase/supabase-js'
+import {
+  generateDeviceId,
+  generateDeviceSecret,
+} from '@ws/shared/device-identity'
 
 import type { Database } from '../src/types/database'
 
@@ -22,14 +25,11 @@ if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
 // identical to the canonical factory; keep them in step if it grows options.
 const db = createClient<Database>(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
-const makeDeviceId = () => `ws-${randomUUID().replaceAll('-', '').slice(0, 12)}`
-const makeSecret = () => randomBytes(32).toString('hex')
-
 // retry on the off chance the random id collides (device_id is the PK)
 const registerDevice = async () => {
   for (let tries = 0; tries < 5; tries += 1) {
-    const deviceId = makeDeviceId()
-    const secret = makeSecret()
+    const deviceId = generateDeviceId()
+    const secret = generateDeviceSecret()
 
     const { error } = await db
       .from('devices')

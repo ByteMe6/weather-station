@@ -63,3 +63,8 @@ export const SENSOR_BOUNDS = {
 /** Web ↔ bot Telegram account linking (PRD W2b). The bot receives `/start link_<code>`. */
 export const TELEGRAM_LINK_PREFIX = 'link_'
 export const TELEGRAM_LINK_TTL_MS = 10 * 60_000
+
+// Device identity lives in its own module with its own package export, so the
+// provisioning CLI can import it under bare `node --experimental-strip-types`
+// (which cannot follow this barrel's extensionless directory imports).
+export * from './device-identity.ts'

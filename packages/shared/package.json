@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./device-identity": "./src/constants/device-identity.ts"
   },
   "scripts": {
     "test:unit": "jest --selectProjects=unit --ci --runInBand --passWithNoTests",
