@@ -8,6 +8,7 @@ import { Footer } from './Footer'
 import { TopNav } from './TopNav'
 
 import { useDeviceParam } from '@/components/dashboard/useDeviceParam'
+import { useAdminStatusQuery } from '@/services/admin/admin.queries'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
 import { deviceDisplayName } from '@/services/devices/devices.service'
 
@@ -21,6 +22,7 @@ export const AppShell = ({
   const router = useRouter()
   const pathname = usePathname()
   const { data: devices, isLoading } = useMyDevicesQuery()
+  const adminStatus = useAdminStatusQuery()
   const [selected, setSelected] = useDeviceParam()
   const list = useMemo(() => devices ?? [], [devices])
   // On a device page the route segment *is* the station, so switching has to
@@ -47,6 +49,7 @@ export const AppShell = ({
         onSelectDevice={onSelectDevice}
         deviceLabel={deviceLabel}
         devicesLoading={isLoading}
+        showAdmin={adminStatus.data?.state === 'ok'}
       />
       <main className="mx-auto w-full max-w-[1180px] flex-1 px-6 pt-7 pb-16">
         {children}

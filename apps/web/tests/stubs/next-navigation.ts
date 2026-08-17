@@ -14,3 +14,10 @@ export const useSearchParams = () => navState.search
 export const redirect = (url: string): never => {
   throw new Error(`NEXT_REDIRECT:${url}`)
 }
+
+/** Mirrors next/navigation's notFound(): tests assert it was called. */
+export const notFoundState = { calls: 0 }
+export const notFound = (): never => {
+  notFoundState.calls += 1
+  throw new Error('NEXT_NOT_FOUND')
+}

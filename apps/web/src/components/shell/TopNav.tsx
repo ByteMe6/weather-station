@@ -6,11 +6,11 @@ import { motion } from 'motion/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactElement } from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { DeviceChip } from './DeviceChip'
 import { MobileNav } from './MobileNav'
-import { NAV_ITEMS } from './nav-items'
+import { ADMIN_NAV_ITEM, NAV_ITEMS } from './nav-items'
 import { ThemeToggle } from './ThemeToggle'
 
 import { Logo } from '@/components/brand/Logo'
@@ -25,6 +25,7 @@ export const TopNav = ({
   onSelectDevice,
   deviceLabel,
   devicesLoading = false,
+  showAdmin = false,
 }: {
   testId: string
   devices: MyDevice[]
@@ -33,8 +34,14 @@ export const TopNav = ({
   /** Name of the active station, for the mobile drawer title. */
   deviceLabel: string | null
   devicesLoading?: boolean
+  /** The admin link is cosmetic — the proxy, layout and actions are the gates. */
+  showAdmin?: boolean
 }): ReactElement => {
   const pathname = usePathname()
+  const items = useMemo(
+    () => (showAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS),
+    [showAdmin],
+  )
   const [menuOpen, setMenuOpen] = useState(false)
   const openMenu = useCallback(() => setMenuOpen(true), [])
 
@@ -55,7 +62,7 @@ export const TopNav = ({
           aria-label="Primary"
           className="hidden items-center gap-1.5 md:flex"
         >
-          {NAV_ITEMS.map((item) => {
+          {items.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`)
             return (

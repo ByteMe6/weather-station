@@ -27,7 +27,10 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await db.from('devices').delete().in('device_id', [DEVICE_A, DEVICE_B])
-  await db.from('users').delete().in('clerk_user_id', [CLERK_ADMIN, CLERK_PLAIN])
+  await db
+    .from('users')
+    .delete()
+    .in('clerk_user_id', [CLERK_ADMIN, CLERK_PLAIN])
 })
 
 // The suite repoints the shared Vault secret; restore whatever the developer's

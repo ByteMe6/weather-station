@@ -6,15 +6,19 @@ import { ServiceError } from '@/services/database/types'
 
 interface Chain {
   select: jest.Mock<Chain, [string]>
-  order: jest.Mock<Promise<{ data: unknown; error: unknown }>, [string, unknown]>
+  order: jest.Mock<
+    Promise<{ data: unknown; error: unknown }>,
+    [string, unknown]
+  >
 }
 
 const clientReturning = (result: { data: unknown; error: unknown }) => {
   const chain: Chain = {
     select: jest.fn<Chain, [string]>(() => chain),
-    order: jest.fn<Promise<{ data: unknown; error: unknown }>, [string, unknown]>(
-      async () => result,
-    ),
+    order: jest.fn<
+      Promise<{ data: unknown; error: unknown }>,
+      [string, unknown]
+    >(async () => result),
   }
   return {
     client: {
