@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import { render, waitFor } from '@testing-library/react'
 
-import { notFoundState, routerState } from '../../../stubs/next-navigation'
+import { notFoundState } from '../../../stubs/next-navigation'
 
 const status = jest.fn<Promise<unknown>, []>()
 jest.mock('@/actions/admin.action', () => ({
@@ -10,6 +10,10 @@ jest.mock('@/actions/admin.action', () => ({
 const setActive = jest.fn<Promise<void>, [unknown]>()
 jest.mock('@clerk/nextjs', () => ({
   useClerk: () => ({ setActive }),
+}))
+const hardNavigate = jest.fn<void, [string]>()
+jest.mock('@/lib/navigate', () => ({
+  hardNavigate: (href: string) => hardNavigate(href),
 }))
 
 import { ActivateAdminOrg } from '@/components/admin/ActivateAdminOrg'
@@ -26,12 +30,15 @@ describe('ActivateAdminOrg', () => {
       data: { state: 'needs-activation', orgId: 'org_admin123' },
     })
     render(<ActivateAdminOrg testId="activate" />)
+    // Clerk owns the navigation via redirectUrl, so it happens only after the
+    // session really carries the organisation.
     await waitFor(() =>
-      expect(setActive).toHaveBeenCalledWith({ organization: 'org_admin123' }),
+      expect(setActive).toHaveBeenCalledWith({
+        organization: 'org_admin123',
+        redirectUrl: '/admin',
+      }),
     )
-    await waitFor(() =>
-      expect(routerState.replace).toHaveBeenCalledWith('/admin'),
-    )
+    expect(hardNavigate).not.toHaveBeenCalled()
   })
 
   it('goes straight through when the org is already active', async () => {
@@ -40,9 +47,7 @@ describe('ActivateAdminOrg', () => {
       data: { state: 'ok', configMismatch: false },
     })
     render(<ActivateAdminOrg testId="activate" />)
-    await waitFor(() =>
-      expect(routerState.replace).toHaveBeenCalledWith('/admin'),
-    )
+    await waitFor(() => expect(hardNavigate).toHaveBeenCalledWith('/admin'))
     expect(setActive).not.toHaveBeenCalled()
   })
 
@@ -55,6 +60,6 @@ describe('ActivateAdminOrg', () => {
       'NEXT_NOT_FOUND',
     )
     expect(notFoundState.calls).toBeGreaterThan(0)
-    expect(routerState.replace).not.toHaveBeenCalled()
+    expect(hardNavigate).not.toHaveBeenCalled()
   })
 })

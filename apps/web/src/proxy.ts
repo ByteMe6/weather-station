@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 
-import { isAdminOrg } from '@/lib/admin/org'
+import { adminOrgId, isAdminOrg } from '@/lib/admin/org'
 import { PUBLIC_ROUTES } from '@/lib/auth/public-routes'
 
 const isPublicRoute = createRouteMatcher([...PUBLIC_ROUTES])
@@ -10,6 +10,7 @@ const isAdminRoute = createRouteMatcher(['/admin(.*)'])
 // 404s for everyone else). Without this exemption a genuine admin whose
 // organisation is merely inactive could never get in.
 const isAdminActivateRoute = createRouteMatcher(['/admin/activate'])
+const ADMIN_ORG_CONFIGURED = (): boolean => adminOrgId() !== null
 
 /**
  * Next 16 proxy (formerly middleware): every non-public route requires a
@@ -24,10 +25,19 @@ export default clerkMiddleware(
     if (!isPublicRoute(req)) {
       await auth.protect()
     }
+    // Layer 1 is a fast edge filter, not the authority: Clerk's cookie token
+    // does not always carry `org_id` even for an active organisation, so a
+    // redirect on every miss would bounce genuine admins in a loop. A matching
+    // org short-circuits; anything else falls through to the layout, which
+    // resolves membership through Clerk's API and 404s if it is not an admin.
     if (isAdminRoute(req) && !isAdminActivateRoute(req)) {
-      const { orgId } = await auth()
-      if (!isAdminOrg(orgId)) {
-        return NextResponse.redirect(new URL('/admin/activate', req.url))
+      const { userId, orgId } = await auth()
+      if (!userId) {
+        return NextResponse.redirect(new URL('/sign-in', req.url))
+      }
+      if (!isAdminOrg(orgId) && !ADMIN_ORG_CONFIGURED()) {
+        // No admin organisation configured at all: nothing to reach.
+        return NextResponse.redirect(new URL('/dashboard', req.url))
       }
     }
     return undefined

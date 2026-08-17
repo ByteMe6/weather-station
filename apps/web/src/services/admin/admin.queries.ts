@@ -1,5 +1,6 @@
 'use client'
 
+import { useAuth } from '@clerk/nextjs'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
@@ -17,7 +18,11 @@ import { useSupabaseClient } from '@/lib/supabase'
 
 export const adminKeys = {
   all: ['admin'] as const,
-  status: ['admin', 'status'] as const,
+  // Keyed by the active organisation: activating the admin org has to produce a
+  // fresh answer, not the `denied` cached moments earlier (found in browser
+  // verification — the nav entry stayed hidden after activation).
+  status: (orgId: string | null | undefined) =>
+    ['admin', 'status', orgId ?? null] as const,
   devices: ['admin', 'devices'] as const,
   users: ['admin', 'users'] as const,
 }
@@ -27,13 +32,16 @@ export const adminKeys = {
  * runs for every signed-in user — a `denied` answer is the normal case and is
  * cached rather than retried.
  */
-export const useAdminStatusQuery = () =>
-  useQuery({
-    queryKey: adminKeys.status,
+export const useAdminStatusQuery = () => {
+  const { orgId, isLoaded } = useAuth()
+  return useQuery({
+    queryKey: adminKeys.status(orgId),
     queryFn: async () => unwrapAction(await getAdminStatusAction()),
+    enabled: isLoaded,
     staleTime: 5 * 60_000,
     retry: false,
   })
+}
 
 export const useAdminDevicesQuery = (enabled: boolean) => {
   const client = useSupabaseClient()

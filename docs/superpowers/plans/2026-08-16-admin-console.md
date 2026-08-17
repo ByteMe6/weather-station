@@ -2149,3 +2149,34 @@ Task 6; `AdminDevice`/`AdminUser` are defined in Task 5 and used in Task 7;
 `isAdminOrg(orgId)` has the same signature in the proxy (Task 3), the layout
 (Task 6) and the actions (Task 4); `generateDeviceId`/`generateDeviceSecret`
 are defined in Task 1 and used in Task 4 and the CLI.
+
+---
+
+## Amendments (during execution, 2026-08-16)
+
+- **`@ws/shared/device-identity` subpath export.** The plan appended the
+  generators to `constants/index.ts`, but the provisioning CLI runs under bare
+  `node --experimental-strip-types`, which cannot follow that barrel's
+  extensionless directory imports. The generators live in their own module with
+  its own package export; the barrel re-exports them for the app.
+- **The admin layout must not wrap `/admin/activate`.** As planned it 404'd
+  exactly the users the activation route serves. Gated routes moved into an
+  `(console)` route group, with `activate` outside it.
+- **Server-side admin checks are membership-authoritative** (`lib/admin/access.ts`).
+  Measured in the browser: Clerk's `__session` cookie — the token the server
+  reads — never carries `org_id`, while the client token does. The planned
+  `auth().orgId` comparison therefore refused every mutation for a genuine
+  admin. The active org is now a fast path; Clerk membership decides.
+- **The proxy cannot deny on the cookie alone** for the same reason — it would
+  loop admins between `/admin` and `/admin/activate`. It short-circuits on a
+  matching org, redirects signed-out visitors, sends everyone away when no
+  admin org is configured, and otherwise defers to the layout.
+- **`EnsureAdminOrgActive`** was added to the console layout: RLS grants the
+  fleet view only while the organisation is active, and an inactive org
+  degrades silently to "your own rows" — an empty console with no error.
+- **Activation uses `setActive({ organization, redirectUrl })`** rather than a
+  manual navigation, which raced Clerk's session sync so the org never stuck.
+- **The InitPlan assertion is narrower than planned**: the plan asserted no
+  `SubPlan` at all, but the pre-existing member policy legitimately produces a
+  *hashed* SubPlan (also evaluated once). The test now asserts no **correlated**
+  `(SubPlan` reference, which is the actual per-row regression.

@@ -12,7 +12,8 @@ import { z } from 'zod'
 
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
-import { adminOrgId, isAdminOrg } from '@/lib/admin/org'
+import { isAdminRequest } from '@/lib/admin/access'
+import { adminOrgId } from '@/lib/admin/org'
 
 export type AdminStatus =
   | { state: 'ok'; configMismatch: boolean }
@@ -28,8 +29,7 @@ const deviceIdSchema = z.object({ deviceId: z.string().min(3).max(64) })
 const requireAdmin = async (): Promise<
   { ok: true } | { ok: false; result: ActionResult<never> }
 > => {
-  const { userId, orgId } = await auth()
-  if (!userId || !isAdminOrg(orgId)) {
+  if (!(await isAdminRequest())) {
     return { ok: false, result: actionError('NOT_FOUND', DENIED) }
   }
   return { ok: true }
@@ -53,13 +53,14 @@ export const getAdminStatusAction = async (): Promise<
   const configured = adminOrgId()
   if (!configured) return actionOk({ state: 'denied' })
 
+  // Active organisation matching is the happy path; membership still counts,
+  // because the server's cookie token can lag behind the client's.
   if (orgId === configured) {
     const fromVault = await vaultAdminOrgId()
     return actionOk({ state: 'ok', configMismatch: fromVault !== configured })
   }
 
-  // The active organisation is not the admin one — but membership is what
-  // decides whether this user may activate it.
+  // Not active here — but membership decides whether this user may activate it.
   try {
     const client = await clerkClient()
     const memberships = await client.users.getOrganizationMembershipList({

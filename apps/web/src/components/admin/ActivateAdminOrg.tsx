@@ -1,12 +1,13 @@
 'use client'
 
 import { useClerk } from '@clerk/nextjs'
-import { notFound, useRouter } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import type { ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 import { getAdminStatusAction } from '@/actions/admin.action'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { hardNavigate } from '@/lib/navigate'
 
 /**
  * The only /admin path the proxy lets a non-active session reach. Clerk only
@@ -18,7 +19,6 @@ export const ActivateAdminOrg = ({
 }: {
   testId: string
 }): ReactElement | null => {
-  const router = useRouter()
   const { setActive } = useClerk()
   const [denied, setDenied] = useState(false)
   const ran = useRef(false)
@@ -33,12 +33,22 @@ export const ActivateAdminOrg = ({
         return
       }
       if (res.data.state === 'needs-activation') {
-        await setActive({ organization: res.data.orgId })
+        // `redirectUrl` makes Clerk navigate only once the session actually
+        // carries the organisation. Navigating ourselves right after the
+        // promise resolves raced Clerk's session sync: the org never stuck, so
+        // every later token had `org_id: null` and the gate refused a genuine
+        // admin (found in browser verification).
+        await setActive({
+          organization: res.data.orgId,
+          redirectUrl: '/admin',
+        })
+        return
       }
-      router.replace('/admin')
+      // Already active: a full document load, so the server sees this session.
+      hardNavigate('/admin')
     }
     void run()
-  }, [router, setActive])
+  }, [setActive])
 
   if (denied) notFound()
   return <Skeleton testId={`${testId}-working`} className="h-24" />
