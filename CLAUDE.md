@@ -237,7 +237,9 @@ data.map((r) => ({ createdAt: r.created_at }))
 - Insert/update payloads use snake_case column names
 - Nested selects support aliasing: `device_users ( userId:user_id, role )`
 - `rpc()` rows cannot be aliased — map them in the service with a comment
-  saying so (`fetchReadingsBucketed`, `fetchDeviceMembers` are the two cases)
+  saying so (`fetchReadingsBucketed`, `fetchDeviceMembers`, `fetchAllDevices`,
+  `fetchAllUsers`); the same applies to an embedded aggregate or a nested
+  to-one that PostgREST cannot flatten
 
 ### Query Best Practices
 
@@ -429,16 +431,25 @@ One Clerk organization id is the whole admin model. It lives in
 secret `admin_org_id` (RLS, via `public.is_admin_request()`); `yarn admin:set-org`
 writes the second, and the console warns when the two drift apart.
 
-- **Three gates, none trusting the others**: `src/proxy.ts` redirects `/admin(.*)`
-  (except `/admin/activate`) unless the session's active org matches;
-  `app/(app)/admin/layout.tsx` repeats the check and `notFound()`s; every admin
-  action re-derives it per call. Refusals are always **404, never 403**.
+- **Three gates, none trusting the others**: `src/proxy.ts` is a cheap edge
+  filter (signed out → sign-in; no admin org configured → dashboard; a matching
+  active org short-circuits); `app/(app)/admin/(console)/layout.tsx` is the
+  authority and `notFound()`s — the `(console)` route group exists so
+  `/admin/activate` stays reachable for an admin whose org is not active yet;
+  every admin action re-derives the check per call. Refusals are always
+  **404, never 403**.
+- Clerk's `__session` cookie does not carry `org_id` in this setup, so the
+  server resolves admin status from **membership** (`lib/admin/access.ts`,
+  memoized per request); RLS still compares the client token's `org_id`.
 - Clerk only puts `org_id` in the session token for the **active** organization,
   so `/admin/activate` exists to call `setActive()` once for a genuine admin.
-- **Admin reads run on the client path** through permissive SELECT policies on
-  `devices`, `device_users`, `readings`, `users`, `schedules`
-  (`telegram_link_codes` is excluded). **Admin writes are server actions** —
-  they mint secrets or destroy rows.
+- **Admin fleet reads go through the `admin_devices()` / `admin_users()` RPCs**,
+  not through policies on `users`/`device_users`/`schedules`. Widening those
+  broke the admin's _own_ dashboard: `fetchCurrentUser`, `fetchMyDevices` and
+  `fetchSchedules` carry no `WHERE` clause and depend on RLS meaning "own rows
+  only". `devices` and `readings` keep their admin policies because every query
+  against them is already filtered by `device_id`. **Admin writes are server
+  actions** — they mint secrets or destroy rows.
 - **Admin RLS predicates must never reference a row column.** Always
   `using ((select public.is_admin_request()))` so the check is one InitPlan per
   statement; `supabase/tests/admin_initplan.sql` proves it with EXPLAIN and
@@ -469,6 +480,11 @@ writes the second, and the console warns when the two drift apart.
   optional (Supabase lint `0003_auth_rls_initplan`). `auth.uid()` is likewise
   evaluated once per query only when wrapped this way
 - **Nullable comparisons** in RLS: `IS DISTINCT FROM`, never `!=`/`<>`
+- **Writes must prove they hit a row.** PostgREST reports no error when an
+  `update`/`delete` matches zero rows, so any write whose success is reported
+  to the user chains `.select()` and checks the returned length — otherwise the
+  UI confirms something that never happened (this shipped once: a rotated
+  device secret was shown for a device that no longer existed)
 - **Views**: avoid CTEs over `readings` (optimization fences); prefer
   denormalized latest-value columns kept current by `AFTER INSERT` triggers
 - **Required indexes**: `(device_id, timestamp DESC)` on readings-style

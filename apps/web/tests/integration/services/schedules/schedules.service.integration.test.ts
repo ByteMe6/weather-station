@@ -75,7 +75,12 @@ describe('schedules service (integration, client path)', () => {
         days: [1],
       }),
     ).rejects.toBeDefined()
-    await deleteSchedule(asB, { id: created.id })
+    // B's delete matches zero rows because RLS hides A's alert. PostgREST
+    // reports no error for that, so the service now raises instead of letting
+    // the UI confirm a deletion that never happened.
+    await expect(deleteSchedule(asB, { id: created.id })).rejects.toThrow(
+      /not found or not yours/i,
+    )
     expect(await fetchSchedules(asA)).toHaveLength(1)
 
     await deleteSchedule(asA, { id: created.id })

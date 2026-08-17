@@ -117,7 +117,7 @@ as $$
 declare
   v_id uuid;
 begin
-  if p_org_id is null or p_org_id !~ '^org_[A-Za-z0-9]+$' then
+  if p_org_id is null or p_org_id !~ '^org_[A-Za-z0-9_-]+$' then
     raise exception 'INVALID_ORG_ID' using errcode = 'P0001';
   end if;
 
@@ -192,6 +192,7 @@ declare
   v_device text := coalesce(new.device_id, old.device_id);
   v_members bigint;
   v_owners bigint;
+  v_heir uuid;
 begin
   -- Serialises with any other membership change for this device. Without it
   -- two transactions each see the other's owner and both commit a demotion.
@@ -202,10 +203,35 @@ begin
     from public.device_users
    where device_id = v_device;
 
-  if v_members > 0 and v_owners = 0 then
-    raise exception 'DEVICE_NEEDS_OWNER' using errcode = 'P0001';
+  if v_members = 0 or v_owners > 0 then
+    return null;
   end if;
-  return null;
+
+  -- Members remain but nobody owns the device. The two ways to get here need
+  -- opposite answers:
+  --
+  --   DELETE — the owner's membership went away, and one route is the cascade
+  --   from account deletion. Refusing would make erasure fail, so the longest
+  --   standing member inherits instead; this is the same promote-the-survivor
+  --   rule claim_device already applies, applied automatically.
+  --
+  --   UPDATE — somebody demoted the last owner. That is the concurrent
+  --   demotion the app could not catch in two statements, and silently
+  --   re-promoting would undo a deliberate change, so it is refused.
+  if tg_op = 'DELETE' then
+    select user_id into v_heir
+      from public.device_users
+     where device_id = v_device
+     order by added_at asc, user_id asc
+     limit 1;
+
+    update public.device_users
+       set role = 'owner'
+     where device_id = v_device and user_id = v_heir;
+    return null;
+  end if;
+
+  raise exception 'DEVICE_NEEDS_OWNER' using errcode = 'P0001';
 end;
 $$;
 

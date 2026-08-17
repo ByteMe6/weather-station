@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(23);
 
 -- The suite must not depend on the developer's real Vault value.
 select public.set_admin_org_id('org_pgtap_admin');
@@ -24,6 +24,16 @@ select is((select provolatile from pg_proc where oid = 'public.is_admin_request(
 select ok((select proconfig @> array['search_path=""'] from pg_proc where oid = 'public.is_admin_request()'::regprocedure), 'is_admin_request pins an empty search_path');
 select ok(not has_function_privilege('anon', 'public.is_admin_request()', 'execute'), 'anon cannot execute is_admin_request');
 select ok(not has_function_privilege('authenticated', 'public.set_admin_org_id(text)', 'execute'), 'clients cannot write the admin org id');
+-- A blank secret used to match a blank org_id claim, making every session with
+-- an empty claim a fleet admin.
+select throws_ok(
+  $$ select public.set_admin_org_id('') $$,
+  'P0001', 'INVALID_ORG_ID', 'a blank admin org id is rejected at the boundary'
+);
+select throws_ok(
+  $$ select public.set_admin_org_id(null) $$,
+  'P0001', 'INVALID_ORG_ID', 'a null admin org id is rejected rather than silently kept'
+);
 
 set local role authenticated;
 
@@ -58,6 +68,47 @@ select throws_ok(
   '42501', null, 'admin still cannot read telegram_link_codes'
 );
 select ok(not has_column_privilege('authenticated', 'public.devices', 'secret', 'select'), 'devices.secret is still ungranted');
+
+-- --- regressions from the 2026-08-17 review ---------------------------------
+
+-- The admin bypass must not widen the three tables whose user-facing queries
+-- are unfiltered: that broke the admin's OWN dashboard.
+select ok(
+  not exists (select 1 from public.users where clerk_user_id <> 'user_admin'),
+  'admin does not see other users rows (fleet view is admin_users())'
+);
+select is(
+  (select count(*) from public.device_users),
+  0::bigint, 'admin does not see other device links (fleet view is admin_devices())'
+);
+select is(
+  (select count(*) from public.schedules),
+  0::bigint, 'admin does not see other schedules'
+);
+
+-- …while the fleet RPCs do show everything, and only to an admin.
+select is(
+  (select count(*) from public.admin_devices() where device_id like 'ws-%'),
+  2::bigint, 'admin_devices() returns the whole fleet'
+);
+select ok(
+  (select count(*) from public.admin_users()) >= 2,
+  'admin_users() returns every account'
+);
+
+select set_config('request.jwt.claims', '{"sub":"user_plain","role":"authenticated"}', true);
+select is(
+  (select count(*) from public.admin_devices()),
+  0::bigint, 'a non-admin gets nothing from admin_devices()'
+);
+
+-- Admin visibility is read-only: the policies are SELECT-only and there are no
+-- client grants behind them. Adding a `for all` policy later must fail here.
+select set_config('request.jwt.claims', '{"sub":"user_admin","role":"authenticated","org_id":"org_pgtap_admin"}', true);
+select throws_ok(
+  $$ update public.devices set label = 'seized' where device_id = 'ws-other0000002' $$,
+  '42501', null, 'an admin session cannot write through the bypass'
+);
 
 select * from finish();
 rollback;

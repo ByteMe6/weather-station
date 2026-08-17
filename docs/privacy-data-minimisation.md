@@ -15,9 +15,16 @@ Every stored personal field, why it exists, how long it lives. Reviewed
 | `readings` | sensor values, `device_id`, `timestamp` | The product | 12 months raw, then daily aggregates (MRP-36) | Not personal data on its own; becomes unlinked when accounts are deleted |
 | Clerk (external) | email, name, avatar | Sign-in | Managed by Clerk; deleted with the account | Not copied into our DB |
 
+Device hand-over: when the last member leaves a station (an owner removing
+their account, or an admin unclaiming it) the nickname, address and map
+coordinates are purged by `maintain_device_status()`, so a re-claimed device
+carries nothing personal into the next tenancy. Readings survive, as they do on
+account deletion, because they are device-scoped weather values — and once the
+address and coordinates are gone they are unlabelled numbers.
+
 Admin console: members of the Clerk organization named by `ADMIN_ORG_ID` can
-read every row of `users`, `devices`, `device_users`, `readings` and
-`schedules` through RLS — including full `clerk_user_id` / `telegram_id`
+read every device, reading and — through the `admin_devices()` /
+`admin_users()` RPCs — every account row — including full `clerk_user_id` / `telegram_id`
 values, which ordinary station owners cannot see. The console displays only
 4-character tails, but the underlying rows are readable, so admin membership is
 a privileged role and should stay small. `telegram_link_codes` is excluded from

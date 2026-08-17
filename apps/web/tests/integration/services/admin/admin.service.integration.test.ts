@@ -69,14 +69,38 @@ describe('admin fleet reads (integration)', () => {
     )
     expect(users.find((u) => u.id === plain!.id)?.deviceCount).toBe(1)
 
-    // Same code, ordinary session: RLS narrows it to their own rows.
+    // Same code, ordinary session: the fleet RPCs gate on is_admin_request()
+    // themselves and return nothing at all — they are not a general-purpose
+    // read that quietly narrows. The user's own data still reaches them
+    // through the ordinary device/schedule services.
     const asPlain = createUserClient(CLERK_PLAIN)
-    expect((await fetchAllDevices(asPlain)).map((d) => d.deviceId)).toEqual([
-      DEVICE_B,
-    ])
-    expect((await fetchAllUsers(asPlain)).map((u) => u.clerkUserId)).toEqual([
-      CLERK_PLAIN,
-    ])
+    expect(await fetchAllDevices(asPlain)).toEqual([])
+    expect(await fetchAllUsers(asPlain)).toEqual([])
+  })
+
+  it('the admin bypass does not widen the tables whose app queries are unfiltered', async () => {
+    // This is what broke the admin's own dashboard: users/device_users/
+    // schedules must stay "own rows only" even for an admin session.
+    const { data: plain } = await db
+      .from('users')
+      .insert({ clerk_user_id: CLERK_PLAIN })
+      .select('id')
+      .single()
+    await db.from('users').insert({ clerk_user_id: CLERK_ADMIN })
+    await db.from('devices').insert({
+      device_id: DEVICE_B,
+      secret: 'b'.repeat(64),
+      status: 'registered',
+    })
+    await db
+      .from('device_users')
+      .insert({ device_id: DEVICE_B, user_id: plain!.id, role: 'owner' })
+
+    const asAdmin = createAdminClient(CLERK_ADMIN, ADMIN_ORG)
+    const { data: users } = await asAdmin.from('users').select('clerk_user_id')
+    expect(users?.map((u) => u.clerk_user_id)).toEqual([CLERK_ADMIN])
+    const { data: links } = await asAdmin.from('device_users').select('user_id')
+    expect(links).toEqual([])
   })
 
   it('an admin still cannot read devices.secret', async () => {
