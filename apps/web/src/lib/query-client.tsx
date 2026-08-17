@@ -10,19 +10,31 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import type { ReactElement, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
-/** Clears the query cache when the signed-in user changes or signs out. */
+/**
+ * Clears the query cache when the signed-in user changes, signs out, or
+ * switches organisation.
+ *
+ * The organisation matters as much as the user: `org_id` travels in the token
+ * RLS reads, so the same query returns a different set before and after a
+ * switch. Keeping the old entries would show fleet-wide rows to someone who
+ * just dropped back to their personal account.
+ */
 const SignOutCleanup = (): null => {
-  const { userId, isLoaded } = useAuth()
+  const { userId, orgId, isLoaded } = useAuth()
   const queryClient = useQueryClient()
-  const prevUserId = useRef<string | null | undefined>(undefined)
+  const prevIdentity = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     if (!isLoaded) return
-    if (prevUserId.current !== undefined && prevUserId.current !== userId) {
+    const identity = `${userId ?? ''}:${orgId ?? ''}`
+    if (
+      prevIdentity.current !== undefined &&
+      prevIdentity.current !== identity
+    ) {
       queryClient.clear()
     }
-    prevUserId.current = userId
-  }, [userId, isLoaded, queryClient])
+    prevIdentity.current = identity
+  }, [userId, orgId, isLoaded, queryClient])
 
   return null
 }

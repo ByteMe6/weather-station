@@ -30,9 +30,17 @@ const MenuLinkMock = ({ href, label }: { href: string; label: string }) => (
 MenuLinkMock.displayName = 'UserButton.Link'
 UserButtonMock.MenuItems = MenuItemsMock
 UserButtonMock.Link = MenuLinkMock
+const clerkUser: {
+  isLoaded: boolean
+  user: { id: string; organizationMemberships: unknown[] } | null
+} = {
+  isLoaded: true,
+  user: { id: 'user_1', organizationMemberships: [] },
+}
 jest.mock('@clerk/nextjs', () => ({
   UserButton: UserButtonMock,
-  useUser: () => ({ isLoaded: true, isSignedIn: true, user: { id: 'user_1' } }),
+  useUser: () => ({ ...clerkUser, isSignedIn: true }),
+  OrganizationSwitcher: () => <div data-testid="clerk-org-switcher" />,
 }))
 jest.mock('next-themes', () => ({
   useTheme: () => ({
@@ -130,6 +138,34 @@ describe('shell', () => {
       </QueryClientProvider>,
     )
     expect(screen.getByTestId('nav-device-select')).toBeInTheDocument()
+  })
+
+  it('shows the organisation switcher only to people who belong to one', () => {
+    navState.pathname = '/dashboard'
+    const props = {
+      testId: 'nav',
+      devices: [],
+      selectedDeviceId: null,
+      onSelectDevice: jest.fn(),
+      deviceLabel: null,
+    }
+    // A station owner with no organisation gets no switcher: organisations
+    // exist here only for the fleet-admin org.
+    clerkUser.user = { id: 'user_1', organizationMemberships: [] }
+    const { rerender } = wrap(<TopNav {...props} />)
+    expect(screen.queryByTestId('nav-org')).not.toBeInTheDocument()
+
+    clerkUser.user = {
+      id: 'user_1',
+      organizationMemberships: [{ organization: { id: 'org_admin' } }],
+    }
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TopNav {...props} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByTestId('nav-org')).toBeInTheDocument()
+    expect(screen.getByTestId('clerk-org-switcher')).toBeInTheDocument()
   })
 
   it('offers the admin console in the account menu only to admins', () => {

@@ -11,6 +11,7 @@ import { useCallback, useState } from 'react'
 import { DeviceChip } from './DeviceChip'
 import { MobileNav } from './MobileNav'
 import { NAV_ITEMS } from './nav-items'
+import { OrgSwitcher } from './OrgSwitcher'
 import { ThemeToggle } from './ThemeToggle'
 
 import { Logo } from '@/components/brand/Logo'
@@ -92,6 +93,7 @@ export const TopNav = ({
           onSelect={onSelectDevice}
           loading={devicesLoading}
         />
+        <OrgSwitcher testId={`${testId}-org`} />
         <ThemeToggle testId={`${testId}-theme`} />
         {/* The console lives in the account menu, not the main nav: it is for
             the few people who run the fleet, not part of everyday navigation.
