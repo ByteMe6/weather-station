@@ -87,9 +87,12 @@ select is(
 );
 
 -- …while the fleet RPCs do show everything, and only to an admin.
+-- Named fixtures, not a prefix: this suite runs against a live local database
+-- that holds seeded stations, and `like 'ws-%'` matches those too.
 select is(
-  (select count(*) from public.admin_devices() where device_id like 'ws-%'),
-  2::bigint, 'admin_devices() returns the whole fleet'
+  (select count(*) from public.admin_devices()
+    where device_id in ('ws-admin0000001', 'ws-other0000002')),
+  2::bigint, 'admin_devices() returns devices the admin is not a member of'
 );
 select ok(
   (select count(*) from public.admin_users()) >= 2,
