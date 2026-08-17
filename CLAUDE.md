@@ -422,6 +422,32 @@ checklist.
 
 ---
 
+### Admin console (`/admin`)
+
+One Clerk organization id is the whole admin model. It lives in
+`process.env.ADMIN_ORG_ID` (proxy + server actions) **and** in a Supabase Vault
+secret `admin_org_id` (RLS, via `public.is_admin_request()`); `yarn admin:set-org`
+writes the second, and the console warns when the two drift apart.
+
+- **Three gates, none trusting the others**: `src/proxy.ts` redirects `/admin(.*)`
+  (except `/admin/activate`) unless the session's active org matches;
+  `app/(app)/admin/layout.tsx` repeats the check and `notFound()`s; every admin
+  action re-derives it per call. Refusals are always **404, never 403**.
+- Clerk only puts `org_id` in the session token for the **active** organization,
+  so `/admin/activate` exists to call `setActive()` once for a genuine admin.
+- **Admin reads run on the client path** through permissive SELECT policies on
+  `devices`, `device_users`, `readings`, `users`, `schedules`
+  (`telegram_link_codes` is excluded). **Admin writes are server actions** —
+  they mint secrets or destroy rows.
+- **Admin RLS predicates must never reference a row column.** Always
+  `using ((select public.is_admin_request()))` so the check is one InitPlan per
+  statement; `supabase/tests/admin_initplan.sql` proves it with EXPLAIN and
+  fails if someone reintroduces a correlated per-row SubPlan.
+- `devices.secret` stays ungranted to every client role: the bypass grants row
+  visibility, the column grant is what hides the key. A secret is returned only
+  by `createDeviceAction` / `rotateDeviceSecretAction`, shown once, never
+  re-readable.
+
 ## Database Rules (Supabase / Postgres)
 
 ### Migrations
@@ -540,19 +566,20 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 
 ## Environment Variables
 
-| Variable                               | Scope         | Description                                                    |
-| -------------------------------------- | ------------- | -------------------------------------------------------------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key                                          |
-| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                                               |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                                               |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)                                 |
-| `SUPABASE_URL`                         | Server        | Supabase API URL                                               |
-| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                            |
-| `BOT_TOKEN`                            | Edge function | Telegram bot token                                             |
-| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                                  |
-| `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)            |
-| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username (no @) for the Telegram-linking deep link         |
-| `CLERK_WEBHOOK_SIGNING_SECRET`         | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`) |
+| Variable                               | Scope         | Description                                                                                   |
+| -------------------------------------- | ------------- | --------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key                                                                         |
+| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                                                                              |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                                                                              |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)                                                                |
+| `SUPABASE_URL`                         | Server        | Supabase API URL                                                                              |
+| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                                                           |
+| `BOT_TOKEN`                            | Edge function | Telegram bot token                                                                            |
+| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                                                                 |
+| `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)                                           |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username (no @) for the Telegram-linking deep link                                        |
+| `CLERK_WEBHOOK_SIGNING_SECRET`         | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                |
+| `ADMIN_ORG_ID`                         | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id` |
 
 Clerk routing (`/sign-in`, `/sign-up`, fallback `/dashboard`) is set in code
 (`apps/web/src/proxy.ts` + `RootProviders`), not env vars. Two dashboard-side

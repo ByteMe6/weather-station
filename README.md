@@ -117,6 +117,34 @@ into `firmware/secrets.ini`, which no longer reads them. Either way the secret
 is stored nowhere else in plaintext, so losing it means provisioning a new
 device.
 
+### Admin console
+
+`/admin` provisions and manages the fleet from the browser: create a device
+(id + secret shown once), rotate a secret, unclaim or delete a device, and see
+every device and user. Access is a single Clerk organization, configured in
+**two places that must agree**:
+
+```bash
+# 1. Create the organisation in Clerk, add the admins to it, and copy its id.
+# 2. App environment (Infisical / Vercel):
+ADMIN_ORG_ID=org_xxxxxxxxxxxxxxxx
+
+# 3. Supabase — the value RLS compares against, per environment:
+cd infra/supabase-db
+infisical run -- yarn admin:set-org org_xxxxxxxxxxxxxxxx
+```
+
+The console shows a red banner if the two drift apart. `yarn db-reset:local`
+drops the Vault secret, so re-run `admin:set-org` after every local reset.
+
+A member whose organisation is not active in the session is sent to
+`/admin/activate`, which activates it once (Clerk only puts `org_id` in the
+session token for the active organisation). Everyone else gets a 404 — the
+console never advertises itself.
+
+Device creation here replaces `yarn provision:device` for everyday use; the CLI
+remains the way to emit a flashable NVS image.
+
 ### Firmware
 
 See [`firmware/README.md`](firmware/README.md) for toolchain setup, the
