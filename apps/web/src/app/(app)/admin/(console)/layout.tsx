@@ -28,9 +28,7 @@ const AdminConsoleLayout = async ({
       {/* The org id is not a secret — the admin can already see it in their own
           Clerk memberships — and the client needs it to keep the organisation
           active so RLS grants the fleet-wide view. */}
-      <EnsureAdminOrgActive testId="admin-org" orgId={orgId}>
-        <>{children}</>
-      </EnsureAdminOrgActive>
+      <EnsureAdminOrgActive orgId={orgId}>{children}</EnsureAdminOrgActive>
     </section>
   )
 }

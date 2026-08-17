@@ -1,41 +1,49 @@
 'use client'
 
 import { useAuth, useClerk } from '@clerk/nextjs'
-import type { ReactElement } from 'react'
-import { useEffect, useRef } from 'react'
+import type { ReactElement, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef } from 'react'
 
-import { Skeleton } from '@/components/ui/Skeleton'
+/**
+ * True once the browser session's active organisation is the admin org, which
+ * is what RLS compares (`auth.jwt() ->> 'org_id'`). Tables gate their queries
+ * on it so an inactive session shows a skeleton rather than an empty fleet —
+ * RLS quietly falls back to "your own rows", and that reads as "no devices".
+ */
+const AdminOrgReadyContext = createContext(false)
+
+export const useAdminOrgReady = (): boolean => useContext(AdminOrgReadyContext)
 
 /**
  * Keeps the admin organisation active for the browser session.
  *
- * The server decides admin access from Clerk membership (see lib/admin/access),
- * but RLS compares `auth.jwt() ->> 'org_id'`, which is only populated for the
- * session's ACTIVE organisation. Without this, an admin whose org lapsed would
- * see the console render and every table come back empty — RLS quietly falling
- * back to "your own rows" (observed in browser verification).
+ * It never unmounts its children: `useAuth().orgId` can blink between Clerk
+ * token refreshes, and tearing the subtree down on that would destroy state
+ * that cannot be recovered — a freshly minted device secret is shown exactly
+ * once (observed in browser verification: a device was created and its secret
+ * lost). Readiness is published through context instead.
  */
 export const EnsureAdminOrgActive = ({
   orgId,
   children,
-  testId,
 }: {
   orgId: string
-  children: ReactElement
-  testId: string
+  children: ReactNode
 }): ReactElement => {
   const { orgId: activeOrgId, isLoaded } = useAuth()
   const { setActive } = useClerk()
   const requested = useRef(false)
+  const isActive = isLoaded && activeOrgId === orgId
 
   useEffect(() => {
-    if (!isLoaded || requested.current || activeOrgId === orgId) return
+    if (isActive || !isLoaded || requested.current) return
     requested.current = true
     void setActive({ organization: orgId })
-  }, [isLoaded, activeOrgId, orgId, setActive])
+  }, [isActive, isLoaded, orgId, setActive])
 
-  if (!isLoaded || activeOrgId !== orgId) {
-    return <Skeleton testId={`${testId}-activating`} className="h-40" />
-  }
-  return children
+  return (
+    <AdminOrgReadyContext.Provider value={isActive}>
+      {children}
+    </AdminOrgReadyContext.Provider>
+  )
 }

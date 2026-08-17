@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react'
 
 import { CreateDeviceDialog } from './CreateDeviceDialog'
 import { DeviceRowActions } from './DeviceRowActions'
+import { useAdminOrgReady } from './EnsureAdminOrgActive'
 
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -23,7 +24,11 @@ export const AdminDevicesTable = ({
 }: {
   testId: string
 }): ReactElement => {
-  const { data, isLoading } = useAdminDevicesQuery(true)
+  // Visible only while the admin organisation is active in this session: until
+  // then RLS answers with the caller's own rows, which would render as an empty
+  // fleet list rather than "still loading".
+  const ready = useAdminOrgReady()
+  const { data, isLoading } = useAdminDevicesQuery(ready)
   const [createOpen, setCreateOpen] = useState(false)
   const openCreate = useCallback(() => setCreateOpen(true), [])
   const closeCreate = useCallback((next: boolean) => setCreateOpen(next), [])
@@ -38,7 +43,7 @@ export const AdminDevicesTable = ({
         </Button>
       </CardHeader>
       <CardBody testId={`${testId}-body`} className="pt-3">
-        {isLoading ? (
+        {!ready || isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-40" />
         ) : !data || data.length === 0 ? (
           <EmptyState

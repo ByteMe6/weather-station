@@ -2,6 +2,8 @@
 
 import type { ReactElement } from 'react'
 
+import { useAdminOrgReady } from './EnsureAdminOrgActive'
+
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -26,7 +28,11 @@ export const AdminUsersTable = ({
 }: {
   testId: string
 }): ReactElement => {
-  const { data, isLoading } = useAdminUsersQuery(true)
+  // Visible only while the admin organisation is active in this session: until
+  // then RLS answers with the caller's own rows, which would render as an empty
+  // users list rather than "still loading".
+  const ready = useAdminOrgReady()
+  const { data, isLoading } = useAdminUsersQuery(ready)
 
   return (
     <Card testId={testId}>
@@ -34,7 +40,7 @@ export const AdminUsersTable = ({
         <CardTitle testId={`${testId}-title`}>Users</CardTitle>
       </CardHeader>
       <CardBody testId={`${testId}-body`}>
-        {isLoading ? (
+        {!ready || isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-40" />
         ) : !data || data.length === 0 ? (
           <EmptyState
