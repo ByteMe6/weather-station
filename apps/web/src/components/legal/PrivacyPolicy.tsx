@@ -78,6 +78,12 @@ export const PrivacyPolicy = ({ testId }: { testId: string }): ReactElement => (
         (message delivery).
       </p>
       <p>
+        On a station you share, the owner can see your email address, so they
+        know who they have given access to. Everyone else on that station sees
+        only their own. We still do not store your address — it is read from
+        Clerk when the page loads.
+      </p>
+      <p>
         Station coordinates are optional and typed in by you; they are never
         sent to a geocoding service. Showing the map does mean your browser
         requests map tiles from OpenStreetMap, which reveals the map area you

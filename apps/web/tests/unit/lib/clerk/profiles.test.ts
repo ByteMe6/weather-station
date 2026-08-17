@@ -24,9 +24,22 @@ describe('fetchClerkProfiles', () => {
           fullName: 'Ada Lovelace',
           username: 'ada',
           imageUrl: 'https://img/a',
+          primaryEmailAddress: { emailAddress: 'ada@x.com' },
         },
-        { id: 'user_b', fullName: null, username: 'bob', imageUrl: '' },
-        { id: 'user_c', fullName: null, username: null, imageUrl: 'x' },
+        {
+          id: 'user_b',
+          fullName: null,
+          username: 'bob',
+          imageUrl: '',
+          primaryEmailAddress: { emailAddress: 'bob@x.com' },
+        },
+        {
+          id: 'user_c',
+          fullName: null,
+          username: null,
+          imageUrl: 'x',
+          primaryEmailAddress: null,
+        },
       ],
     })
     const out = await fetchClerkProfiles([
@@ -39,9 +52,18 @@ describe('fetchClerkProfiles', () => {
     expect(out.get('user_a')).toEqual({
       name: 'Ada Lovelace',
       avatarUrl: 'https://img/a',
+      email: 'ada@x.com',
     })
-    expect(out.get('user_b')).toEqual({ name: 'bob', avatarUrl: null })
-    expect(out.get('user_c')).toEqual({ name: null, avatarUrl: 'x' })
+    expect(out.get('user_b')).toEqual({
+      name: 'bob',
+      avatarUrl: null,
+      email: 'bob@x.com',
+    })
+    expect(out.get('user_c')).toEqual({
+      name: null,
+      avatarUrl: 'x',
+      email: null,
+    })
     expect(out.has('user_zz')).toBe(false)
     // deduplicated, single batch
     expect(getUserList).toHaveBeenCalledTimes(1)

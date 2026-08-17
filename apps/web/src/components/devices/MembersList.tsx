@@ -5,8 +5,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import type { ReactElement } from 'react'
 import { useCallback, useState } from 'react'
 
-import { maskIdentifier } from './maskIdentifier'
 import { MemberAvatar } from './MemberAvatar'
+import { memberHandle } from './memberHandle'
 
 import type { MemberProfiles } from '@/actions/devices.action'
 import { springs } from '@/components/motion/variants'
@@ -73,7 +73,7 @@ const MemberRow = ({
           data-testid={`${testId}-handle`}
           className="text-slate font-mono text-[11px]"
         >
-          {maskIdentifier(member)}
+          {memberHandle(member, profile)}
         </span>
       </span>
       {isSelf ? <Badge testId={`${testId}-you`}>you</Badge> : null}
@@ -103,12 +103,17 @@ const MemberRow = ({
   )
 }
 
-/** Name from Clerk when we have one; otherwise say what kind of account it is. */
+/**
+ * Name from Clerk when we have one, else the email — a real address beats the
+ * "Member" placeholder. Only when Clerk gave us neither do we fall back to
+ * saying what kind of account it is.
+ */
 export const memberDisplayName = (
   member: Pick<DeviceMember, 'clerkTail' | 'telegramTail'>,
   profile: MemberProfiles[string] | null,
 ): string => {
   if (profile?.name) return profile.name
+  if (profile?.email) return profile.email
   if (member.telegramTail && !member.clerkTail) return 'Telegram user'
   return 'Member'
 }
@@ -203,7 +208,7 @@ export const MembersList = ({
         title="Remove access?"
         description={
           pendingRemove
-            ? `${memberDisplayName(pendingRemove, profiles?.[pendingRemove.userId] ?? null)} (${maskIdentifier(pendingRemove)}) will no longer see this station.`
+            ? `${memberDisplayName(pendingRemove, profiles?.[pendingRemove.userId] ?? null)} (${memberHandle(pendingRemove, profiles?.[pendingRemove.userId] ?? null)}) will no longer see this station.`
             : undefined
         }
       >

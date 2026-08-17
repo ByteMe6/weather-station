@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
 
-import { maskIdentifier } from '@/components/devices/maskIdentifier'
+import { memberHandle } from '@/components/devices/memberHandle'
 import {
   MembersList,
   memberDisplayName,
@@ -53,30 +53,67 @@ const wrap = (ui: ReactElement) =>
   )
 
 describe('sharing', () => {
-  it('maskIdentifier formats the 4-char tails the RPC returns', () => {
-    expect(maskIdentifier(members[0]!)).toBe('user_…3f2a')
-    expect(maskIdentifier(members[1]!)).toBe('tg · …4821')
-    expect(maskIdentifier({ clerkTail: null, telegramTail: null })).toBe(
+  it('memberHandle shows the email as a subtitle under a name', () => {
+    expect(
+      memberHandle(members[0]!, {
+        name: 'Ada Lovelace',
+        avatarUrl: null,
+        email: 'ada@x.com',
+      }),
+    ).toBe('ada@x.com')
+  })
+
+  it('memberHandle falls back to the 4-char tails when Clerk gave us no email', () => {
+    expect(memberHandle(members[0]!, null)).toBe('user_…3f2a')
+    expect(memberHandle(members[1]!, null)).toBe('tg · …4821')
+    expect(memberHandle({ clerkTail: null, telegramTail: null }, null)).toBe(
       'unknown',
     )
   })
 
-  it('memberDisplayName prefers the Clerk name, then says what kind of account it is', () => {
+  it('memberHandle does not echo an email that is already the name line', () => {
+    // No name, so the email is promoted to the primary line — the subtitle
+    // must not repeat it.
     expect(
-      memberDisplayName(members[0]!, { name: 'Ada Lovelace', avatarUrl: null }),
+      memberHandle(members[0]!, {
+        name: null,
+        avatarUrl: null,
+        email: 'ada@x.com',
+      }),
+    ).toBe('user_…3f2a')
+  })
+
+  it('memberDisplayName prefers the Clerk name, then the email, then the kind of account', () => {
+    expect(
+      memberDisplayName(members[0]!, {
+        name: 'Ada Lovelace',
+        avatarUrl: null,
+        email: 'ada@x.com',
+      }),
     ).toBe('Ada Lovelace')
+    expect(
+      memberDisplayName(members[0]!, {
+        name: null,
+        avatarUrl: null,
+        email: 'ada@x.com',
+      }),
+    ).toBe('ada@x.com')
     expect(memberDisplayName(members[0]!, null)).toBe('Member')
     expect(memberDisplayName(members[1]!, null)).toBe('Telegram user')
   })
 
-  it('renders names + avatars from profiles and falls back to masked handles', () => {
+  it('renders the email under the name, and masked handles when there is no profile', () => {
     wrap(
       <MembersList
         testId="ml"
         deviceId="ws-1"
         members={members}
         profiles={{
-          'u-a': { name: 'Ada Lovelace', avatarUrl: 'https://img/a' },
+          'u-a': {
+            name: 'Ada Lovelace',
+            avatarUrl: 'https://img/a',
+            email: 'ada@x.com',
+          },
         }}
         viewerUserId="u-a"
         canManage
@@ -86,9 +123,10 @@ describe('sharing', () => {
       'Ada Lovelace',
     )
     expect(screen.getByTestId('ml-row-u-a-handle')).toHaveTextContent(
-      'user_…3f2a',
+      'ada@x.com',
     )
     expect(screen.getByTestId('ml-row-u-a-avatar')).toBeInTheDocument()
+    // Telegram-only member: no Clerk account, so no email to show.
     expect(screen.getByTestId('ml-row-u-b-name')).toHaveTextContent(
       'Telegram user',
     )

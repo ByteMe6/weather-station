@@ -6,6 +6,8 @@ export interface ClerkProfile {
   /** Full name, or username, or null when Clerk has neither. */
   name: string | null
   avatarUrl: string | null
+  /** Primary sign-in address; null for an account Clerk holds none for. */
+  email: string | null
 }
 
 // Clerk's user list filter accepts up to 100 ids per call.
@@ -32,6 +34,7 @@ export const fetchClerkProfiles = async (
       out.set(u.id, {
         name: u.fullName ?? u.username ?? null,
         avatarUrl: u.imageUrl || null,
+        email: u.primaryEmailAddress?.emailAddress ?? null,
       })
     }
   }
