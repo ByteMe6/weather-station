@@ -15,12 +15,21 @@ const CLERK_PLAIN = 'user_inttest_plain'
 const DEVICE_A = 'ws-inttestadmin1'
 const DEVICE_B = 'ws-inttestadmin2'
 
+// The Vault secret is shared global state in a live database, not a fixture:
+// whatever it held before this suite ran has to come back afterwards, or the
+// developer's own console starts reporting a configuration mismatch (and on a
+// shared environment, real admins lose access until someone notices).
+let previousAdminOrg: string | null = null
+
 beforeAll(async () => {
   if (!url || !key) {
     throw new Error(
       'Set SUPABASE_URL and SUPABASE_SECRET_KEY (npx supabase status).',
     )
   }
+  const { data: current } = await db.rpc('admin_org_id_configured')
+  previousAdminOrg = typeof current === 'string' ? current : null
+
   const { error } = await db.rpc('set_admin_org_id', { p_org_id: ADMIN_ORG })
   if (error) throw new Error(error.message)
 })
@@ -33,11 +42,13 @@ afterEach(async () => {
     .in('clerk_user_id', [CLERK_ADMIN, CLERK_PLAIN])
 })
 
-// The suite repoints the shared Vault secret; restore whatever the developer's
-// environment expects so the running app keeps working afterwards.
 afterAll(async () => {
-  const configured = process.env.ADMIN_ORG_ID
-  if (configured) await db.rpc('set_admin_org_id', { p_org_id: configured })
+  // Restore what was there, not what an env var happens to say: the test
+  // process has no ADMIN_ORG_ID (it is passed to the dev server inline), so the
+  // old guard silently skipped the restore every single run.
+  if (previousAdminOrg !== null) {
+    await db.rpc('set_admin_org_id', { p_org_id: previousAdminOrg })
+  }
 })
 
 describe('admin fleet reads (integration)', () => {
@@ -115,11 +126,12 @@ describe('admin fleet reads (integration)', () => {
     expect(error?.code).toBe('42501')
   })
 
-  it('the vault value matches ADMIN_ORG_ID when the app environment is configured', async () => {
-    const configured = process.env.ADMIN_ORG_ID
-    if (!configured) return
-    await db.rpc('set_admin_org_id', { p_org_id: configured })
+  it('leaves the Vault secret exactly as it found it', async () => {
+    // Guards the regression this suite itself caused: a run that repoints the
+    // shared secret and does not put it back makes the console claim a
+    // configuration mismatch that does not exist.
     const { data } = await db.rpc('admin_org_id_configured')
-    expect(data).toBe(configured)
+    expect(data).toBe(ADMIN_ORG)
+    expect(previousAdminOrg).not.toBe(ADMIN_ORG)
   })
 })

@@ -38,7 +38,10 @@ export const useAdminStatusQuery = () => {
     queryKey: adminKeys.status(orgId),
     queryFn: async () => unwrapAction(await getAdminStatusAction()),
     enabled: isLoaded,
-    staleTime: 5 * 60_000,
+    // Short, because this drives a warning banner: a five-minute cache meant a
+    // mismatch that had already been fixed kept being reported, and returning
+    // to the tab did not re-check it.
+    staleTime: 30_000,
     retry: false,
   })
 }
