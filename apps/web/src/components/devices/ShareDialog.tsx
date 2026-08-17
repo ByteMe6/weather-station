@@ -68,20 +68,19 @@ export const ShareDialog = ({
       open={open}
       onOpenChange={onOpenChange}
       title="Share access"
-      description="They must have signed in to the web app or registered with the Telegram bot already."
+      description="They need a Weather Station account already — a web sign-in, or the Telegram bot."
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <Field
           testId={`${testId}-identifier`}
-          label="Clerk user ID or Telegram ID"
+          label="Email or Telegram ID"
           htmlFor="share-identifier"
           error={error}
-          hint="user_… from Clerk, or the numeric Telegram ID"
+          hint="The email they sign in with, or their numeric Telegram ID"
         >
           <Input
             testId={`${testId}-identifier-input`}
             id="share-identifier"
-            mono
             value={identifier}
             onChange={onIdentifier}
             invalid={!!error}

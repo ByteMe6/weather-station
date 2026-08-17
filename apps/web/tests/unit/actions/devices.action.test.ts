@@ -25,8 +25,16 @@ const helpers = {
   resolveMemberRole: jest.fn<Promise<string | null>, unknown[]>(),
 }
 jest.mock('@/actions/_helpers', () => helpers)
+const from = jest.fn<unknown, [string]>()
 jest.mock('@ws/supabase-db', () => ({
-  createServiceRoleClient: () => ({ rpc: (...a: unknown[]) => rpc(...a) }),
+  createServiceRoleClient: () => ({
+    rpc: (...a: unknown[]) => rpc(...a),
+    from: (table: string) => from(table),
+  }),
+}))
+const findClerkUserIdByEmail = jest.fn<Promise<string | null>, [string]>()
+jest.mock('@/lib/clerk/lookup', () => ({
+  findClerkUserIdByEmail: (email: string) => findClerkUserIdByEmail(email),
 }))
 
 import {
@@ -38,7 +46,6 @@ import {
   updateMemberRoleAction,
 } from '@/actions/devices.action'
 import { normalizeDeviceId } from '@/lib/device-id'
-import { parseShareIdentifier } from '@/lib/share-identifier'
 
 describe('registerDeviceAction', () => {
   beforeEach(() => {
@@ -84,52 +91,194 @@ describe('registerDeviceAction', () => {
   })
 })
 
+/** Leaves of the `service.from(...)` chains the share path walks. */
+const usersUpsert = jest.fn<
+  Promise<{ data: { id: string } | null; error: unknown }>,
+  [Record<string, unknown>]
+>()
+const usersSelectEq = jest.fn<
+  Promise<{ data: { id: string } | null; error: unknown }>,
+  [string, unknown]
+>()
+const deviceUsersInsert = jest.fn<
+  Promise<{ error: unknown }>,
+  [Record<string, unknown>]
+>()
+
+const stubTables = (): void => {
+  from.mockImplementation((table: string) => {
+    if (table === 'users')
+      return {
+        upsert: (values: Record<string, unknown>) => ({
+          select: () => ({ single: () => usersUpsert(values) }),
+        }),
+        select: () => ({
+          eq: (column: string, value: unknown) => ({
+            maybeSingle: () => usersSelectEq(column, value),
+          }),
+        }),
+      }
+    if (table === 'device_users')
+      return {
+        insert: (row: Record<string, unknown>) => deviceUsersInsert(row),
+      }
+    throw new Error(`unexpected table ${table}`)
+  })
+}
+
 describe('shareDeviceAction', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     auth.mockResolvedValue({ userId: 'user_1' })
-  })
-  it('parses identifiers', () => {
-    expect(parseShareIdentifier('123456')).toEqual({
-      kind: 'telegram',
-      telegramId: 123456,
-    })
-    expect(parseShareIdentifier('user_2abcDEF12345')).toEqual({
-      kind: 'clerk',
-      clerkUserId: 'user_2abcDEF12345',
-    })
-    expect(parseShareIdentifier('nope')).toBeNull()
-  })
-  it('rejects non-owners with FORBIDDEN', async () => {
     helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    stubTables()
+    deviceUsersInsert.mockResolvedValue({ error: null })
+  })
+
+  it('grants access by email, resolving the address through Clerk', async () => {
+    findClerkUserIdByEmail.mockResolvedValue('user_target')
+    usersUpsert.mockResolvedValue({ data: { id: 'uuid-target' }, error: null })
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: '  Ada@Example.COM ',
+        role: 'viewer',
+      }),
+    ).resolves.toEqual({ ok: true, data: { userId: 'uuid-target' } })
+    expect(findClerkUserIdByEmail).toHaveBeenCalledWith('ada@example.com')
+    expect(deviceUsersInsert).toHaveBeenCalledWith({
+      device_id: 'ws-1',
+      user_id: 'uuid-target',
+      role: 'viewer',
+    })
+  })
+
+  it('upserts the users row so an account that never opened the dashboard can still be granted', async () => {
+    findClerkUserIdByEmail.mockResolvedValue('user_target')
+    usersUpsert.mockResolvedValue({ data: { id: 'uuid-target' }, error: null })
+    await shareDeviceAction({
+      deviceId: 'ws-1',
+      identifier: 'ada@example.com',
+      role: 'viewer',
+    })
+    expect(usersUpsert).toHaveBeenCalledWith({ clerk_user_id: 'user_target' })
+    expect(usersSelectEq).not.toHaveBeenCalled()
+  })
+
+  it('reports USER_NOT_FOUND when no Clerk account owns that email', async () => {
+    findClerkUserIdByEmail.mockResolvedValue(null)
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: 'ghost@example.com',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'USER_NOT_FOUND',
+      fieldErrors: { identifier: expect.any(String) as string },
+    })
+    expect(deviceUsersInsert).not.toHaveBeenCalled()
+  })
+
+  it('reports UNKNOWN when the users upsert fails', async () => {
+    findClerkUserIdByEmail.mockResolvedValue('user_target')
+    usersUpsert.mockResolvedValue({ data: null, error: { message: 'nope' } })
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: 'ada@example.com',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'UNKNOWN' })
+    expect(deviceUsersInsert).not.toHaveBeenCalled()
+  })
+
+  it('still grants access by Telegram id, looking the row up rather than creating it', async () => {
+    usersSelectEq.mockResolvedValue({ data: { id: 'uuid-tg' }, error: null })
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: '123456789',
+        role: 'editor',
+      }),
+    ).resolves.toEqual({ ok: true, data: { userId: 'uuid-tg' } })
+    expect(usersSelectEq).toHaveBeenCalledWith('telegram_id', 123456789)
+    expect(findClerkUserIdByEmail).not.toHaveBeenCalled()
+    expect(usersUpsert).not.toHaveBeenCalled()
+    expect(deviceUsersInsert).toHaveBeenCalledWith({
+      device_id: 'ws-1',
+      user_id: 'uuid-tg',
+      role: 'editor',
+    })
+  })
+
+  it('reports USER_NOT_FOUND for a Telegram id the bot has never seen', async () => {
+    usersSelectEq.mockResolvedValue({ data: null, error: null })
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: '123456789',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'USER_NOT_FOUND' })
+  })
+
+  it('maps the unique violation to ALREADY_MEMBER', async () => {
+    findClerkUserIdByEmail.mockResolvedValue('user_target')
+    usersUpsert.mockResolvedValue({ data: { id: 'uuid-target' }, error: null })
+    deviceUsersInsert.mockResolvedValue({ error: { code: '23505' } })
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: 'ada@example.com',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'ALREADY_MEMBER' })
+  })
+
+  it('rejects non-owners with FORBIDDEN', async () => {
     helpers.resolveMemberRole.mockResolvedValue('viewer')
     await expect(
       shareDeviceAction({
-        deviceId: 'WS-1',
-        identifier: 'user_2abcDEF12345',
+        deviceId: 'ws-1',
+        identifier: 'ada@example.com',
         role: 'viewer',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(findClerkUserIdByEmail).not.toHaveBeenCalled()
   })
-  it('validates the role and identifier before touching the DB', async () => {
+
+  it('validates the role and identifier before touching Clerk or the DB', async () => {
     await expect(
       shareDeviceAction({
-        deviceId: 'WS-1',
-        identifier: 'user_2abcDEF12345',
+        deviceId: 'ws-1',
+        identifier: 'ada@example.com',
         role: 'admin' as never,
       }),
     ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
     await expect(
       shareDeviceAction({ deviceId: '', identifier: 'nope', role: 'viewer' }),
     ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+    // a raw Clerk id is no longer an accepted identifier
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: 'user_2abcDEF12345',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
     expect(helpers.resolveCurrentUserId).not.toHaveBeenCalled()
+    expect(findClerkUserIdByEmail).not.toHaveBeenCalled()
   })
+
   it('reports UNKNOWN when the ownership lookup fails (not FORBIDDEN)', async () => {
     helpers.resolveCurrentUserId.mockRejectedValue(new Error('db down'))
     await expect(
       shareDeviceAction({
-        deviceId: 'WS-1',
-        identifier: 'user_2abcDEF12345',
+        deviceId: 'ws-1',
+        identifier: 'ada@example.com',
         role: 'viewer',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'UNKNOWN' })

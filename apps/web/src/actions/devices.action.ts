@@ -12,9 +12,11 @@ import { ensureCurrentUserAction } from './users.action'
 
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
+import { findClerkUserIdByEmail } from '@/lib/clerk/lookup'
 import type { ClerkProfile } from '@/lib/clerk/profiles'
 import { fetchClerkProfiles } from '@/lib/clerk/profiles'
 import { normalizeDeviceId } from '@/lib/device-id'
+import type { ShareIdentifier } from '@/lib/share-identifier'
 import { parseShareIdentifier } from '@/lib/share-identifier'
 import { fetchDeviceMemberIdentities } from '@/services/devices/devices.service'
 
@@ -139,9 +141,72 @@ const memberSchema = z.object({
 })
 const memberRoleSchema = memberSchema.extend({ role: roleSchema })
 
-const IDENT_HELP = 'Enter a Clerk user ID (user_…) or a Telegram ID (digits)'
+const IDENT_HELP = 'Enter their email address, or their Telegram ID (digits)'
+const SHARE_UNKNOWN_MSG = 'Could not share the station. Try again.'
 
-/** Owner grants access by Clerk user ID or Telegram ID. */
+const notFound = (msg: string): { ok: false; result: ActionResult<never> } => ({
+  ok: false,
+  result: actionError('USER_NOT_FOUND', msg, { identifier: msg }),
+})
+
+/**
+ * Internal `users.id` for the person an owner named, or an ActionResult
+ * saying why we could not name exactly one account.
+ *
+ * The email branch upserts where the Telegram branch selects: `users` rows are
+ * created lazily on first dashboard visit (`ensureCurrentUserAction`), so
+ * someone who signed up but never opened the app has no row yet — refusing
+ * them would read as "your colleague has no account" when they plainly do.
+ * Telegram ids stay select-only; only the bot may mint those rows.
+ */
+const resolveShareTarget = async (
+  service: Service,
+  ident: ShareIdentifier,
+): Promise<
+  { ok: true; userId: string } | { ok: false; result: ActionResult<never> }
+> => {
+  if (ident.kind === 'telegram') {
+    const { data, error } = await service
+      .from('users')
+      .select('id')
+      .eq('telegram_id', ident.telegramId)
+      .maybeSingle()
+    if (error) {
+      console.error('shareDeviceAction telegram lookup failed', error)
+      return { ok: false, result: actionError('UNKNOWN', SHARE_UNKNOWN_MSG) }
+    }
+    if (!data)
+      return notFound('No account with that Telegram ID has used the bot yet')
+    return { ok: true, userId: data.id }
+  }
+
+  let clerkUserId: string | null
+  try {
+    clerkUserId = await findClerkUserIdByEmail(ident.email)
+  } catch (err) {
+    // Clerk is the only place emails live, so an outage here is not a miss.
+    console.error('shareDeviceAction email lookup failed', err)
+    return { ok: false, result: actionError('UNKNOWN', SHARE_UNKNOWN_MSG) }
+  }
+  if (!clerkUserId)
+    return notFound('No Weather Station account uses that email yet')
+
+  const { data, error } = await service
+    .from('users')
+    .upsert(
+      { clerk_user_id: clerkUserId },
+      { onConflict: 'clerk_user_id', ignoreDuplicates: false },
+    )
+    .select('id')
+    .single()
+  if (error || !data) {
+    console.error('shareDeviceAction users upsert failed', error)
+    return { ok: false, result: actionError('UNKNOWN', SHARE_UNKNOWN_MSG) }
+  }
+  return { ok: true, userId: data.id }
+}
+
+/** Owner grants access by sign-in email or Telegram ID (MRP-38). */
 export const shareDeviceAction = async (input: {
   deviceId: string
   identifier: string
@@ -158,40 +223,21 @@ export const shareDeviceAction = async (input: {
   if (!gate.ok) return gate.result
   const { service } = gate
 
-  const lookup =
-    ident.kind === 'clerk'
-      ? service
-          .from('users')
-          .select('id')
-          .eq('clerk_user_id', ident.clerkUserId)
-          .maybeSingle()
-      : service
-          .from('users')
-          .select('id')
-          .eq('telegram_id', ident.telegramId)
-          .maybeSingle()
-  const { data: target, error: lookupError } = await lookup
-  if (lookupError) {
-    console.error('shareDeviceAction lookup failed', lookupError)
-    return actionError('UNKNOWN', 'Could not share the station. Try again.')
-  }
-  if (!target) {
-    const msg = 'No account with that ID has signed in yet'
-    return actionError('USER_NOT_FOUND', msg, { identifier: msg })
-  }
+  const target = await resolveShareTarget(service, ident)
+  if (!target.ok) return target.result
 
   const { error } = await service
     .from('device_users')
-    .insert({ device_id: deviceId, user_id: target.id, role })
+    .insert({ device_id: deviceId, user_id: target.userId, role })
   if (error?.code === '23505') {
     const msg = 'That person already has access'
     return actionError('ALREADY_MEMBER', msg, { identifier: msg })
   }
   if (error) {
     console.error('shareDeviceAction failed', error)
-    return actionError('UNKNOWN', 'Could not share the station. Try again.')
+    return actionError('UNKNOWN', SHARE_UNKNOWN_MSG)
   }
-  return actionOk({ userId: target.id })
+  return actionOk({ userId: target.userId })
 }
 
 const ownerCount = async (
