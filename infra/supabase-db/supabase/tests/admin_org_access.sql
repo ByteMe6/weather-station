@@ -40,8 +40,19 @@ select ok((select public.is_admin_request()) = false, 'a different org_id is not
 -- the admin org sees everything covered, and nothing that is not
 select set_config('request.jwt.claims', '{"sub":"user_admin","role":"authenticated","org_id":"org_pgtap_admin"}', true);
 select ok((select public.is_admin_request()), 'matching org_id is admin');
-select is((select count(*) from public.devices), 2::bigint, 'admin sees every device');
-select is((select count(*) from public.readings), 2::bigint, 'admin sees every reading');
+-- Scoped to the fixture rows, not the whole table: this suite runs against a
+-- live local database that may already hold seeded devices and readings, and
+-- an absolute count only ever passed on an empty one. What matters is that the
+-- admin sees a device it is NOT a member of (ws-admin0000001) alongside one it
+-- has no link to either — visibility no ordinary user would have.
+select is(
+  (select count(*) from public.devices where device_id in ('ws-admin0000001', 'ws-other0000002')),
+  2::bigint, 'admin sees devices it has no membership in'
+);
+select is(
+  (select count(*) from public.readings where device_id in ('ws-admin0000001', 'ws-other0000002')),
+  2::bigint, 'admin sees readings of devices it has no membership in'
+);
 select throws_ok(
   $$ select count(*) from public.telegram_link_codes $$,
   '42501', null, 'admin still cannot read telegram_link_codes'
