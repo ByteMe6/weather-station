@@ -37,7 +37,7 @@ export const AdminDevicesTable = ({
           Create device
         </Button>
       </CardHeader>
-      <CardBody testId={`${testId}-body`}>
+      <CardBody testId={`${testId}-body`} className="pt-3">
         {isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-40" />
         ) : !data || data.length === 0 ? (

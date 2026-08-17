@@ -2,11 +2,36 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
+import type React from 'react'
 
 import { navState } from '../../../stubs/next-navigation'
 
+interface UserButtonMock {
+  ({ children }: { children?: React.ReactNode }): React.ReactElement
+  MenuItems: ({
+    children,
+  }: {
+    children?: React.ReactNode
+  }) => React.ReactElement
+  Link: (p: { href: string; label: string }) => React.ReactElement
+}
+const UserButtonMock = (({ children }) => (
+  <div data-testid="user-button">{children}</div>
+)) as UserButtonMock
+const MenuItemsMock = ({ children }: { children?: React.ReactNode }) => (
+  <div>{children}</div>
+)
+MenuItemsMock.displayName = 'UserButton.MenuItems'
+const MenuLinkMock = ({ href, label }: { href: string; label: string }) => (
+  <a data-testid={`user-menu-link-${href}`} href={href}>
+    {label}
+  </a>
+)
+MenuLinkMock.displayName = 'UserButton.Link'
+UserButtonMock.MenuItems = MenuItemsMock
+UserButtonMock.Link = MenuLinkMock
 jest.mock('@clerk/nextjs', () => ({
-  UserButton: () => <div data-testid="user-button" />,
+  UserButton: UserButtonMock,
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: { id: 'user_1' } }),
 }))
 jest.mock('next-themes', () => ({
@@ -105,6 +130,42 @@ describe('shell', () => {
       </QueryClientProvider>,
     )
     expect(screen.getByTestId('nav-device-select')).toBeInTheDocument()
+  })
+
+  it('offers the admin console in the account menu only to admins', () => {
+    navState.pathname = '/dashboard'
+    const { rerender } = wrap(
+      <TopNav
+        testId="nav"
+        devices={[]}
+        selectedDeviceId={null}
+        onSelectDevice={jest.fn()}
+        deviceLabel={null}
+      />,
+    )
+    // Not an admin: no console entry anywhere, including the main nav.
+    expect(
+      screen.queryByTestId('user-menu-link-/admin'),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-link-admin')).not.toBeInTheDocument()
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TopNav
+          testId="nav"
+          devices={[]}
+          selectedDeviceId={null}
+          onSelectDevice={jest.fn()}
+          deviceLabel={null}
+          showAdmin
+        />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByTestId('user-menu-link-/admin')).toHaveTextContent(
+      'Admin console',
+    )
+    // It belongs in the account menu, never the primary nav.
+    expect(screen.queryByTestId('nav-link-admin')).not.toBeInTheDocument()
   })
 
   it('EnsureUser shows the shell skeleton until the users row exists, then children', async () => {

@@ -1,16 +1,16 @@
 'use client'
 
 import { UserButton } from '@clerk/nextjs'
-import { Menu } from 'lucide-react'
+import { Menu, ShieldCheck } from 'lucide-react'
 import { motion } from 'motion/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactElement } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { DeviceChip } from './DeviceChip'
 import { MobileNav } from './MobileNav'
-import { ADMIN_NAV_ITEM, NAV_ITEMS } from './nav-items'
+import { NAV_ITEMS } from './nav-items'
 import { ThemeToggle } from './ThemeToggle'
 
 import { Logo } from '@/components/brand/Logo'
@@ -38,10 +38,6 @@ export const TopNav = ({
   showAdmin?: boolean
 }): ReactElement => {
   const pathname = usePathname()
-  const items = useMemo(
-    () => (showAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS),
-    [showAdmin],
-  )
   const [menuOpen, setMenuOpen] = useState(false)
   const openMenu = useCallback(() => setMenuOpen(true), [])
 
@@ -62,7 +58,7 @@ export const TopNav = ({
           aria-label="Primary"
           className="hidden items-center gap-1.5 md:flex"
         >
-          {items.map((item) => {
+          {NAV_ITEMS.map((item) => {
             const active =
               pathname === item.href || pathname.startsWith(`${item.href}/`)
             return (
@@ -97,7 +93,20 @@ export const TopNav = ({
           loading={devicesLoading}
         />
         <ThemeToggle testId={`${testId}-theme`} />
-        <UserButton />
+        {/* The console lives in the account menu, not the main nav: it is for
+            the few people who run the fleet, not part of everyday navigation.
+            Hiding it is cosmetic — the proxy, layout and actions are the gates. */}
+        <UserButton>
+          {showAdmin ? (
+            <UserButton.MenuItems>
+              <UserButton.Link
+                href="/admin"
+                label="Admin console"
+                labelIcon={<ShieldCheck className="size-4" aria-hidden />}
+              />
+            </UserButton.MenuItems>
+          ) : null}
+        </UserButton>
         <button
           type="button"
           aria-label="Open menu"

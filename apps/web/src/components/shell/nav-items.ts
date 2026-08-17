@@ -11,10 +11,3 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'devices', href: '/devices', label: 'Devices' },
   { key: 'settings', href: '/settings', label: 'Settings' },
 ]
-
-/** Rendered only when the session's active org is the admin org. */
-export const ADMIN_NAV_ITEM: NavItem = {
-  key: 'admin',
-  href: '/admin',
-  label: 'Admin',
-}
