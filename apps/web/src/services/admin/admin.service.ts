@@ -20,26 +20,23 @@ export interface AdminUser {
   deviceCount: number
 }
 
-// PostgREST returns an embedded aggregate as `[{ count: n }]`; that shape is
-// the one thing these two services map by hand.
-const countOf = (rows: { count: number }[] | null | undefined): number =>
-  rows?.[0]?.count ?? 0
-
 /**
- * Every device in the fleet. Readable only because the caller's session is in
- * the admin organisation — the "admin org can view all devices" policy ORs
- * with the member policy, so a normal user running this sees only their own.
- * `secret` is absent by column grant and cannot be selected here.
+ * Every device in the fleet, through a SECURITY DEFINER RPC that checks
+ * is_admin_request() itself and returns an empty set to everyone else.
+ *
+ * Deliberately not a plain `select … from devices`: the permissive admin
+ * policies this replaced also widened `users`, `device_users` and `schedules`,
+ * and three user-facing queries are unfiltered because they rely on RLS
+ * meaning "own rows only" — an admin's own dashboard broke as a result. Same
+ * reasoning as device_members(). `secret` is not in the RPC's return type and
+ * is ungranted besides, so it cannot surface here.
+ *
+ * rpc() rows cannot be aliased in the query, so they are mapped by hand.
  */
 export const fetchAllDevices = async (
   supabase: SupabaseClient<Database>,
 ): Promise<AdminDevice[]> => {
-  const { data, error } = await supabase
-    .from('devices')
-    .select(
-      'deviceId:device_id, status, label, createdAt:created_at, members:device_users(count)',
-    )
-    .order('created_at', { ascending: false })
+  const { data, error } = await supabase.rpc('admin_devices')
 
   if (error) {
     throw new ServiceError(
@@ -49,24 +46,19 @@ export const fetchAllDevices = async (
     )
   }
   return (data ?? []).map((row) => ({
-    deviceId: row.deviceId,
+    deviceId: row.device_id,
     status: row.status as DeviceStatus,
     label: row.label,
-    createdAt: row.createdAt,
-    memberCount: countOf(row.members),
+    createdAt: row.created_at,
+    memberCount: Number(row.member_count),
   }))
 }
 
-/** Every app user with how many stations they can see. */
+/** Every app user with how many stations they can see. Same RPC gating. */
 export const fetchAllUsers = async (
   supabase: SupabaseClient<Database>,
 ): Promise<AdminUser[]> => {
-  const { data, error } = await supabase
-    .from('users')
-    .select(
-      'id, clerkUserId:clerk_user_id, telegramId:telegram_id, createdAt:created_at, devices:device_users(count)',
-    )
-    .order('created_at', { ascending: false })
+  const { data, error } = await supabase.rpc('admin_users')
 
   if (error) {
     throw new ServiceError(
@@ -77,9 +69,9 @@ export const fetchAllUsers = async (
   }
   return (data ?? []).map((row) => ({
     id: row.id,
-    clerkUserId: row.clerkUserId,
-    telegramId: row.telegramId,
-    createdAt: row.createdAt,
-    deviceCount: countOf(row.devices),
+    clerkUserId: row.clerk_user_id,
+    telegramId: row.telegram_id,
+    createdAt: row.created_at,
+    deviceCount: Number(row.device_count),
   }))
 }

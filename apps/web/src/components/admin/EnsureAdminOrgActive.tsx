@@ -38,7 +38,12 @@ export const EnsureAdminOrgActive = ({
   useEffect(() => {
     if (isActive || !isLoaded || requested.current) return
     requested.current = true
-    void setActive({ organization: orgId })
+    // Reset the latch on failure: leaving it set meant one Clerk hiccup froze
+    // both tables on a skeleton for the rest of the session.
+    void setActive({ organization: orgId }).catch((err: unknown) => {
+      console.error('EnsureAdminOrgActive: setActive failed', err)
+      requested.current = false
+    })
   }, [isActive, isLoaded, orgId, setActive])
 
   return (

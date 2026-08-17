@@ -218,7 +218,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_devices: {
+        Args: never
+        Returns: {
+          created_at: string
+          device_id: string
+          label: string
+          member_count: number
+          status: string
+        }[]
+      }
       admin_org_id_configured: { Args: never; Returns: string }
+      admin_users: {
+        Args: never
+        Returns: {
+          clerk_user_id: string
+          created_at: string
+          device_count: number
+          id: string
+          telegram_id: number
+        }[]
+      }
       claim_device: {
         Args: { p_device_id: string; p_user_id: string }
         Returns: undefined

@@ -28,7 +28,7 @@ export const AdminDevicesTable = ({
   // then RLS answers with the caller's own rows, which would render as an empty
   // fleet list rather than "still loading".
   const ready = useAdminOrgReady()
-  const { data, isLoading } = useAdminDevicesQuery(ready)
+  const { data, isLoading, isError, error } = useAdminDevicesQuery(ready)
   const [createOpen, setCreateOpen] = useState(false)
   const openCreate = useCallback(() => setCreateOpen(true), [])
   const closeCreate = useCallback((next: boolean) => setCreateOpen(next), [])
@@ -45,6 +45,16 @@ export const AdminDevicesTable = ({
       <CardBody testId={`${testId}-body`} className="pt-3">
         {!ready || isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-40" />
+        ) : isError ? (
+          <EmptyState
+            testId={`${testId}-error`}
+            title="Couldn't load the fleet"
+            description={
+              error instanceof Error
+                ? error.message
+                : 'Reload the page. If it persists, check ADMIN_ORG_ID against the Vault secret.'
+            }
+          />
         ) : !data || data.length === 0 ? (
           <EmptyState
             testId={`${testId}-empty`}

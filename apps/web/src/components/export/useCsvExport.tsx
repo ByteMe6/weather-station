@@ -45,23 +45,36 @@ export const useCsvExport = (): {
       const parts: string[] = []
       let cursor: ExportCursor | null = null
       let rows = 0
-      do {
-        const res = await exportReadingsChunkAction({
-          deviceId,
-          from,
-          to,
-          cursor,
+      try {
+        do {
+          const res = await exportReadingsChunkAction({
+            deviceId,
+            from,
+            to,
+            cursor,
+          })
+          if (aborted.current) return
+          if (!res.ok) {
+            setProgress({ rows, done: false, error: res.message })
+            return
+          }
+          for (const line of res.data.lines) parts.push(`${line}\n`)
+          rows += res.data.lines.length - (res.data.includesHeader ? 1 : 0)
+          cursor = res.data.nextCursor
+          setProgress({ rows, done: false, error: null })
+        } while (cursor)
+      } catch (err) {
+        // The action returns its failures, but the CALL can still reject: a
+        // 500, a timeout, a deploy invalidating the action id, or going
+        // offline mid-export. Without this the dialog spun forever.
+        console.error('exportReadingsChunkAction rejected', err)
+        setProgress({
+          rows,
+          done: false,
+          error: 'Export failed — check your connection and try again.',
         })
-        if (aborted.current) return
-        if (!res.ok) {
-          setProgress({ rows, done: false, error: res.message })
-          return
-        }
-        for (const line of res.data.lines) parts.push(`${line}\n`)
-        rows += res.data.lines.length - (res.data.includesHeader ? 1 : 0)
-        cursor = res.data.nextCursor
-        setProgress({ rows, done: false, error: null })
-      } while (cursor)
+        return
+      }
       triggerDownload(exportFilename(deviceId, from, to), parts)
       setProgress({ rows, done: true, error: null })
     },

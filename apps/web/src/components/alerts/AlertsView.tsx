@@ -74,8 +74,13 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
         await create.mutateAsync({ userId, ...draft })
         toast({ title: 'Alert added', tone: 'success' })
         setAdding(false)
-      } catch {
-        toast({ title: "Couldn't add the alert", tone: 'danger' })
+      } catch (err) {
+        console.error('createSchedule failed', err)
+        toast({
+          title: "Couldn't add the alert",
+          description: err instanceof Error ? err.message : undefined,
+          tone: 'danger',
+        })
       }
     },
     [create, userId, toast],
@@ -87,8 +92,13 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
         await update.mutateAsync({ id: editing.id, ...draft })
         toast({ title: 'Alert updated', tone: 'success' })
         setEditing(null)
-      } catch {
-        toast({ title: "Couldn't update the alert", tone: 'danger' })
+      } catch (err) {
+        console.error('updateSchedule failed', err)
+        toast({
+          title: "Couldn't update the alert",
+          description: err instanceof Error ? err.message : undefined,
+          tone: 'danger',
+        })
       }
     },
     [editing, update, toast],
@@ -98,8 +108,13 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
     try {
       await remove.mutateAsync({ id: deleting.id })
       toast({ title: 'Alert deleted', tone: 'success' })
-    } catch {
-      toast({ title: "Couldn't delete the alert", tone: 'danger' })
+    } catch (err) {
+      console.error('deleteSchedule failed', err)
+      toast({
+        title: "Couldn't delete the alert",
+        description: err instanceof Error ? err.message : undefined,
+        tone: 'danger',
+      })
     }
     setDeleting(null)
   }, [deleting, remove, toast])
@@ -146,6 +161,14 @@ export const AlertsView = ({ testId }: { testId: string }): ReactElement => {
           </p>
           {schedules.isLoading ? (
             <Skeleton testId={`${testId}-list-skeleton`} className="h-20" />
+          ) : schedules.isError ? (
+            <p
+              data-testid={`${testId}-error`}
+              role="alert"
+              className="text-danger py-6 text-center text-sm"
+            >
+              Couldn&apos;t load your alerts. Reload the page to try again.
+            </p>
           ) : list.length === 0 ? (
             <p
               data-testid={`${testId}-empty`}

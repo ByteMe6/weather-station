@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { auth, clerkClient } from '@clerk/nextjs/server'
+import { cache } from 'react'
 
 import { isAdminOrg } from './org'
 
@@ -18,7 +19,7 @@ import { isAdminOrg } from './org'
  * RLS is unaffected: the browser's Supabase client uses the client token, which
  * does carry `org_id`, which is what `public.is_admin_request()` compares.
  */
-export const isAdminRequest = async (): Promise<boolean> => {
+export const isAdminRequest = cache(async (): Promise<boolean> => {
   const { userId, orgId } = await auth()
   if (!userId) return false
   if (isAdminOrg(orgId)) return true
@@ -36,4 +37,6 @@ export const isAdminRequest = async (): Promise<boolean> => {
     console.error('isAdminRequest: membership lookup failed', err)
     return false
   }
-}
+  // `cache` dedupes within one request: the layout and every action called
+  // during that render share a single Clerk round-trip instead of one each.
+})

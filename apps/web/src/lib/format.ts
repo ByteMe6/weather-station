@@ -52,6 +52,10 @@ export const readingAgeMs = (iso: string, now: Date = new Date()): number =>
 /** Coarse relative label for the freshness eyebrow ("just now", "2 min ago", "2 h ago"). */
 export const formatRelative = (iso: string, now: Date = new Date()): string => {
   const ms = readingAgeMs(iso, now)
+  // A negative age means the timestamp is in the future — a device with a bad
+  // clock, or a backfill mistake. Saying "just now" would hide it forever;
+  // ingest rejects these, but the UI should not launder one that slipped in.
+  if (ms < -60_000) return 'clock ahead'
   if (ms < 45_000) return 'just now'
   const min = Math.round(ms / 60_000)
   if (min < 60) return `${min} min ago`

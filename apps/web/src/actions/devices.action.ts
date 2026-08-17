@@ -226,13 +226,25 @@ export const updateMemberRoleAction = async (input: {
     ) {
       return actionError('LAST_OWNER', 'A station needs at least one owner')
     }
-    const { error } = await gate.service
+    const { data, error } = await gate.service
       .from('device_users')
       .update({ role })
       .eq('device_id', deviceId)
       .eq('user_id', userId)
+      .select('user_id')
     if (error) throw error
+    // Zero rows means the membership vanished (removed in another tab); saying
+    // "Role updated" for a write that touched nothing is a lie.
+    if ((data ?? []).length !== 1) {
+      return actionError('NOT_A_MEMBER', 'That person no longer has access')
+    }
   } catch (err) {
+    // The device_users_owner_guard trigger is the race-proof backstop for the
+    // app-level check above: two owners demoting each other concurrently both
+    // passed that check before the invariant moved into the database.
+    if (err instanceof Error && err.message.includes('DEVICE_NEEDS_OWNER')) {
+      return actionError('LAST_OWNER', 'A station needs at least one owner')
+    }
     console.error('updateMemberRoleAction failed', err)
     return actionError('UNKNOWN', 'Could not change the role. Try again.')
   }
@@ -257,13 +269,20 @@ export const removeMemberAction = async (input: {
     ) {
       return actionError('LAST_OWNER', 'A station needs at least one owner')
     }
-    const { error } = await gate.service
+    const { data, error } = await gate.service
       .from('device_users')
       .delete()
       .eq('device_id', deviceId)
       .eq('user_id', userId)
+      .select('user_id')
     if (error) throw error
+    if ((data ?? []).length !== 1) {
+      return actionError('NOT_A_MEMBER', 'That person no longer has access')
+    }
   } catch (err) {
+    if (err instanceof Error && err.message.includes('DEVICE_NEEDS_OWNER')) {
+      return actionError('LAST_OWNER', 'A station needs at least one owner')
+    }
     console.error('removeMemberAction failed', err)
     return actionError('UNKNOWN', 'Could not remove access. Try again.')
   }
@@ -341,7 +360,10 @@ export const updateDeviceProfileAction = async (input: {
   }
   const gate = await requireOwner(parsed.data.deviceId)
   if (!gate.ok) return gate.result
-  const { error } = await gate.service
+  // Return the row the database actually holds rather than echoing the input:
+  // a zero-row update reports no error, so echoing would show values that were
+  // never stored.
+  const { data, error } = await gate.service
     .from('devices')
     .update({
       label: parsed.data.label,
@@ -350,6 +372,8 @@ export const updateDeviceProfileAction = async (input: {
       longitude: parsed.data.longitude,
     })
     .eq('device_id', parsed.data.deviceId)
+    .select('label, address, latitude, longitude')
+    .maybeSingle()
   if (error) {
     console.error('updateDeviceProfileAction failed', error)
     return actionError(
@@ -357,12 +381,10 @@ export const updateDeviceProfileAction = async (input: {
       'Could not save the station details. Try again.',
     )
   }
-  return actionOk({
-    label: parsed.data.label,
-    address: parsed.data.address,
-    latitude: parsed.data.latitude,
-    longitude: parsed.data.longitude,
-  })
+  if (!data) {
+    return actionError('DEVICE_NOT_FOUND', 'That station no longer exists')
+  }
+  return actionOk(data)
 }
 
 export type MemberProfiles = Record<string, ClerkProfile>

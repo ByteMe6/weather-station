@@ -32,7 +32,10 @@ const NOW = 1_721_563_200_000
 const DEVICE_ID = 'ws-test'
 
 const validBody = JSON.stringify({
-  timestamp: '2026-07-21T12:00:00.000Z',
+  // Must track the mocked clock: the schema now bounds how far a reading's own
+  // timestamp may sit from server time, and this fixture used to claim 2026
+  // while `NOW` mocked 2024.
+  timestamp: new Date(NOW).toISOString(),
   temperature: 21.4,
   humidity: 55,
   pressure: 1013.2,

@@ -8,15 +8,27 @@ import { NoDeviceState } from '@/components/dashboard/NoDeviceState'
 import { StationMapCard } from '@/components/map/StationMapCard'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useMyDevicesQuery } from '@/services/devices/devices.queries'
 import { deviceDisplayName } from '@/services/devices/devices.service'
 
 export const DevicesIndex = ({ testId }: { testId: string }): ReactElement => {
   const { isLoaded } = useUser()
-  const { data, isLoading } = useMyDevicesQuery()
+  const { data, isLoading, isError } = useMyDevicesQuery()
   if (!isLoaded || isLoading) {
     return <Skeleton testId={`${testId}-skeleton`} className="h-24" />
+  }
+  // A failed read is not "you have no stations" — that prompt would invite the
+  // user to register a station they already own.
+  if (isError) {
+    return (
+      <EmptyState
+        testId={`${testId}-error`}
+        title="Couldn't load your stations"
+        description="Something went wrong reaching the server. Reload to try again."
+      />
+    )
   }
   if (!data || data.length === 0)
     return <NoDeviceState testId={`${testId}-empty`} />

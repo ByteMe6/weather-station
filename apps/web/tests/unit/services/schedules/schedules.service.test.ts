@@ -15,7 +15,7 @@ interface Chain {
   insert: jest.Mock<Chain, [unknown]>
   single: jest.Mock<Promise<Result>, []>
   delete: jest.Mock<Chain, []>
-  eq: jest.Mock<Promise<Result>, [string, unknown]>
+  eq: jest.Mock<Chain & Promise<Result>, [string, unknown]>
 }
 const makeClient = (result: Result) => {
   const chain: Chain = {
@@ -26,8 +26,15 @@ const makeClient = (result: Result) => {
     insert: jest.fn<Chain, [unknown]>(() => chain),
     single: jest.fn<Promise<Result>, []>(async () => result),
     delete: jest.fn<Chain, []>(() => chain),
-    eq: jest.fn<Promise<Result>, [string, unknown]>(async () => result),
+    // `eq` is both awaitable (update path) and chainable into `.select()`
+    // (delete path, which now proves a row was actually removed).
+    eq: jest.fn<Chain & Promise<Result>, [string, unknown]>(
+      () => chain as unknown as Chain & Promise<Result>,
+    ),
   }
+  Object.assign(chain, {
+    then: (resolve: (v: Result) => void) => resolve(result),
+  })
   return {
     from: jest.fn(() => chain),
     chain,
@@ -92,7 +99,7 @@ describe('schedules service', () => {
     })
   })
   it('deleteSchedule deletes by id and surfaces ServiceError', async () => {
-    const ok = makeClient({ data: null, error: null })
+    const ok = makeClient({ data: [{ id: 3 }], error: null })
     await deleteSchedule(ok, { id: 3 })
     expect(ok.chain.eq).toHaveBeenCalledWith('id', 3)
     const bad = makeClient({

@@ -4,40 +4,24 @@ import type { Database } from '@ws/supabase-db'
 import { fetchAllDevices, fetchAllUsers } from '@/services/admin/admin.service'
 import { ServiceError } from '@/services/database/types'
 
-interface Chain {
-  select: jest.Mock<Chain, [string]>
-  order: jest.Mock<
-    Promise<{ data: unknown; error: unknown }>,
-    [string, unknown]
-  >
-}
-
 const clientReturning = (result: { data: unknown; error: unknown }) => {
-  const chain: Chain = {
-    select: jest.fn<Chain, [string]>(() => chain),
-    order: jest.fn<
-      Promise<{ data: unknown; error: unknown }>,
-      [string, unknown]
-    >(async () => result),
-  }
+  const rpc = jest.fn(async () => result)
   return {
-    client: {
-      from: jest.fn(() => chain),
-    } as unknown as SupabaseClient<Database>,
-    chain,
+    client: { rpc } as unknown as SupabaseClient<Database>,
+    rpc,
   }
 }
 
 describe('fetchAllDevices', () => {
-  it('aliases columns and counts members from the embedded links', async () => {
-    const { client, chain } = clientReturning({
+  it('calls the admin_devices RPC and maps its snake_case rows', async () => {
+    const { client, rpc } = clientReturning({
       data: [
         {
-          deviceId: 'ws-1',
+          device_id: 'ws-1',
           status: 'registered',
           label: 'Backyard',
-          createdAt: '2026-08-01T00:00:00Z',
-          members: [{ count: 2 }],
+          created_at: '2026-08-01T00:00:00Z',
+          member_count: 2,
         },
       ],
       error: null,
@@ -51,12 +35,28 @@ describe('fetchAllDevices', () => {
         memberCount: 2,
       },
     ])
-    expect(chain.select).toHaveBeenCalledWith(
-      'deviceId:device_id, status, label, createdAt:created_at, members:device_users(count)',
-    )
+    expect(rpc).toHaveBeenCalledWith('admin_devices')
   })
 
-  it('throws ServiceError when RLS refuses', async () => {
+  it('treats a device with no members as zero, not NaN', async () => {
+    const { client } = clientReturning({
+      data: [
+        {
+          device_id: 'ws-2',
+          status: 'unregistered',
+          label: null,
+          created_at: '2026-08-01T00:00:00Z',
+          member_count: 0,
+        },
+      ],
+      error: null,
+    })
+    await expect(fetchAllDevices(client)).resolves.toMatchObject([
+      { memberCount: 0 },
+    ])
+  })
+
+  it('throws ServiceError when the RPC fails', async () => {
     const { client } = clientReturning({
       data: null,
       error: { message: 'denied', code: '42501', details: null },
@@ -66,15 +66,15 @@ describe('fetchAllDevices', () => {
 })
 
 describe('fetchAllUsers', () => {
-  it('aliases columns and counts each user’s stations', async () => {
-    const { client, chain } = clientReturning({
+  it('calls the admin_users RPC and maps its rows', async () => {
+    const { client, rpc } = clientReturning({
       data: [
         {
           id: 'u1',
-          clerkUserId: 'user_abcd',
-          telegramId: null,
-          createdAt: '2026-08-01T00:00:00Z',
-          devices: [{ count: 3 }],
+          clerk_user_id: 'user_abcd',
+          telegram_id: null,
+          created_at: '2026-08-01T00:00:00Z',
+          device_count: 3,
         },
       ],
       error: null,
@@ -88,8 +88,6 @@ describe('fetchAllUsers', () => {
         deviceCount: 3,
       },
     ])
-    expect(chain.select).toHaveBeenCalledWith(
-      'id, clerkUserId:clerk_user_id, telegramId:telegram_id, createdAt:created_at, devices:device_users(count)',
-    )
+    expect(rpc).toHaveBeenCalledWith('admin_users')
   })
 })

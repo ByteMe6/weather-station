@@ -39,14 +39,26 @@ export const handleLinkCode = async (
     .gt('expires_at', now)
     .select('user_id')
     .maybeSingle()
-  if (claimError) return 'Could not link right now.'
+  if (claimError) {
+    // Logged, not swallowed: this is the only trace a DB outage leaves, and
+    // without it the web polls "pending" until the code expires while nobody
+    // learns Postgres refused the update.
+    console.error('handleLinkCode: claim failed', { code, error: claimError })
+    return 'Could not link right now.'
+  }
   if (!claimed) {
     // Nothing claimed — tell the user why, without changing anything.
-    const { data: row } = await db
+    const { data: row, error: rowError } = await db
       .from('telegram_link_codes')
       .select('expires_at, consumed_at')
       .eq('code', code)
       .maybeSingle()
+    if (rowError) {
+      // Discarding this told the user "invalid or already used" for what was
+      // actually a transient failure, sending them to retry into the same wall.
+      console.error('handleLinkCode: lookup failed', { code, error: rowError })
+      return 'Could not link right now.'
+    }
     const expired =
       row &&
       !row.consumed_at &&
@@ -65,10 +77,18 @@ export const handleLinkCode = async (
         : 'Could not link right now.'
     // The claim stands (the code is spent); the web polls failed_reason
     // before consumed_at, so it shows the failure instead of "linked".
-    await db
+    // This write is what stops a claimed-but-unlinked code from reading as
+    // "linked" on the web, so its own failure has to be visible.
+    const { error: markError } = await db
       .from('telegram_link_codes')
       .update({ failed_reason: reason })
       .eq('code', code)
+    if (markError) {
+      console.error('handleLinkCode: could not record failure', {
+        code,
+        error: markError,
+      })
+    }
     return reason
   }
   return 'Linked! Your Telegram account is now connected to your Weather Station account.'

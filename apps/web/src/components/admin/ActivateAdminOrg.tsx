@@ -6,6 +6,7 @@ import type { ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 import { getAdminStatusAction } from '@/actions/admin.action'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { hardNavigate } from '@/lib/navigate'
 
@@ -21,6 +22,7 @@ export const ActivateAdminOrg = ({
 }): ReactElement | null => {
   const { setActive } = useClerk()
   const [denied, setDenied] = useState(false)
+  const [failed, setFailed] = useState(false)
   const ran = useRef(false)
 
   useEffect(() => {
@@ -47,9 +49,24 @@ export const ActivateAdminOrg = ({
       // Already active: a full document load, so the server sees this session.
       hardNavigate('/admin')
     }
-    void run()
+    // Without this catch a rejected getAdminStatusAction()/setActive() left a
+    // genuine admin staring at a skeleton forever, with `ran` blocking retry.
+    void run().catch((err: unknown) => {
+      console.error('ActivateAdminOrg failed', err)
+      ran.current = false
+      setFailed(true)
+    })
   }, [setActive])
 
   if (denied) notFound()
+  if (failed) {
+    return (
+      <EmptyState
+        testId={`${testId}-failed`}
+        title="Couldn't open the admin console"
+        description="We couldn't reach Clerk to activate your organisation. Reload the page to try again."
+      />
+    )
+  }
   return <Skeleton testId={`${testId}-working`} className="h-24" />
 }

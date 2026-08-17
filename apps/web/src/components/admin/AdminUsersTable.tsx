@@ -32,7 +32,7 @@ export const AdminUsersTable = ({
   // then RLS answers with the caller's own rows, which would render as an empty
   // users list rather than "still loading".
   const ready = useAdminOrgReady()
-  const { data, isLoading } = useAdminUsersQuery(ready)
+  const { data, isLoading, isError, error } = useAdminUsersQuery(ready)
 
   return (
     <Card testId={testId}>
@@ -42,6 +42,16 @@ export const AdminUsersTable = ({
       <CardBody testId={`${testId}-body`}>
         {!ready || isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-40" />
+        ) : isError ? (
+          <EmptyState
+            testId={`${testId}-error`}
+            title="Couldn't load the user list"
+            description={
+              error instanceof Error
+                ? error.message
+                : 'Reload the page. If it persists, check ADMIN_ORG_ID against the Vault secret.'
+            }
+          />
         ) : !data || data.length === 0 ? (
           <EmptyState
             testId={`${testId}-empty`}

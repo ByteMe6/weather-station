@@ -15,7 +15,26 @@ export const ConfigMismatchBanner = ({
   testId: string
 }): ReactElement | null => {
   const status = useAdminStatusQuery()
-  if (status.data?.state !== 'ok' || !status.data.configMismatch) return null
+  if (status.data?.state !== 'ok') return null
+  // A vault RPC that failed is not drift: telling the operator to run
+  // admin:set-org would send them after a config problem that does not exist.
+  if (status.data.configUnavailable) {
+    return (
+      <p
+        data-testid={`${testId}-unavailable`}
+        role="alert"
+        className="rounded-card border-line bg-card text-slate border p-3 text-sm"
+      >
+        <b className="text-ink">
+          Couldn&apos;t verify the admin configuration.
+        </b>{' '}
+        The Supabase Vault secret{' '}
+        <code className="font-mono">admin_org_id</code> could not be read, so
+        row access may not match page access. Check the database and reload.
+      </p>
+    )
+  }
+  if (!status.data.configMismatch) return null
   return (
     <p
       data-testid={testId}

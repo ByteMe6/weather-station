@@ -26,14 +26,17 @@ const POLL_MS = 3_000
 export const useTelegramLinkStatusQuery = (code: string | null) =>
   useQuery({
     queryKey: telegramKeys.linkStatus(code),
-    queryFn: () => getTelegramLinkStatusAction({ code: code! }),
+    // Unwraps like every other hook: returning the raw ActionResult left
+    // `isError` permanently false, so one failed poll froze the card on
+    // "Waiting for Telegram…" with no error and no further polling.
+    queryFn: async () =>
+      unwrapAction(await getTelegramLinkStatusAction({ code: code! })),
     enabled: code !== null,
+    retry: false,
     // Keep polling while the user is over in the Telegram app / another window.
     refetchIntervalInBackground: true,
-    refetchInterval: (q) => {
-      const d = q.state.data
-      return d && d.ok && d.data.state === 'pending' ? POLL_MS : false
-    },
+    refetchInterval: (q) =>
+      q.state.data?.state === 'pending' ? POLL_MS : false,
   })
 
 /** Mints a link code + deep link; the card then polls `useTelegramLinkStatusQuery`. */

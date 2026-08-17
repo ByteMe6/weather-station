@@ -58,8 +58,8 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const countdown = useCountdown(pending?.expiresAt ?? null)
 
   const status = useTelegramLinkStatusQuery(pending?.code ?? null)
-  const state = status.data?.ok ? status.data.data.state : null
-  const failReason = status.data?.ok ? status.data.data.reason : undefined
+  const state = status.data?.state ?? null
+  const failReason = status.data?.reason
 
   // Once the bot consumed the code, refresh the users row; the linked state
   // is derived from `me.data.telegramId`, so no local state needs resetting here.
@@ -190,12 +190,14 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
                 data-testid={`${testId}-state`}
                 className="text-slate text-[13px]"
               >
-                {state === 'failed'
-                  ? (failReason ??
-                    'That Telegram account is linked to another user')
-                  : state === 'expired'
-                    ? 'Code expired — start again'
-                    : `Waiting for Telegram… code expires in ${countdown}`}
+                {status.isError
+                  ? "Couldn't check the link — retrying"
+                  : state === 'failed'
+                    ? (failReason ??
+                      'That Telegram account is linked to another user')
+                    : state === 'expired'
+                      ? 'Code expired — start again'
+                      : `Waiting for Telegram… code expires in ${countdown}`}
               </p>
               <Button
                 testId={`${testId}-cancel`}

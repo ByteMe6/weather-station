@@ -53,6 +53,17 @@ export const DeviceDetail = ({
       </div>
     )
   }
+  // Only claim "no access" when the reads succeeded: a network failure used to
+  // produce a false authorization message about a device the user owns.
+  if (mine.isError || members.isError) {
+    return (
+      <EmptyState
+        testId={`${testId}-error`}
+        title="Couldn't load this station"
+        description="Something went wrong reaching the server. Reload to try again."
+      />
+    )
+  }
   if (!link) {
     return (
       <EmptyState

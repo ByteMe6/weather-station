@@ -177,6 +177,7 @@ export const DeviceRowActions = ({
           <Button
             testId={`${testId}-unclaim-confirm`}
             variant="danger"
+            loading={unclaim.isPending}
             onClick={doUnclaim}
           >
             Unclaim

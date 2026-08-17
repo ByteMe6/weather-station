@@ -88,7 +88,30 @@ export const getTelegramLinkStatusAction = async (input: {
   // a failure leaves both set — check the failure first.
   if (data.failed_reason)
     return actionOk({ state: 'failed', reason: data.failed_reason })
-  if (data.consumed_at) return actionOk({ state: 'linked' })
+  if (data.consumed_at) {
+    // "Claimed" is not "linked". If the bot died between claiming the code and
+    // writing users.telegram_id — or the failed_reason write itself failed —
+    // the row still reads as consumed. Report the fact, not the claim, or the
+    // card says "Telegram linked" while alerts never arrive.
+    const { data: linked, error: linkedError } = await service
+      .from('users')
+      .select('telegram_id')
+      .eq('id', userId)
+      .maybeSingle()
+    if (linkedError) {
+      console.error(
+        'getTelegramLinkStatusAction: link check failed',
+        linkedError,
+      )
+      return actionError('UNKNOWN', 'Could not check the link. Try again.')
+    }
+    if (linked?.telegram_id !== null && linked?.telegram_id !== undefined)
+      return actionOk({ state: 'linked' })
+    return actionOk({
+      state: 'failed',
+      reason: 'Linking did not finish. Start again from settings.',
+    })
+  }
   if (new Date(data.expires_at).getTime() < Date.now())
     return actionOk({ state: 'expired' })
   return actionOk({ state: 'pending' })
@@ -98,13 +121,19 @@ export const unlinkTelegramAction = async (): Promise<ActionResult<null>> => {
   const { userId: clerkUserId } = await auth()
   if (!clerkUserId) return actionError('UNAUTHORIZED', 'Sign in to continue')
   const service = createServiceRoleClient()
-  const { error } = await service
+  const { data, error } = await service
     .from('users')
     .update({ telegram_id: null })
     .eq('clerk_user_id', clerkUserId)
+    .select('id')
   if (error) {
     console.error('unlinkTelegramAction failed', error)
     return actionError('UNKNOWN', 'Could not unlink. Try again.')
+  }
+  // No row means there is no users row for this Clerk id — reporting "unlinked"
+  // would be a success message for a write that did nothing.
+  if ((data ?? []).length !== 1) {
+    return actionError('UNAUTHORIZED', 'Sign in to continue')
   }
   return actionOk(null)
 }

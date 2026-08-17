@@ -84,12 +84,22 @@ export const deleteSchedule = async (
   supabase: SupabaseClient<Database>,
   input: { id: number },
 ): Promise<void> => {
-  const { error } = await supabase.from('schedules').delete().eq('id', input.id)
+  // `.select()` matters on the client path: a row RLS hides is simply not
+  // deleted and PostgREST reports no error, so without this the UI would
+  // confirm an alert was deleted while it still exists.
+  const { data, error } = await supabase
+    .from('schedules')
+    .delete()
+    .eq('id', input.id)
+    .select('id')
   if (error) {
     throw new ServiceError(
       `Failed to delete schedule: ${error.message}`,
       error.code,
       error.details,
     )
+  }
+  if ((data ?? []).length !== 1) {
+    throw new ServiceError('Alert not found or not yours', 'NOT_FOUND')
   }
 }
