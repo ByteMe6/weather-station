@@ -12,6 +12,11 @@ export default defineConfig([
       'postcss.config.mjs',
       'jest.config.mjs',
       'eslint.config.mjs',
+      // Playwright's generated output — a bundled report viewer and traces,
+      // not our source. Gitignored, but eslint does not read .gitignore.
+      'playwright-report/**',
+      'test-results/**',
+      'playwright/**',
     ],
   },
   ...nextVitals,
