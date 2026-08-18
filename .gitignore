@@ -28,6 +28,11 @@ dist/
 # testing
 coverage/
 
+# playwright (auth state contains a live session — never commit)
+apps/web/playwright/.clerk/
+apps/web/test-results/
+apps/web/playwright-report/
+
 # turbo
 .turbo/
 

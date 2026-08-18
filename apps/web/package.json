@@ -11,7 +11,9 @@
     "check-types": "tsc --noEmit",
     "test:unit": "jest --selectProjects=unit --ci --runInBand --passWithNoTests",
     "test:integration": "jest --selectProjects=integration --ci --runInBand",
-    "test:integration:secrets": "infisical run --project-config-dir=../.. -- yarn test:integration"
+    "test:integration:secrets": "infisical run --project-config-dir=../.. -- yarn test:integration",
+    "test:e2e": "playwright test",
+    "test:e2e:secrets": "infisical run --project-config-dir=../.. -- yarn test:e2e"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.0",
@@ -39,6 +41,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.2.25",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-query-devtools": "^5",
     "@testing-library/dom": "^10",
