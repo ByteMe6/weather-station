@@ -1,7 +1,7 @@
 # Mobile support — design
 
 **Date:** 2026-08-17
-**Status:** approved for planning
+**Status:** implemented 2026-08-17
 
 ## 1. Goal
 

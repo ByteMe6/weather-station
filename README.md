@@ -87,6 +87,25 @@ yarn build
 yarn format        # prettier — CI enforces format:check
 ```
 
+### Responsive E2E (Playwright)
+
+```bash
+cd apps/web
+yarn test:e2e:secrets    # signs in via Clerk testing token, seeds a device
+```
+
+Asserts at 390 px and 768 px that no route scrolls sideways, nothing is clipped
+past the right edge, and every control clears 44 px. Requires a local Supabase
+stack, a Clerk **development** instance (Testing Tokens do not work against
+production), and `E2E_CLERK_USER_EMAIL` set to an account that exists in it —
+no password is involved, the token is minted from the address alone. Add that
+account to `ADMIN_ORG_ID` to cover the admin console; without it those specs
+skip with a message rather than fail.
+
+Setup seeds its own device, ownership link, a day of readings and — if the
+column is still NULL — a Telegram id, so `/alerts` renders its real UI instead
+of the "link Telegram" empty state.
+
 ### Provision a device
 
 Every device gets a `DEVICE_ID` (goes on the label) and a `DEVICE_SECRET`
