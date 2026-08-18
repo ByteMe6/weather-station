@@ -17,15 +17,18 @@ import type { ReactElement } from 'react'
  */
 export const OrgSwitcher = ({
   testId,
+  className,
 }: {
   testId: string
+  /** Visibility/display classes from whichever layout is rendering this. */
+  className?: string
 }): ReactElement | null => {
   const { user, isLoaded } = useUser()
   if (!isLoaded || (user?.organizationMemberships?.length ?? 0) === 0) {
     return null
   }
   return (
-    <span data-testid={testId} className="hidden md:inline-flex">
+    <span data-testid={testId} className={className}>
       <OrganizationSwitcher
         afterSelectPersonalUrl="/dashboard"
         skipInvitationScreen

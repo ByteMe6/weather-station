@@ -5,18 +5,23 @@ import { useMemo } from 'react'
 
 import { Select } from '@/components/ui/Select'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { cn } from '@/lib/utils'
 import type { MyDevice } from '@/services/devices/devices.service'
 import { deviceDisplayName } from '@/services/devices/devices.service'
 
 /**
- * Station indicator in the top bar: nothing at all with no stations, a plain
- * label with one, a dropdown with several (the selection lives in ?device=).
+ * Station indicator: nothing at all with no stations, a plain label with one,
+ * a dropdown with several (the selection lives in ?device=).
+ *
+ * Visibility is the caller's decision, not this component's — the top bar
+ * shows it only at `lg` and above, while the mobile drawer shows it always.
  */
 export const DeviceChip = ({
   devices,
   selectedDeviceId,
   onSelect,
   loading = false,
+  className,
   testId,
 }: {
   devices: MyDevice[]
@@ -24,6 +29,8 @@ export const DeviceChip = ({
   onSelect: (deviceId: string) => void
   /** True while the devices query is pending — never flash the empty state. */
   loading?: boolean
+  /** Visibility/display classes from whichever layout is rendering this. */
+  className?: string
   testId: string
 }): ReactElement | null => {
   const options = useMemo(
@@ -41,7 +48,7 @@ export const DeviceChip = ({
     return (
       <Skeleton
         testId={`${testId}-skeleton`}
-        className="hidden h-3 w-28 md:block"
+        className={cn('h-3 w-28', className)}
       />
     )
   }
@@ -51,7 +58,10 @@ export const DeviceChip = ({
     return (
       <span
         data-testid={testId}
-        className="text-slate hidden items-center gap-2 font-mono text-xs md:inline-flex"
+        className={cn(
+          'text-slate items-center gap-2 font-mono text-xs',
+          className,
+        )}
       >
         <span>Station</span>
         <b className="text-ink font-medium">{deviceDisplayName(devices[0]!)}</b>
@@ -59,7 +69,7 @@ export const DeviceChip = ({
     )
   }
   return (
-    <span data-testid={testId} className="hidden md:inline-flex">
+    <span data-testid={testId} className={className}>
       <Select
         testId={`${testId}-select`}
         ariaLabel="Station"

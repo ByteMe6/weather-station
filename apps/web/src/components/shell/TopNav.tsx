@@ -57,7 +57,7 @@ export const TopNav = ({
         </Link>
         <nav
           aria-label="Primary"
-          className="hidden items-center gap-1.5 md:flex"
+          className="hidden items-center gap-1.5 lg:flex"
         >
           {NAV_ITEMS.map((item) => {
             const active =
@@ -86,14 +86,21 @@ export const TopNav = ({
           })}
         </nav>
         <span className="flex-1" />
+        {/* The nav cluster switches on at lg, not md: at exactly 768 the row
+            wants 909px and the page scrolls sideways. Everything hidden here
+            is in the drawer below, so nothing is lost between the two. */}
         <DeviceChip
           testId={`${testId}-device`}
           devices={devices}
           selectedDeviceId={selectedDeviceId}
           onSelect={onSelectDevice}
           loading={devicesLoading}
+          className="hidden lg:inline-flex"
         />
-        <OrgSwitcher testId={`${testId}-org`} />
+        <OrgSwitcher
+          testId={`${testId}-org`}
+          className="hidden lg:inline-flex"
+        />
         <ThemeToggle testId={`${testId}-theme`} />
         {/* The console lives in the account menu, not the main nav: it is for
             the few people who run the fleet, not part of everyday navigation.
@@ -114,7 +121,7 @@ export const TopNav = ({
           aria-label="Open menu"
           data-testid={`${testId}-menu`}
           onClick={openMenu}
-          className="rounded-control border-line border p-2 md:hidden"
+          className="rounded-control border-line border p-2 lg:hidden"
         >
           <Menu className="size-4" aria-hidden />
         </button>
@@ -124,6 +131,10 @@ export const TopNav = ({
         open={menuOpen}
         onOpenChange={setMenuOpen}
         deviceLabel={deviceLabel}
+        devices={devices}
+        selectedDeviceId={selectedDeviceId}
+        onSelectDevice={onSelectDevice}
+        devicesLoading={devicesLoading}
       />
     </header>
   )

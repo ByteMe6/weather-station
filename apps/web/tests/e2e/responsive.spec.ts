@@ -30,32 +30,8 @@ const PUBLIC_ROUTES = [
   { name: 'sign in', path: '/sign-in' },
 ]
 
-/**
- * Every one of these fails identically — the shell is 909px wide at 768px,
- * because the OrgSwitcher joins the nav at `md` and the row stops fitting.
- * Fixed in the next commit; the annotation exists so this suite is green while
- * the defect is recorded, and Playwright errors with "expected to fail but
- * passed" the moment the fix lands, forcing the annotation off.
- */
-const KNOWN_BROKEN_ON_TABLET = new Set([
-  'dashboard',
-  'devices',
-  'device detail',
-  'device register',
-  'alerts',
-  'settings',
-  'admin fleet',
-  'admin users',
-])
-
 for (const route of ROUTES) {
-  test(`${route.name} fits the viewport`, async ({ page }, testInfo) => {
-    if (
-      testInfo.project.name === 'tablet' &&
-      KNOWN_BROKEN_ON_TABLET.has(route.name)
-    ) {
-      test.fail(true, 'shell overflows at the md breakpoint — fixed next')
-    }
+  test(`${route.name} fits the viewport`, async ({ page }) => {
     await page.goto(route.path)
     // An admin route 404s for a non-admin (refusals are 404, never 403), and
     // that is a fixture gap, not a layout regression. Skipping keeps the two
