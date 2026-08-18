@@ -1,6 +1,7 @@
 import { test } from '@playwright/test'
 
 import {
+  expectIconsCentred,
   expectNoHorizontalOverflow,
   expectNothingClipped,
   expectTapTargets,
@@ -62,6 +63,7 @@ for (const route of ROUTES) {
     await page.waitForLoadState('networkidle')
     await page.evaluate(() => document.getAnimations().map((a) => a.finished))
     await expectTapTargets(page)
+    await expectIconsCentred(page)
   })
 }
 

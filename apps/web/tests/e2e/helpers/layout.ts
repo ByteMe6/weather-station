@@ -102,3 +102,51 @@ export const expectTapTargets = async (page: Page): Promise<void> => {
       .join('\n')}`,
   ).toEqual([])
 }
+
+/**
+ * An icon-only control must centre its icon.
+ *
+ * Tailwind's Preflight sets `svg { display: block }`, so a block-level icon
+ * ignores the button's default `text-align: center` and sits at the start of
+ * the content box. That is invisible while the box hugs the icon — padding
+ * alone leaves no slack to misplace — and appears the moment the button is
+ * given a size larger than its content, which is exactly what the 44px touch
+ * target does. Flex centring is the fix, and this is the check that catches it.
+ */
+export const expectIconsCentred = async (page: Page): Promise<void> => {
+  const offenders = await page.evaluate((devTooling) => {
+    const sel = 'button, [role="button"], a'
+    const out: { testId: string; left: number; right: number }[] = []
+    for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+      if (el.closest(devTooling)) continue
+      // Icon-only: exactly one element child, which is an icon, and no text.
+      if (el.children.length !== 1) continue
+      const icon = el.firstElementChild as HTMLElement | null
+      if (!icon) continue
+      const tag = icon.tagName.toLowerCase()
+      if (tag !== 'svg' && tag !== 'img') continue
+      if ((el.textContent ?? '').trim() !== '') continue
+      const b = el.getBoundingClientRect()
+      const i = icon.getBoundingClientRect()
+      if (b.width === 0 || i.width === 0) continue
+      const left = i.left - b.left
+      const right = b.right - i.right
+      // 1px covers odd-pixel boxes splitting unevenly; 10px of slack landing
+      // entirely on one side is the bug.
+      if (Math.abs(left - right) > 1) {
+        out.push({
+          testId: el.dataset.testid ?? el.className.slice(0, 40),
+          left: Math.round(left * 10) / 10,
+          right: Math.round(right * 10) / 10,
+        })
+      }
+    }
+    return out
+  }, DEV_TOOLING)
+  expect(
+    offenders,
+    `icon-only controls are not centred:\n${offenders
+      .map((o) => `  [${o.testId}] left=${o.left}px right=${o.right}px`)
+      .join('\n')}`,
+  ).toEqual([])
+}

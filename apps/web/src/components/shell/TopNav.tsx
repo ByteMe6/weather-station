@@ -128,7 +128,9 @@ export const TopNav = ({
           aria-label="Open menu"
           data-testid={`${testId}-menu`}
           onClick={openMenu}
-          className="rounded-control border-line shrink-0 border p-2 max-lg:size-11 lg:hidden"
+          // See ThemeToggle: a block-level icon ignores text-align, so the
+          // square needs flex centring once it is wider than its content.
+          className="rounded-control border-line inline-flex shrink-0 items-center justify-center border p-2 max-lg:size-11 lg:hidden"
         >
           <Menu className="size-4" aria-hidden />
         </button>

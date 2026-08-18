@@ -30,7 +30,10 @@ export const ThemeToggle = ({ testId }: { testId: string }): ReactElement => {
       data-testid={testId}
       onClick={cycle}
       aria-label={`Theme: ${current}. Click to change`}
-      className="rounded-control border-line text-slate hover:text-ink shrink-0 border p-2 max-lg:size-11"
+      // inline-flex, not the button's default text-align: center — Preflight
+      // makes the icon `display: block`, which text-align cannot move. Harmless
+      // until the 44px touch target gave the box slack the icon then ignored.
+      className="rounded-control border-line text-slate hover:text-ink inline-flex shrink-0 items-center justify-center border p-2 max-lg:size-11"
     >
       {ICON[current]}
     </button>
