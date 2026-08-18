@@ -531,6 +531,7 @@ rows (PRD success metric).
 | Unit        | Jest                       | `tests/unit/` (mirrors `src/`)      | hooks, utils, services (mocked) |
 | Integration | Jest + real local Supabase | `tests/integration/`                | DB services — no DB mocking     |
 | DB          | pgTAP                      | `infra/supabase-db/supabase/tests/` | RLS, schema, triggers           |
+| E2E         | Playwright (real browser)  | `apps/web/tests/e2e/` (`*.spec.ts`) | layout at phone/tablet widths   |
 
 - **NEVER place test files next to source files** — tests live in the
   workspace's `tests/` folder, mirroring `src/`
@@ -538,7 +539,9 @@ rows (PRD success metric).
 - Every service file gets an integration test (two clients: service-role for
   setup/teardown, test client for assertions; clean up in `afterEach`; cover
   CRUD, error paths, and RLS enforcement)
-- Script names: `test:unit`, `test:integration`, `test:db` — no other names
+- Script names: `test:unit`, `test:integration`, `test:db`, `test:e2e` — no
+  other names. E2E specs use `.spec.ts`, not `.test.ts`, so jest's
+  `testMatch` never picks them up
 
 ---
 
@@ -596,6 +599,7 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 | `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username (no @) for the Telegram-linking deep link                                        |
 | `CLERK_WEBHOOK_SIGNING_SECRET`         | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                |
 | `ADMIN_ORG_ID`                         | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id` |
+| `E2E_CLERK_USER_EMAIL`                 | Test          | Address the Playwright suite signs in as (Clerk Testing Token — no password involved)         |
 
 Clerk routing (`/sign-in`, `/sign-up`, fallback `/dashboard`) is set in code
 (`apps/web/src/proxy.ts` + `RootProviders`), not env vars. Two dashboard-side
