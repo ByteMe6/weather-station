@@ -51,6 +51,30 @@ const rest = async (
   return options.returning ? ((await res.json()) as unknown[]) : []
 }
 
+/** PATCH counterpart to `rest`, for narrowing an existing row. */
+const patch = async (pathAndQuery: string, body: unknown): Promise<void> => {
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SECRET_KEY
+  if (!url || !key) {
+    throw new Error(
+      'Set SUPABASE_URL and SUPABASE_SECRET_KEY (npx supabase status).',
+    )
+  }
+  const res = await fetch(`${url}/rest/v1/${pathAndQuery}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new Error(`seed patch failed: ${res.status} ${await res.text()}`)
+  }
+}
+
 /**
  * A device the suite owns outright. Depending on whatever happens to be in the
  * local database would make these specs order-dependent and fragile.
@@ -75,6 +99,13 @@ export const seedDevice = async (clerkUserId: string): Promise<Fixtures> => {
   )
   const userId = (users[0] as { id?: string } | undefined)?.id
   if (!userId) throw new Error('could not resolve the test users row')
+
+  // Without a Telegram link, /alerts renders the "link Telegram" empty state
+  // and neither the alerts route nor the schedule dialog checks anything real.
+  // Only fills a NULL, so a genuinely linked account is never clobbered.
+  await patch(`users?id=eq.${userId}&telegram_id=is.null`, {
+    telegram_id: 900000000001,
+  })
 
   await rest(
     'device_users',
