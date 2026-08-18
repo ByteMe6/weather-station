@@ -3,6 +3,7 @@ import { test } from '@playwright/test'
 import {
   expectNoHorizontalOverflow,
   expectNothingClipped,
+  expectTapTargets,
 } from './helpers/layout'
 import { readFixtures } from './helpers/seed'
 
@@ -45,6 +46,22 @@ for (const route of ROUTES) {
     await page.evaluate(() => document.getAnimations().map((a) => a.finished))
     await expectNoHorizontalOverflow(page)
     await expectNothingClipped(page)
+  })
+
+  test(`${route.name} has thumb-sized controls`, async ({ page }) => {
+    // /reference is Scalar's embedded UI. We do not own its markup, and
+    // patching a vendor's controls from outside would break on every upgrade.
+    test.skip(
+      route.name === 'api reference',
+      "Scalar's own UI — not ours to size",
+    )
+    await page.goto(route.path)
+    if (route.admin && !page.url().includes('/admin')) {
+      test.skip(true, 'E2E_CLERK_USER_EMAIL is not a member of ADMIN_ORG_ID')
+    }
+    await page.waitForLoadState('networkidle')
+    await page.evaluate(() => document.getAnimations().map((a) => a.finished))
+    await expectTapTargets(page)
   })
 }
 

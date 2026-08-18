@@ -79,12 +79,15 @@ export const expectTapTargets = async (page: Page): Promise<void> => {
         if (el.closest(devTooling)) continue
         const rect = el.getBoundingClientRect()
         if (rect.width === 0 || rect.height === 0) continue
-        if (rect.width < min || rect.height < min) {
+        // Same sub-pixel tolerance as the overflow checks: a 44px control can
+        // measure 43.996 after layout, and reporting that while printing "44"
+        // is maddening to debug.
+        if (rect.width < min - 1 || rect.height < min - 1) {
           out.push({
             tag: el.tagName.toLowerCase(),
             testId: el.dataset.testid ?? '',
-            w: Math.round(rect.width),
-            h: Math.round(rect.height),
+            w: Math.round(rect.width * 10) / 10,
+            h: Math.round(rect.height * 10) / 10,
           })
         }
       }

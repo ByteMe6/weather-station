@@ -105,7 +105,14 @@ export const TopNav = ({
         {/* The console lives in the account menu, not the main nav: it is for
             the few people who run the fleet, not part of everyday navigation.
             Hiding it is cosmetic — the proxy, layout and actions are the gates. */}
-        <UserButton>
+        {/* Clerk's trigger is 28px; below lg that is not a thumb target.
+            Sized through the supported appearance API rather than by
+            reaching into vendor markup, as OrgSwitcher already does. */}
+        <UserButton
+          appearance={{
+            elements: { userButtonTrigger: 'max-lg:size-11! shrink-0' },
+          }}
+        >
           {showAdmin ? (
             <UserButton.MenuItems>
               <UserButton.Link
@@ -121,7 +128,7 @@ export const TopNav = ({
           aria-label="Open menu"
           data-testid={`${testId}-menu`}
           onClick={openMenu}
-          className="rounded-control border-line border p-2 lg:hidden"
+          className="rounded-control border-line shrink-0 border p-2 max-lg:size-11 lg:hidden"
         >
           <Menu className="size-4" aria-hidden />
         </button>

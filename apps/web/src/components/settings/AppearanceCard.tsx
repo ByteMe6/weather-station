@@ -46,7 +46,7 @@ export const AppearanceCard = ({
               data-testid={`${testId}-${o.value}`}
               onClick={choose(o.value)}
               className={cn(
-                'rounded-[7px] px-3 py-1.5 text-[13px] font-medium',
+                'rounded-[7px] px-3 py-1.5 text-[13px] font-medium max-lg:min-w-11 max-lg:py-3',
                 theme === o.value
                   ? 'bg-card text-ink shadow-card'
                   : 'text-slate',

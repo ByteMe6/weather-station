@@ -35,7 +35,7 @@ export const OrgSwitcher = ({
         appearance={{
           elements: {
             organizationSwitcherTrigger:
-              'rounded-control border border-line px-2 py-1 text-sm',
+              'rounded-control border border-line px-2 py-1 text-sm max-lg:min-h-11',
           },
         }}
       />

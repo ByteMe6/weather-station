@@ -19,9 +19,13 @@ const VARIANT: Record<ButtonVariant, string> = {
   ghost: 'bg-transparent text-ink border border-line hover:bg-card',
   danger: 'bg-danger text-white hover:opacity-90',
 }
+// Touch first, dense second: below lg every control clears 44px so a thumb
+// can hit it, and the compact desktop heights return at lg — where the nav
+// cluster also switches on. Raising h-8 unconditionally would break the
+// dense admin rows and stop matching the Select trigger beside it.
 const SIZE: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-[13px]',
-  md: 'h-10 px-4 text-sm',
+  sm: 'max-lg:h-11 h-8 px-3 text-[13px]',
+  md: 'max-lg:h-11 h-10 px-4 text-sm',
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

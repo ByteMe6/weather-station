@@ -16,7 +16,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       data-testid={testId}
       aria-invalid={invalid || undefined}
       className={cn(
-        'rounded-control bg-card text-ink placeholder:text-slate/70 h-10 w-full border px-3 text-sm',
+        'rounded-control bg-card text-ink placeholder:text-slate/70 h-10 w-full border px-3 text-sm max-lg:h-11',
         invalid ? 'border-danger' : 'border-line',
         mono ? 'font-mono tracking-wide lowercase' : null,
         className,

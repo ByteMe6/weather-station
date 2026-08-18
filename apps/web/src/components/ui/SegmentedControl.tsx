@@ -48,7 +48,7 @@ export const SegmentedControl = <T extends string>({
             data-testid={`${testId}-${o.value}`}
             onClick={choose(o.value)}
             className={cn(
-              'relative rounded-[7px] px-3 py-1.5 text-[13px] font-medium',
+              'relative rounded-[7px] px-3 py-1.5 text-[13px] font-medium max-lg:min-w-11 max-lg:py-3',
               selected ? 'text-ink' : 'text-slate hover:text-ink',
             )}
           >

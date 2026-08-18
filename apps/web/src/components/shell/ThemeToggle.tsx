@@ -30,7 +30,7 @@ export const ThemeToggle = ({ testId }: { testId: string }): ReactElement => {
       data-testid={testId}
       onClick={cycle}
       aria-label={`Theme: ${current}. Click to change`}
-      className="rounded-control border-line text-slate hover:text-ink border p-2"
+      className="rounded-control border-line text-slate hover:text-ink shrink-0 border p-2 max-lg:size-11"
     >
       {ICON[current]}
     </button>
