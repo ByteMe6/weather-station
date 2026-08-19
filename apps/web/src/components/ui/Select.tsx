@@ -46,7 +46,11 @@ export const Select = <T extends string>({
       <RadixSelect.Content
         position="popper"
         sideOffset={4}
-        className="rounded-control border-line bg-card shadow-card z-50 min-w-[var(--radix-select-trigger-width)] border p-1"
+        // Bounded to the room the popper actually has, so a long menu scrolls
+        // inside itself instead of running off the bottom of the screen. Twelve
+        // 44px timezone rows reach 955px in an 844px viewport otherwise, and
+        // the last options cannot be picked at all.
+        className="rounded-control border-line bg-card shadow-card z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] border p-1"
       >
         <RadixSelect.Viewport>
           {options.map((o) => (
@@ -54,7 +58,10 @@ export const Select = <T extends string>({
               key={o.value}
               value={o.value}
               data-testid={`${testId}-option-${o.value}`}
-              className="data-[highlighted]:bg-paper flex cursor-pointer items-center justify-between rounded-[7px] px-2 py-1.5 text-sm outline-none"
+              // A dropdown row is picked with a thumb like any other control,
+              // so it grows to the 44px floor below lg. `min-h` rather than a
+              // fixed height so a long label that wraps is not clipped.
+              className="data-[highlighted]:bg-paper flex cursor-pointer items-center justify-between rounded-[7px] px-2 py-1.5 text-sm outline-none max-lg:min-h-11"
             >
               <RadixSelect.ItemText>{o.label}</RadixSelect.ItemText>
               <RadixSelect.ItemIndicator>

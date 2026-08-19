@@ -60,7 +60,9 @@ export const MobileNav = ({
             onClick={close}
             aria-current={pathname === item.href ? 'page' : undefined}
             className={cn(
-              'rounded-control px-3 py-2 text-sm font-medium',
+              // `min-h` rather than a fixed height so a label that wraps is
+              // not clipped; `flex` centres the text in the taller box.
+              'rounded-control flex items-center px-3 py-2 text-sm font-medium max-lg:min-h-11',
               pathname === item.href ? 'bg-paper text-ink' : 'text-slate',
             )}
           >

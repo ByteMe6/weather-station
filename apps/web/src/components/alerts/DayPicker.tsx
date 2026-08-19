@@ -41,7 +41,10 @@ export const DayPicker = ({
             data-testid={`${testId}-${d.value}`}
             onClick={toggle(d.value)}
             className={cn(
-              'rounded-control h-9 min-w-11 border px-2 text-[13px] font-medium',
+              // `min-w-11` already met the 44px floor; the 36px height did not,
+              // and seven small squares side by side is exactly where a thumb
+              // hits the wrong one. Grows below lg like the other controls.
+              'rounded-control h-9 min-w-11 border px-2 text-[13px] font-medium max-lg:h-11',
               on
                 ? 'border-ink bg-ink text-paper'
                 : 'border-line text-slate hover:text-ink',

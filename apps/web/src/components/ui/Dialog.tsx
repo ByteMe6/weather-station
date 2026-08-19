@@ -72,10 +72,16 @@ export const Dialog = ({
                     </RadixDialog.Description>
                   ) : null}
                 </div>
+                {/* Dismissing is the one thing every dialog must offer, and
+                    on a phone the X is how it is done — 24px was not a thumb
+                    target. Flex-centred because Preflight's `svg { display:
+                    block }` ignores text-align, so the icon would otherwise
+                    sit at the start of a box now wider than it. Matches the
+                    drawer's close button. */}
                 <RadixDialog.Close
                   data-testid={`${testId}-close`}
                   aria-label="Close"
-                  className="rounded-control text-slate hover:bg-paper p-1"
+                  className="rounded-control text-slate hover:bg-paper inline-flex shrink-0 items-center justify-center p-1 max-lg:size-11"
                 >
                   <X className="size-4" aria-hidden />
                 </RadixDialog.Close>
