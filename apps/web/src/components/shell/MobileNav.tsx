@@ -7,7 +7,7 @@ import { useCallback } from 'react'
 
 import { DeviceChip } from './DeviceChip'
 import { NAV_ITEMS } from './nav-items'
-import { OrgSwitcher } from './OrgSwitcher'
+import { OrgChip } from './OrgChip'
 
 import { Sheet } from '@/components/ui/Sheet'
 import { cn } from '@/lib/utils'
@@ -79,7 +79,9 @@ export const MobileNav = ({
           loading={devicesLoading}
           className="inline-flex"
         />
-        <OrgSwitcher testId={`${testId}-org`} className="inline-flex" />
+        {/* Clerk's own switcher cannot be used here: its popover portals out
+            of this modal dialog and goes inert. See OrgChip. */}
+        <OrgChip testId={`${testId}-org`} className="inline-flex" />
       </div>
     </Sheet>
   )

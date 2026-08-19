@@ -14,6 +14,10 @@ import type { ReactElement } from 'react'
  * Selecting the personal account leaves for the dashboard: inside /admin the
  * console re-activates the admin org on mount, so staying put would make the
  * switcher visibly fight the user's own choice.
+ *
+ * TOP BAR ONLY. Clerk renders the popover in its own portal at `document.body`,
+ * so inside a modal dialog it lands outside the layer that Radix leaves
+ * interactive and goes inert. The mobile drawer uses `OrgChip` instead.
  */
 export const OrgSwitcher = ({
   testId,
