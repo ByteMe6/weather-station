@@ -9,6 +9,27 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      bot_sessions: {
+        Row: {
+          expires_at: string
+          state: Json
+          telegram_id: number
+          updated_at: string
+        }
+        Insert: {
+          expires_at: string
+          state: Json
+          telegram_id: number
+          updated_at?: string
+        }
+        Update: {
+          expires_at?: string
+          state?: Json
+          telegram_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       device_users: {
         Row: {
           added_at: string
