@@ -97,7 +97,7 @@ jobs:
           deno-version: v2.x
 
       - name: Typecheck
-        run: deno check telegram-bot/index.ts
+        run: deno check telegram-bot/index.ts alert-dispatcher/index.ts
 
       - name: Lint
         run: deno lint

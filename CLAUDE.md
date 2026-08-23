@@ -55,15 +55,21 @@ yarn deploy:functions     # deploy telegram-bot edge function
 `db-reset:local` vs `migrate:up`: reset guarantees a clean state and picks up
 edits to already-applied migrations; `migrate:up` is incremental only.
 
-### Telegram bot (Deno edge function — not ESLint/tsc territory)
+### Telegram bot (Deno edge functions — not ESLint/tsc territory)
 
 ```bash
 cd infra/supabase-db
-npx supabase functions serve telegram-bot --env-file supabase/functions/.env
+npx supabase functions serve --env-file supabase/functions/.env   # both functions
 ```
 
-CI checks it with `deno check` + `deno lint`. Code lives in
-`infra/supabase-db/supabase/functions/telegram-bot/`.
+Two functions share `_shared/` and one root `deno.json`
+(`infra/supabase-db/supabase/functions/`): `telegram-bot/` (grammY webhook,
+commands T1–T5) and `alert-dispatcher/` (pg_cron → `invoke_alert_dispatcher()`
+→ pg_net tick; requires the `x-cron-secret` header). CI checks them with
+`deno check` + `deno lint` + `deno test` (tests in `functions/tests/`).
+`yarn deploy:functions` deploys both. `yarn cron:set-secret <url> <secret>`
+writes the dispatcher URL + cron secret to Vault; the same secret must be set
+as the `CRON_SECRET` function secret.
 
 ### Firmware
 

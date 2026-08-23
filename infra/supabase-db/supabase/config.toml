@@ -45,3 +45,8 @@ enabled = false
 # via grammY's webhook secret token (BOT_WEBHOOK_SECRET).
 [functions.telegram-bot]
 verify_jwt = false
+
+# The dispatcher is called by pg_cron via pg_net with an x-cron-secret
+# header (no Supabase JWT), so the gateway must not reject it.
+[functions.alert-dispatcher]
+verify_jwt = false
