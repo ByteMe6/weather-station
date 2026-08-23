@@ -9,12 +9,22 @@
 import { Bot, InlineKeyboard, webhookCallback } from 'grammy'
 
 import { serviceClient } from '../_shared/db.ts'
+import { bitsToDays } from './alerts-parse.ts'
+import {
+  confirmRemoveReply,
+  dayPickerReply,
+  handleAlertCommand,
+  listReply,
+  saveSlot,
+} from './commands/alerts.ts'
 import { currentReply } from './commands/current.ts'
-import { aboutReply, mainMenu, unknownReply } from './commands/menu.ts'
+import { aboutReply, backRow, mainMenu, unknownReply } from './commands/menu.ts'
 import { registerDevice, registerPrompt } from './commands/register.ts'
 import { startReply } from './commands/start.ts'
+import { ensureUserId } from './identity.ts'
 import { handleLinkCode, LINK_PREFIX } from './link.ts'
 import type { Reply } from './reply.ts'
+import { listSlots, removeSlotById } from './schedules.ts'
 import { clearSession, getSession, setSession } from './session.ts'
 
 const token = Deno.env.get('BOT_TOKEN')
@@ -77,6 +87,14 @@ bot.command('register', async (ctx) => {
   return send(ctx, await registerDevice(db, ctx.from.id, ctx.match))
 })
 
+bot.command('alert', async (ctx) => {
+  if (!ctx.from) return
+  return send(
+    ctx,
+    await handleAlertCommand(serviceClient(), ctx.from.id, ctx.match ?? ''),
+  )
+})
+
 bot.on('callback_query:data', async (ctx) => {
   const data = ctx.callbackQuery.data
   await ctx.answerCallbackQuery()
@@ -91,8 +109,37 @@ bot.on('callback_query:data', async (ctx) => {
     })
     return send(ctx, registerPrompt())
   }
-  // menu:current / menu:alerts / alerts:* are wired in
-  // their feature tickets (MRP-23/24).
+  if (data === 'menu:alerts' || data.startsWith('alerts:')) {
+    const db = serviceClient()
+    const uid = ctx.from.id
+    if (data === 'menu:alerts')
+      return send(ctx, listReply(await listSlots(db, await ensureUserId(db, uid))))
+    if (data === 'alerts:add') return send(ctx, dayPickerReply('0000000'))
+    if (data.startsWith('alerts:day:'))
+      return send(ctx, dayPickerReply(data.slice('alerts:day:'.length)))
+    if (data.startsWith('alerts:save:')) {
+      const days = bitsToDays(data.slice('alerts:save:'.length))
+      if (days.length === 0)
+        return send(ctx, { text: 'Pick at least one day first.' })
+      await setSession(db, uid, { kind: 'awaiting_alert_time', days })
+      return send(ctx, {
+        text: 'Now send the time as HH:MM (24-hour), e.g. 07:30.',
+        buttons: [backRow()],
+      })
+    }
+    if (data.startsWith('alerts:rm:')) {
+      const id = Number(data.slice('alerts:rm:'.length))
+      const slots = await listSlots(db, await ensureUserId(db, uid))
+      const slot = slots.find((s) => s.id === id)
+      return send(ctx, slot ? confirmRemoveReply(slot) : listReply(slots))
+    }
+    if (data.startsWith('alerts:rmc:')) {
+      const id = Number(data.slice('alerts:rmc:'.length))
+      const userId = await ensureUserId(db, uid)
+      await removeSlotById(db, userId, id)
+      return send(ctx, listReply(await listSlots(db, userId)))
+    }
+  }
   return send(ctx, unknownReply())
 })
 
@@ -104,7 +151,14 @@ bot.on('message:text', async (ctx) => {
     await clearSession(db, ctx.from.id)
     return send(ctx, await registerDevice(db, ctx.from.id, ctx.message.text))
   }
-  // The awaiting_alert_time branch lands with alerts (MRP-24).
+  if (session?.kind === 'awaiting_alert_time') {
+    const db = serviceClient()
+    await clearSession(db, ctx.from.id)
+    return send(
+      ctx,
+      await saveSlot(db, ctx.from.id, session.days, ctx.message.text.trim()),
+    )
+  }
   return send(ctx, unknownReply())
 })
 
