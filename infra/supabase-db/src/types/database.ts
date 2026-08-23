@@ -9,6 +9,41 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      alert_deliveries: {
+        Row: {
+          created_at: string
+          error: string | null
+          fire_date: string
+          id: number
+          schedule_id: number
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          fire_date: string
+          id?: never
+          schedule_id: number
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          fire_date?: string
+          id?: never
+          schedule_id?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_deliveries_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_sessions: {
         Row: {
           expires_at: string
@@ -264,6 +299,17 @@ export type Database = {
         Args: { p_device_id: string; p_user_id: string }
         Returns: undefined
       }
+      claim_due_alert_slots: {
+        Args: { p_now?: string }
+        Returns: {
+          fire_date: string
+          schedule_id: number
+          slot_time: string
+          slot_timezone: string
+          telegram_id: number
+          user_id: string
+        }[]
+      }
       current_app_user_id: { Args: never; Returns: string }
       device_members: {
         Args: { p_device_id: string }
@@ -275,6 +321,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      invoke_alert_dispatcher: { Args: never; Returns: undefined }
       is_admin_request: { Args: never; Returns: boolean }
       is_device_owner: { Args: { p_device_id: string }; Returns: boolean }
       readings_bucketed: {
@@ -302,6 +349,10 @@ export type Database = {
         }[]
       }
       set_admin_org_id: { Args: { p_org_id: string }; Returns: undefined }
+      set_alert_cron_config: {
+        Args: { p_secret: string; p_url: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
