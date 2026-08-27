@@ -44,16 +44,14 @@ Deno.serve(async (req) => {
       const { data, error } = await db.rpc('claim_due_alert_slots')
       if (error) throw new Error(`claim failed: ${error.message}`)
       // rpc() rows cannot be aliased — map snake_case here (project rule).
-      return ((data ?? []) as Record<string, unknown>[]).map(
-        (r): DueSlot => ({
-          scheduleId: r.schedule_id as number,
-          userId: r.user_id as string,
-          telegramId: r.telegram_id as number,
-          slotTime: (r.slot_time as string).slice(0, 5),
-          slotTimezone: r.slot_timezone as string,
-          fireDate: r.fire_date as string,
-        }),
-      )
+      return ((data ?? []) as Record<string, unknown>[]).map((r): DueSlot => ({
+        scheduleId: r.schedule_id as number,
+        userId: r.user_id as string,
+        telegramId: r.telegram_id as number,
+        slotTime: (r.slot_time as string).slice(0, 5),
+        slotTimezone: r.slot_timezone as string,
+        fireDate: r.fire_date as string,
+      }))
     },
     buildMessage: async (slot) => {
       const devices = await fetchDeviceReadings(db, slot.userId)

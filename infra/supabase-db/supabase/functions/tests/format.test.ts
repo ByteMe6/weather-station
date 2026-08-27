@@ -48,22 +48,25 @@ Deno.test('device block shows all six T6 parameters', () => {
   assertMatch(block, /as of 12:05 UTC \(3 min ago\)/)
 })
 
-Deno.test('missing sensors read as unavailable, missing reading as no data', () => {
-  const sparse: DeviceReading = {
-    ...full,
-    reading: {
-      ...full.reading!,
-      windSpeed: null,
-      windDirection: null,
-      precipitation: null,
-    },
-  }
-  const block = formatDeviceBlock(sparse, 'UTC', NOW)
-  assertStringIncludes(block, 'Wind: unavailable')
-  assertStringIncludes(block, 'Precipitation: unavailable')
-  const empty: DeviceReading = { ...full, reading: null }
-  assertStringIncludes(formatDeviceBlock(empty, 'UTC', NOW), 'no data yet')
-})
+Deno.test(
+  'missing sensors read as unavailable, missing reading as no data',
+  () => {
+    const sparse: DeviceReading = {
+      ...full,
+      reading: {
+        ...full.reading!,
+        windSpeed: null,
+        windDirection: null,
+        precipitation: null,
+      },
+    }
+    const block = formatDeviceBlock(sparse, 'UTC', NOW)
+    assertStringIncludes(block, 'Wind: unavailable')
+    assertStringIncludes(block, 'Precipitation: unavailable')
+    const empty: DeviceReading = { ...full, reading: null }
+    assertStringIncludes(formatDeviceBlock(empty, 'UTC', NOW), 'no data yet')
+  },
+)
 
 Deno.test('current and alert messages compose blocks', () => {
   assertStringIncludes(formatCurrentMessage([full], 'UTC', NOW), 'ws-a1b2c3')

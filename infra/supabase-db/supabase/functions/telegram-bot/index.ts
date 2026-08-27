@@ -113,7 +113,10 @@ bot.on('callback_query:data', async (ctx) => {
     const db = serviceClient()
     const uid = ctx.from.id
     if (data === 'menu:alerts')
-      return send(ctx, listReply(await listSlots(db, await ensureUserId(db, uid))))
+      return send(
+        ctx,
+        listReply(await listSlots(db, await ensureUserId(db, uid))),
+      )
     if (data === 'alerts:add') return send(ctx, dayPickerReply('0000000'))
     if (data.startsWith('alerts:day:'))
       return send(ctx, dayPickerReply(data.slice('alerts:day:'.length)))
