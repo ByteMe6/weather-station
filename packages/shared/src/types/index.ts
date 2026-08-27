@@ -8,15 +8,23 @@ export type DeviceStatus = 'unregistered' | 'registered'
 export type DeviceRole = 'owner' | 'editor' | 'viewer'
 
 /**
- * Sensor values in one reading. Shipped hardware is a BMP280 (temperature,
- * pressure only), so humidity is nullable until a sensor that can measure it
- * is fitted; wind and rain sensors land post-MVP, so their fields are
- * nullable too (docs/03-scope-mvp.md).
+ * Sensor values in one reading. The target sensor is a BME280 — temperature,
+ * humidity and pressure (MRP-47). Wind and rain sensors land post-MVP, so
+ * their fields are nullable (docs/03-scope-mvp.md).
+ *
+ * `humidity` is nullable and stays that way. The firmware detects its sensor
+ * from the Bosch chip ID and drives either part, because the BME280 is
+ * pin-compatible with the BMP280 prototype that preceded it; a BMP280 has no
+ * humidity element and reports null. `readings.humidity` is nullable in
+ * Postgres for the same reason (migration 20260804093001), so tightening the
+ * type here would lie both about rows already in the table and about any unit
+ * still carrying the older part. It can tighten once no BMP280 unit is in the
+ * field and the historical nulls are gone.
  */
 export interface SensorValues {
   /** °C */
   temperature: number
-  /** % relative humidity — null on devices with no humidity sensor (BMP280) */
+  /** % relative humidity — null on a BMP280 unit (see above) */
   humidity: number | null
   /** hPa */
   pressure: number
