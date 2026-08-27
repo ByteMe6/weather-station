@@ -15,8 +15,9 @@
     "migrate:new": "npx supabase migration new",
     "migrate:up": "npx supabase db push --local",
     "regenerate:types": "npx supabase gen types typescript --local > src/types/database.ts",
-    "deploy:functions": "npx supabase functions deploy telegram-bot",
+    "deploy:functions": "npx supabase functions deploy",
     "admin:set-org": "node --env-file-if-exists=.env --experimental-strip-types scripts/set-admin-org.ts",
+    "cron:set-secret": "node --env-file-if-exists=.env --experimental-strip-types scripts/set-alert-cron.ts",
     "provision:device": "node --env-file-if-exists=.env --experimental-strip-types scripts/provision-device.ts"
   },
   "dependencies": {

@@ -3,19 +3,9 @@
 // The web app mints a one-time code (telegram_link_codes) and shows a deep
 // link; when the user taps Start we get here. Service-role client (RLS
 // bypassed): the Telegram ID comes from the update itself, never from text.
-import { createClient } from '@supabase/supabase-js'
+import { serviceClient } from '../_shared/db.ts'
 
 export const LINK_PREFIX = 'link_'
-
-const service = () => {
-  const url = Deno.env.get('SUPABASE_URL')
-  const key =
-    Deno.env.get('SUPABASE_SECRET_KEY') ??
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!url || !key)
-    throw new Error('SUPABASE_URL / SUPABASE_SECRET_KEY are not set')
-  return createClient(url, key)
-}
 
 const INVALID =
   'That link is invalid or was already used. Start again from the web app.'
@@ -25,7 +15,7 @@ export const handleLinkCode = async (
   code: string,
   telegramId: number,
 ): Promise<string> => {
-  const db = service()
+  const db = serviceClient()
   const now = new Date().toISOString()
 
   // Claim the code in one statement: only an unconsumed, unexpired row is
