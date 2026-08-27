@@ -324,6 +324,16 @@ export type Database = {
       invoke_alert_dispatcher: { Args: never; Returns: undefined }
       is_admin_request: { Args: never; Returns: boolean }
       is_device_owner: { Args: { p_device_id: string }; Returns: boolean }
+      merge_telegram_identity: {
+        Args: { p_telegram_id: number; p_user_id: string }
+        Returns: Database["public"]["CompositeTypes"]["telegram_merge_result"]
+        SetofOptions: {
+          from: "*"
+          to: "telegram_merge_result"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       readings_bucketed: {
         Args: {
           p_bucket_minutes: number
@@ -358,7 +368,11 @@ export type Database = {
       [_ in never]: never
     }
     CompositeTypes: {
-      [_ in never]: never
+      telegram_merge_result: {
+        merged: boolean | null
+        devices_moved: number | null
+        schedules_moved: number | null
+      }
     }
   }
 }

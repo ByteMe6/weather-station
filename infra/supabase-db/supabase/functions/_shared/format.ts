@@ -49,7 +49,10 @@ export const formatDeviceBlock = (
     line('💧 Humidity', num(d.reading.humidity, '%') ?? 'unavailable'),
     line('🔽 Pressure', num(d.reading.pressure, 'hPa') ?? 'unavailable'),
     line('💨 Wind', wind),
-    line('🌧 Precipitation', num(d.reading.precipitation, 'mm') ?? 'unavailable'),
+    line(
+      '🌧 Precipitation',
+      num(d.reading.precipitation, 'mm') ?? 'unavailable',
+    ),
   ].join('\n')
 }
 

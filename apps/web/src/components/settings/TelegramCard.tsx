@@ -2,7 +2,9 @@
 
 import { useUser } from '@clerk/nextjs'
 import { useQueryClient } from '@tanstack/react-query'
+import { ArrowRight, ArrowUpRight, Send } from 'lucide-react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { toDataURL } from 'qrcode'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useState } from 'react'
@@ -27,6 +29,11 @@ interface PendingLink {
 }
 
 const maskTelegram = (id: number): string => `tg · …${String(id).slice(-4)}`
+
+// Public env, so the chat link can be built in the browser; the linking deep
+// link still comes from the server action, which owns the one-time code.
+const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+const BOT_CHAT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
 
 const useCountdown = (expiresAt: string | null): string => {
   const [label, setLabel] = useState('')
@@ -136,25 +143,53 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
         {!isLoaded || me.isLoading ? (
           <Skeleton testId={`${testId}-skeleton`} className="h-10 w-64" />
         ) : linkedId !== null ? (
-          <div
-            data-testid={`${testId}-linked`}
-            className="flex flex-wrap items-center gap-3"
-          >
-            <p className="text-sm">
-              Linked as{' '}
-              <span className="font-mono">{maskTelegram(linkedId)}</span>. The
-              bot recognises you without{' '}
-              <span className="font-mono">/register</span>, and you can manage
-              alerts here.
-            </p>
-            <Button
-              testId={`${testId}-unlink`}
-              variant="ghost"
-              size="sm"
-              onClick={openUnlink}
-            >
-              Unlink
-            </Button>
+          <div data-testid={`${testId}-linked`} className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <span
+                aria-hidden
+                className="rounded-control bg-sky/10 text-sky flex size-9 shrink-0 items-center justify-center"
+              >
+                <Send className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-mono text-sm">{maskTelegram(linkedId)}</p>
+                <p className="text-slate text-[13px]">
+                  Recognised in chat — no{' '}
+                  <span className="font-mono">/register</span> needed.
+                </p>
+              </div>
+              <Button
+                testId={`${testId}-unlink`}
+                variant="ghost"
+                size="sm"
+                className="ml-auto shrink-0"
+                onClick={openUnlink}
+              >
+                Unlink
+              </Button>
+            </div>
+            <div className="border-line flex flex-wrap items-center gap-x-5 gap-y-1 border-t pt-3 text-[13px] font-medium">
+              <Link
+                data-testid={`${testId}-alerts`}
+                href="/alerts"
+                className="text-sky inline-flex items-center gap-1.5 underline-offset-4 hover:underline max-lg:h-11"
+              >
+                Manage alerts
+                <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
+              {BOT_CHAT_URL ? (
+                <a
+                  data-testid={`${testId}-open-bot`}
+                  href={BOT_CHAT_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-slate hover:text-ink inline-flex items-center gap-1.5 underline-offset-4 hover:underline max-lg:h-11"
+                >
+                  Open the bot
+                  <ArrowUpRight className="size-3.5" aria-hidden />
+                </a>
+              ) : null}
+            </div>
           </div>
         ) : showPending ? (
           <div

@@ -38,7 +38,12 @@ export const runDispatch = async (
       failed++
       const message = err instanceof Error ? err.message : String(err)
       try {
-        await deps.markDelivery(slot.scheduleId, slot.fireDate, 'failed', message)
+        await deps.markDelivery(
+          slot.scheduleId,
+          slot.fireDate,
+          'failed',
+          message,
+        )
       } catch (markErr) {
         // The delivery row stays 'claimed'; log so the trace is not lost.
         console.error('markDelivery failed', { slot: slot.scheduleId, markErr })

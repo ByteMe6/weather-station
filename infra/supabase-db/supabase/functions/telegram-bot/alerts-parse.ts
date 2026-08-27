@@ -72,7 +72,9 @@ export const parseAlertAdd = (
       }
     return { time, days, timezone: parts[2] }
   }
-  return { error: 'Too many arguments. Usage: /alert add HH:MM <days> [timezone]' }
+  return {
+    error: 'Too many arguments. Usage: /alert add HH:MM <days> [timezone]',
+  }
 }
 
 export const daysToBits = (days: number[]): string =>

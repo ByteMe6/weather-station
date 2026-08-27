@@ -3,6 +3,13 @@
 // The web app mints a one-time code (telegram_link_codes) and shows a deep
 // link; when the user taps Start we get here. Service-role client (RLS
 // bypassed): the Telegram ID comes from the update itself, never from text.
+//
+// MRP-39 (PRD OQ3): linking is also the merge path. If this Telegram account
+// already had its own telegram-only `users` row, merge_telegram_identity()
+// absorbs it — stations and alert slots move to the web account and the
+// duplicate row is deleted — inside one transaction. Before that, this
+// finished with a bare `update users set telegram_id`, which tripped the
+// unique index and dead-ended the user with "already linked to another user".
 import { serviceClient } from '../_shared/db.ts'
 
 export const LINK_PREFIX = 'link_'
@@ -10,6 +17,66 @@ export const LINK_PREFIX = 'link_'
 const INVALID =
   'That link is invalid or was already used. Start again from the web app.'
 const EXPIRED = 'That link expired. Start again from the web app.'
+const GENERIC = 'Could not link right now.'
+
+/** Shape of the `telegram_merge_result` composite the RPC returns. */
+interface MergeResult {
+  merged: boolean
+  devicesMoved: number
+  schedulesMoved: number
+}
+
+// rpc() rows cannot be aliased in the query string (CLAUDE.md), so the
+// snake_case composite is mapped here instead.
+const toMergeResult = (row: unknown): MergeResult | null => {
+  if (typeof row !== 'object' || row === null) return null
+  const r = row as Record<string, unknown>
+  if (
+    typeof r.merged !== 'boolean' ||
+    typeof r.devices_moved !== 'number' ||
+    typeof r.schedules_moved !== 'number'
+  ) {
+    return null
+  }
+  return {
+    merged: r.merged,
+    devicesMoved: r.devices_moved,
+    schedulesMoved: r.schedules_moved,
+  }
+}
+
+const plural = (n: number, one: string, many: string): string =>
+  `${n} ${n === 1 ? one : many}`
+
+/**
+ * The reply after a successful link. A merge names what came across, so the
+ * user can see their stations were not lost — that silence is exactly what
+ * made the old failure feel destructive.
+ */
+export const linkedText = (merge: MergeResult | null): string => {
+  const base =
+    'Linked! Your Telegram account is now connected to your Weather Station account.'
+  if (!merge?.merged) return base
+  const carried = [
+    merge.devicesMoved > 0
+      ? plural(merge.devicesMoved, 'station', 'stations')
+      : null,
+    merge.schedulesMoved > 0
+      ? plural(merge.schedulesMoved, 'alert', 'alerts')
+      : null,
+  ].filter((part): part is string => part !== null)
+  if (carried.length === 0) return base
+  return `${base}\n\nI brought ${carried.join(' and ')} from this chat across to it.`
+}
+
+/** Postgres raises these as P0001; the text is what reaches the user. */
+export const mapMergeError = (message: string): string => {
+  if (message.includes('ALREADY_LINKED_OTHER'))
+    return 'Your Weather Station account is already linked to a different Telegram account. Unlink it on the web first.'
+  if (message.includes('TELEGRAM_BELONGS_TO_ACCOUNT'))
+    return 'This Telegram account is already linked to another user.'
+  return GENERIC
+}
 
 export const handleLinkCode = async (
   code: string,
@@ -56,15 +123,13 @@ export const handleLinkCode = async (
     return expired ? EXPIRED : INVALID
   }
 
-  const { error } = await db
-    .from('users')
-    .update({ telegram_id: telegramId })
-    .eq('id', claimed.user_id)
+  // One transaction: absorb any telegram-only duplicate, then claim the id.
+  const { data, error } = await db.rpc('merge_telegram_identity', {
+    p_user_id: claimed.user_id,
+    p_telegram_id: telegramId,
+  })
   if (error) {
-    const reason =
-      error.code === '23505'
-        ? 'This Telegram account is already linked to another user.'
-        : 'Could not link right now.'
+    const reason = mapMergeError(error.message)
     // The claim stands (the code is spent); the web polls failed_reason
     // before consumed_at, so it shows the failure instead of "linked".
     // This write is what stops a claimed-but-unlinked code from reading as
@@ -81,5 +146,5 @@ export const handleLinkCode = async (
     }
     return reason
   }
-  return 'Linked! Your Telegram account is now connected to your Weather Station account.'
+  return linkedText(toMergeResult(data))
 }
