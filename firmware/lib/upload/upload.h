@@ -35,28 +35,46 @@ inline bool formatIso8601Utc(int64_t epochSeconds, char *out, size_t outLen) {
 // exact bytes, so the output has to be byte-identical every time and must not
 // depend on the library's float-rendering choices.
 //
-// humidity is always null - the BMP280 has no humidity sensor - as are the
-// wind and precipitation fields, which have no hardware at all yet.
+// The wind and precipitation fields are always null - they have no hardware at
+// all yet.
+//
+// humidity is a real number on a BME280 unit and NULL on a BMP280 one, which
+// has no humidity element (MRP-47; initSensor() in main.cpp picks the driver
+// from the chip ID). Taken by pointer rather than as a value plus a flag so
+// there is no way to pass one and forget the other, and so "absent" can never
+// be confused with a sensor that returned a garbage number.
 inline size_t buildReadingBody(const char *isoTimestamp, float temperature,
-                               float pressure, char *out, size_t outLen) {
+                               const float *humidity, float pressure, char *out,
+                               size_t outLen) {
   if (!isfinite(temperature) || !isfinite(pressure)) return 0;
+  if (humidity != NULL && !isfinite(*humidity)) return 0;
 
   char temperatureText[16];
+  char humidityText[16];
   char pressureText[16];
   // snprintf truncates silently rather than failing; buildReadingBody does
-  // not itself enforce the BMP280 plausibility range, so an ungated caller
+  // not itself enforce the BME280 plausibility range, so an ungated caller
   // could otherwise sign and store a truncated, numerically wrong reading.
   int temperatureLen = snprintf(temperatureText, sizeof(temperatureText), "%.2f", temperature);
   int pressureLen = snprintf(pressureText, sizeof(pressureText), "%.2f", pressure);
   if (temperatureLen < 0 || (size_t)temperatureLen >= sizeof(temperatureText)) return 0;
   if (pressureLen < 0 || (size_t)pressureLen >= sizeof(pressureText)) return 0;
+  if (humidity != NULL) {
+    int humidityLen = snprintf(humidityText, sizeof(humidityText), "%.2f", *humidity);
+    if (humidityLen < 0 || (size_t)humidityLen >= sizeof(humidityText)) return 0;
+  }
 
   JsonDocument doc;
   doc["timestamp"] = isoTimestamp;
-  // serialized() stores a pointer into temperatureText/pressureText, not a
-  // copy - both buffers must stay alive until serializeJson runs below.
+  // serialized() stores a pointer into temperatureText/humidityText/
+  // pressureText, not a copy - all three buffers must stay alive until
+  // serializeJson runs below.
   doc["temperature"] = serialized(temperatureText);
-  doc["humidity"] = nullptr;
+  if (humidity != NULL) {
+    doc["humidity"] = serialized(humidityText);
+  } else {
+    doc["humidity"] = nullptr;
+  }
   doc["pressure"] = serialized(pressureText);
   doc["windSpeed"] = nullptr;
   doc["windDirection"] = nullptr;

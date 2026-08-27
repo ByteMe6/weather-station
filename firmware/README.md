@@ -6,13 +6,13 @@
 
 Every library this project depends on lives in the Arduino ecosystem:
 
-| Need                        | Library             | Arduino | ESP-IDF native |
-| --------------------------- | ------------------- | ------- | -------------- |
-| BMP280 sensor               | Adafruit BMP280     | ✅      | port yourself  |
-| WiFi captive portal setup   | WiFiManager (tzapu) | ✅      | port yourself  |
-| OTA firmware updates        | ArduinoOTA / Update | ✅      | port yourself  |
-| HMAC-SHA256 payload signing | Crypto (rweather)   | ✅      | port yourself  |
-| KY-040 rotary encoder       | ESP32Encoder        | ✅      | port yourself  |
+| Need                        | Library                | Arduino | ESP-IDF native |
+| --------------------------- | ---------------------- | ------- | -------------- |
+| BME280/BMP280 sensor        | Adafruit BME280/BMP280 | ✅      | port yourself  |
+| WiFi captive portal setup   | WiFiManager (tzapu)    | ✅      | port yourself  |
+| OTA firmware updates        | ArduinoOTA / Update    | ✅      | port yourself  |
+| HMAC-SHA256 payload signing | Crypto (rweather)      | ✅      | port yourself  |
+| KY-040 rotary encoder       | ESP32Encoder           | ✅      | port yourself  |
 
 PlatformIO on top of Arduino adds: dependency management via `platformio.ini`, build flags for flash-time config injection (`API_URL`, `OTA_BASE_URL`, and the `SEND_INTERVAL_MS` fallback), VS Code integration, and CI-compatible builds without a GUI.
 
@@ -28,36 +28,105 @@ firmware/
   secrets.ini.example   # template for fleet-wide flash-time config
   secrets.ini           # your local copy (gitignored — never commit)
   src/
-    main.cpp            # entry point: WiFi provisioning state machine + BMP280 loop
+    main.cpp            # entry point: WiFi provisioning state machine + sensor loop
 ```
 
-## Sensors — BMP280 (I2C)
+## Sensors — BME280 / BMP280 (I2C)
 
 Default ESP32 I2C pins, so no build flags are needed for wiring:
 
-| BMP280 | ESP32  |
-| ------ | ------ |
-| VCC    | 3V3    |
-| GND    | GND    |
-| SCL    | GPIO22 |
-| SDA    | GPIO21 |
+| Sensor  | ESP32  | Purpose                                   |
+| ------- | ------ | ----------------------------------------- |
+| VCC/VIN | 3V3    | power                                     |
+| GND     | GND    | ground                                    |
+| SCL     | GPIO22 | I2C clock                                 |
+| SDA     | GPIO21 | I2C data                                  |
+| SDO/SAO | GND    | address select — 3V3 instead gives `0x77` |
+| CSB/CS  | 3V3    | interface select — must be high for I2C   |
 
-Address: firmware tries `0x76`, then `0x77` (`0x76` on most GY-BMP280 boards,
-`0x77` on Adafruit's). `main.cpp` samples every 2 s and logs to serial at
-115200 baud:
+> **`D21` and `D22` are not adjacent on the DevKit V1 header.** The row runs
+> `3V3 GND D15 D2 D4 D16 D17 D5 D18 D19 D21 D3 D1 D22 D23`, so `D3` and `D1`
+> sit between the two I2C pins. Counting from the `D23` corner is easiest:
+> **`D22` is the 2nd pin, `D21` the 5th.** Wiring SDA and SCL to two pins that
+> happen to be side by side gives `D21`+`D3` or `D1`+`D22`, and the bus is
+> silent at every address — the same symptom as a broken joint.
+
+**A 4-pin module needs only the first four rows.** The common GY- breakouts
+expose just VCC/GND/SCL/SDA and strap `SDO` and `CSB` on the board, which fixes
+the address (usually `0x76`, occasionally `0x77` — the firmware probes both) and
+selects I2C for you. There is nothing to miswire there, so a 4-pin module that
+is not detected is a wrong-part, power or bus fault, not a strapping one.
+
+`SDO` and `CSB` matter only on a 6-pin module or a bare Bosch part, where
+leaving them floating is the usual reason a correctly wired sensor is never
+detected:
+
+- **`CSB` floating** — the part comes up in SPI mode and never answers on I2C.
+- **`SDO` floating** — the address drifts between `0x76` and `0x77` instead of
+  settling on either.
+
+Regardless of pin count: an Adafruit breakout regulates `VIN` for 5V, while GY-
+boards and bare parts are **3V3 only** — 5V damages them. ESP32 internal
+pull-ups (~45 kΩ) are weak; breakouts carry their own 4.7–10 kΩ on SDA/SCL, a
+bare part needs them added.
+
+The firmware probes `0x76` then `0x77` and reads the Bosch chip-ID register
+(`0xD0`) at whichever answers, picking the driver from what it finds: `0x60` is
+a BME280, `0x58` a BMP280 (`0x56`/`0x57` are BMP280 engineering samples). Both
+parts are supported from one image because they are pin- and
+address-compatible, so a board that has not been upgraded yet keeps working —
+a BMP280 simply reports `humidity` as `null`.
+
+`main.cpp` samples every 2 s and logs to serial at 115200 baud:
 
 ```
+BME280 at 0x76 - temperature, humidity, pressure
+temp=23.41 C  humidity=47.8 %  pressure=1005.7 hPa  altitude=58.3 m
+```
+
+On a BMP280 unit the humidity column is absent rather than zero:
+
+```
+BMP280 at 0x76 - temperature, pressure; humidity reports null
 temp=23.41 C  pressure=1005.7 hPa  altitude=58.3 m
 ```
+
+### When no sensor is found
+
+The driver's own `begin()` only ever says "not my part", so the firmware reads
+the chip ID itself and scans the whole bus when nothing matches — at boot, and
+then every 30 s for as long as no sensor answers. The repeat matters: `pio
+device monitor` attaches to a board that is already running, so a boot-only
+scan is invisible unless you also reset the board. That separates the three
+faults that otherwise look identical:
+
+```
+No BME280 or BMP280 found, retrying... scanning the I2C bus:
+  I2C device responds at 0x76
+0x76 holds chip ID 0x58, which is neither a BME280 (0x60) nor a BMP280 (0x58)
+```
+
+- **A device answers, chip ID is `0x58`** — the module is a BMP280, whatever the
+  silkscreen says. Cheap "BME280" boards are very often BMP280 dies, and the
+  4-pin GY- boards are near-identical between the two parts; the firmware will
+  use it and report `humidity` as `null`.
+- **A device answers at some other address** — wrong part on the bus, or `SDO`
+  floating.
+- **Nothing answers at all** — the path or the module, never the ESP32 (it just
+  drove the scan). On a hand-soldered perfboard the usual cause is a cold or
+  bridged joint: **perfboard pads are individually isolated**, unlike a
+  breadboard, so every one of the four connections has to be a wire or a
+  deliberate bridge. The scan prints the continuity and voltage checks to work
+  through. On a 6-pin module, `CSB` floating (see the table above).
 
 Altitude is derived from pressure against a local sea-level reference
 (`SEA_LEVEL_HPA` at the top of `main.cpp`), not a separate measurement. Set it
 to the current sea-level pressure from a nearby weather report; when the
 altitude readout drifts with the weather, update the constant and re-flash.
 
-> **Note:** the BMP280 has no humidity element. PRD F1 needs humidity, so the
-> production sensor is a BME280 — swapping the driver back is a small change
-> once that hardware is on hand.
+> **Note:** PRD F1 needs humidity, so the BME280 is the target part (MRP-47).
+> The BMP280 has no humidity element, so a unit still carrying one reports
+> `humidity` as `null` — which is why the field stays nullable in `@ws/shared`.
 
 ## WiFi setup
 
@@ -228,9 +297,10 @@ No device identity in NVS, uploads disabled - reflash nvs.bin
 
 ## Uploading readings
 
-Once WiFi is connected, the device averages the 2-second BMP280 samples over
-each upload window and POSTs the mean temperature and pressure. The window
-length comes from the OTA manifest's `intervalMs`, stored in NVS and
+Once WiFi is connected, the device averages the 2-second samples over each
+upload window and POSTs the mean temperature, humidity and pressure — humidity
+only on a BME280 unit; a BMP280 sends `null` for it. The window length comes
+from the OTA manifest's `intervalMs`, stored in NVS and
 preferred over the compiled `SEND_INTERVAL_MS` default (`300000`, five
 minutes) — so the cadence can be changed for the whole fleet by publishing a
 manifest, with no reflash. Values outside 60 s–60 min are refused and logged.
@@ -249,11 +319,16 @@ line, since the signature covers these exact bytes. The minified form is
 pinned byte-for-byte in `builds_exact_payload` in
 `test/test_upload/test_upload.cpp`.
 
-```json
+The block below is deliberately not tagged as `json`: every number is rendered
+with `%.2f`, and Prettier rewrites `47.80` to `47.8` inside a `json` fence —
+which would show a body the device never sends and the signature would not
+cover.
+
+```
 {
   "timestamp": "2026-08-04T12:00:00Z",
   "temperature": 21.53,
-  "humidity": null,
+  "humidity": 47.80,
   "pressure": 1013.24,
   "windSpeed": null,
   "windDirection": null,
@@ -261,10 +336,12 @@ pinned byte-for-byte in `builds_exact_payload` in
 }
 ```
 
-`humidity` is always null — the BMP280 has no humidity element (see the note
-above). `windSpeed`, `windDirection` and `precipitation` are null because that
+`windSpeed`, `windDirection` and `precipitation` are null because that
 hardware doesn't exist yet. `pressure` is the measured station pressure, not
-normalized to sea level.
+normalized to sea level. `humidity` is relative humidity in percent; it is
+null only on a unit still carrying the old BMP280 (see the note above). The
+BMP280 form of this body is pinned too, in
+`builds_payload_without_humidity`.
 
 **Delivery policy:** a reading gets at most 3 delivery attempts — the initial
 POST plus two retries, spaced 10 s then 30 s — before it's dropped.

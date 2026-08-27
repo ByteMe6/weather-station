@@ -56,15 +56,23 @@ void rejects_epoch_before_1970(void) {
   TEST_ASSERT_FALSE(formatIso8601Utc(-1, out, sizeof(out)));
 }
 
+// Humidity is passed by pointer: NULL means the unit has no humidity element
+// (a BMP280) and the field must serialize as JSON null.
+static size_t buildBody(const char *iso, float t, float h, float p, char *out,
+                        size_t outLen) {
+  return buildReadingBody(iso, t, &h, p, out, outLen);
+}
+
 void builds_exact_payload(void) {
   char body[256];
-  size_t n = buildReadingBody("2026-08-04T12:00:00Z", 21.53f, 1013.24f, body, sizeof(body));
+  size_t n = buildBody("2026-08-04T12:00:00Z", 21.53f, 47.8f, 1013.24f,
+                       body, sizeof(body));
   TEST_ASSERT_EQUAL_STRING(
       "{\"timestamp\":\"2026-08-04T12:00:00Z\",\"temperature\":21.53,"
-      "\"humidity\":null,\"pressure\":1013.24,\"windSpeed\":null,"
+      "\"humidity\":47.80,\"pressure\":1013.24,\"windSpeed\":null,"
       "\"windDirection\":null,\"precipitation\":null}",
       body);
-  TEST_ASSERT_EQUAL_UINT32(150, n);
+  TEST_ASSERT_EQUAL_UINT32(151, n);
   TEST_ASSERT_EQUAL_UINT32(strlen(body), n);
 }
 
@@ -76,17 +84,18 @@ void builds_exact_payload(void) {
 // and silently pass even if the %.2f rounding were broken.
 void rounds_to_two_decimals(void) {
   char body[256];
-  TEST_ASSERT_TRUE(buildReadingBody("2026-08-04T12:00:00Z", 21.53456f, 1013.23891f,
-                                    body, sizeof(body)) > 0);
+  TEST_ASSERT_TRUE(buildBody("2026-08-04T12:00:00Z", 21.53456f, 47.79512f,
+                             1013.23891f, body, sizeof(body)) > 0);
   TEST_ASSERT_NOT_NULL(strstr(body, "\"temperature\":21.53,"));
+  TEST_ASSERT_NOT_NULL(strstr(body, "\"humidity\":47.80,"));
   TEST_ASSERT_NOT_NULL(strstr(body, "\"pressure\":1013.24,"));
 }
 
 // Negative readings must keep their sign through the formatter.
 void formats_negative_temperature(void) {
   char body[256];
-  TEST_ASSERT_TRUE(buildReadingBody("2026-08-04T12:00:00Z", -5.30f, 1013.24f,
-                                    body, sizeof(body)) > 0);
+  TEST_ASSERT_TRUE(buildBody("2026-08-04T12:00:00Z", -5.30f, 47.8f,
+                             1013.24f, body, sizeof(body)) > 0);
   TEST_ASSERT_NOT_NULL(strstr(body, "\"temperature\":-5.30,"));
 }
 
@@ -95,9 +104,10 @@ void formats_negative_temperature(void) {
 // byte-exactness the signature scheme depends on.
 void preserves_trailing_zeros(void) {
   char body[256];
-  TEST_ASSERT_TRUE(buildReadingBody("2026-08-04T12:00:00Z", 21.5f, 1013.2f,
-                                    body, sizeof(body)) > 0);
+  TEST_ASSERT_TRUE(buildBody("2026-08-04T12:00:00Z", 21.5f, 47.0f, 1013.2f,
+                             body, sizeof(body)) > 0);
   TEST_ASSERT_NOT_NULL(strstr(body, "\"temperature\":21.50,"));
+  TEST_ASSERT_NOT_NULL(strstr(body, "\"humidity\":47.00,"));
   TEST_ASSERT_NOT_NULL(strstr(body, "\"pressure\":1013.20,"));
 }
 
@@ -105,8 +115,8 @@ void preserves_trailing_zeros(void) {
 // or a dropped digit) must render correctly.
 void rounds_with_carry_across_decimal(void) {
   char body[256];
-  TEST_ASSERT_TRUE(buildReadingBody("2026-08-04T12:00:00Z", 21.999f, 1013.24f,
-                                    body, sizeof(body)) > 0);
+  TEST_ASSERT_TRUE(buildBody("2026-08-04T12:00:00Z", 21.999f, 47.8f,
+                             1013.24f, body, sizeof(body)) > 0);
   TEST_ASSERT_NOT_NULL(strstr(body, "\"temperature\":22.00,"));
 }
 
@@ -115,27 +125,56 @@ void rounds_with_carry_across_decimal(void) {
 // misleading error.
 void rejects_non_finite_values(void) {
   char body[256];
-  TEST_ASSERT_EQUAL_UINT32(0, buildReadingBody("2026-08-04T12:00:00Z", (float)NAN,
-                                               1013.24f, body, sizeof(body)));
-  TEST_ASSERT_EQUAL_UINT32(0, buildReadingBody("2026-08-04T12:00:00Z", 21.53f,
-                                               (float)INFINITY, body, sizeof(body)));
+  TEST_ASSERT_EQUAL_UINT32(0, buildBody("2026-08-04T12:00:00Z", (float)NAN,
+                                        47.8f, 1013.24f, body, sizeof(body)));
+  TEST_ASSERT_EQUAL_UINT32(0, buildBody("2026-08-04T12:00:00Z", 21.53f,
+                                        (float)NAN, 1013.24f, body, sizeof(body)));
+  TEST_ASSERT_EQUAL_UINT32(0, buildBody("2026-08-04T12:00:00Z", 21.53f, 47.8f,
+                                        (float)INFINITY, body, sizeof(body)));
 }
 
 void rejects_undersized_body_buffer(void) {
   char body[32];
-  TEST_ASSERT_EQUAL_UINT32(0, buildReadingBody("2026-08-04T12:00:00Z", 21.53f,
-                                               1013.24f, body, sizeof(body)));
+  TEST_ASSERT_EQUAL_UINT32(0, buildBody("2026-08-04T12:00:00Z", 21.53f,
+                                        47.8f, 1013.24f, body, sizeof(body)));
 }
 
-// buildReadingBody does not itself enforce the BMP280 plausibility range, so
+// buildReadingBody does not itself enforce the BME280 plausibility range, so
 // nothing stops an ungated caller from passing an absurd-but-finite value.
 // %.2f on 1e30f needs far more than 15 chars; snprintf would truncate it
 // silently rather than fail, producing a wrong-but-plausible number that then
 // gets signed and stored. Must be refused instead.
 void rejects_value_that_would_truncate_number_buffer(void) {
   char body[256];
+  TEST_ASSERT_EQUAL_UINT32(0, buildBody("2026-08-04T12:00:00Z", 1e30f,
+                                        47.8f, 1013.24f, body, sizeof(body)));
+  TEST_ASSERT_EQUAL_UINT32(0, buildBody("2026-08-04T12:00:00Z", 21.53f,
+                                        1e30f, 1013.24f, body, sizeof(body)));
+}
+
+// A BMP280 unit has no humidity element, so the field goes out as JSON null
+// rather than a fabricated number. This is byte-for-byte the body the firmware
+// sent before MRP-47 fitted the BME280.
+void builds_payload_without_humidity(void) {
+  char body[256];
+  size_t n = buildReadingBody("2026-08-04T12:00:00Z", 21.53f, NULL, 1013.24f,
+                              body, sizeof(body));
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"timestamp\":\"2026-08-04T12:00:00Z\",\"temperature\":21.53,"
+      "\"humidity\":null,\"pressure\":1013.24,\"windSpeed\":null,"
+      "\"windDirection\":null,\"precipitation\":null}",
+      body);
+  TEST_ASSERT_EQUAL_UINT32(150, n);
+}
+
+// The absent-humidity path must not skip the checks that apply to the fields
+// that ARE present - it is a narrower payload, not an ungated one.
+void payload_without_humidity_still_gates_other_fields(void) {
+  char body[256];
+  TEST_ASSERT_EQUAL_UINT32(0, buildReadingBody("2026-08-04T12:00:00Z", (float)NAN,
+                                               NULL, 1013.24f, body, sizeof(body)));
   TEST_ASSERT_EQUAL_UINT32(0, buildReadingBody("2026-08-04T12:00:00Z", 1e30f,
-                                               1013.24f, body, sizeof(body)));
+                                               NULL, 1013.24f, body, sizeof(body)));
 }
 
 // Fixture generated with the same construction apps/web/src/lib/ingest/
@@ -147,10 +186,30 @@ static const char FIXTURE_SECRET[] =
 static const char FIXTURE_TIMESTAMP[] = "1785844800000";
 static const char FIXTURE_BODY[] =
     "{\"timestamp\":\"2026-08-04T12:00:00Z\",\"temperature\":21.53,"
-    "\"humidity\":null,\"pressure\":1013.24,\"windSpeed\":null,"
+    "\"humidity\":47.80,\"pressure\":1013.24,\"windSpeed\":null,"
     "\"windDirection\":null,\"precipitation\":null}";
 static const char FIXTURE_SIGNATURE[] =
+    "a28359a9c7c9b68f0ea5fa32dedcdad87fa1b8b56cbe74e7f9ca98a9223325f2";
+
+// The pre-MRP-47 body and its signature, kept so a BMP280 unit's payload is
+// still pinned against the backend's verifier rather than only the BME280 one.
+static const char LEGACY_NULL_HUMIDITY_BODY[] =
+    "{\"timestamp\":\"2026-08-04T12:00:00Z\",\"temperature\":21.53,"
+    "\"humidity\":null,\"pressure\":1013.24,\"windSpeed\":null,"
+    "\"windDirection\":null,\"precipitation\":null}";
+static const char LEGACY_NULL_HUMIDITY_SIGNATURE[] =
     "fc89c41ab6892f82b9f4ad375ce9b87a2edbe5f46395c992e3c1d36bc5267daf";
+
+void signature_matches_the_backend_without_humidity(void) {
+  char body[256];
+  char sig[65];
+  TEST_ASSERT_TRUE(buildReadingBody("2026-08-04T12:00:00Z", 21.53f, NULL, 1013.24f,
+                                    body, sizeof(body)) > 0);
+  TEST_ASSERT_EQUAL_STRING(LEGACY_NULL_HUMIDITY_BODY, body);
+  TEST_ASSERT_TRUE(signPayload(FIXTURE_SECRET, FIXTURE_TIMESTAMP, body,
+                               sig, sizeof(sig)));
+  TEST_ASSERT_EQUAL_STRING(LEGACY_NULL_HUMIDITY_SIGNATURE, sig);
+}
 
 void signature_matches_the_backend(void) {
   char sig[65];
@@ -237,7 +296,10 @@ int main(int, char **) {
   RUN_TEST(rejects_non_finite_values);
   RUN_TEST(rejects_undersized_body_buffer);
   RUN_TEST(rejects_value_that_would_truncate_number_buffer);
+  RUN_TEST(builds_payload_without_humidity);
+  RUN_TEST(payload_without_humidity_still_gates_other_fields);
   RUN_TEST(signature_matches_the_backend);
+  RUN_TEST(signature_matches_the_backend_without_humidity);
   RUN_TEST(signature_is_lowercase_hex);
   RUN_TEST(signature_changes_with_the_timestamp);
   RUN_TEST(signature_changes_with_the_secret);
