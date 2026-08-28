@@ -44,6 +44,33 @@ export type Database = {
           },
         ]
       }
+      alert_dispatch_ticks: {
+        Row: {
+          error_msg: string | null
+          request_id: number
+          requested_at: string
+          settled_at: string | null
+          status_code: number | null
+          timed_out: boolean | null
+        }
+        Insert: {
+          error_msg?: string | null
+          request_id: number
+          requested_at?: string
+          settled_at?: string | null
+          status_code?: number | null
+          timed_out?: boolean | null
+        }
+        Update: {
+          error_msg?: string | null
+          request_id?: number
+          requested_at?: string
+          settled_at?: string | null
+          status_code?: number | null
+          timed_out?: boolean | null
+        }
+        Relationships: []
+      }
       bot_sessions: {
         Row: {
           expires_at: string
@@ -357,6 +384,10 @@ export type Database = {
           sample_count: number
           total_precipitation: number
         }[]
+      }
+      reconcile_alert_dispatch_ticks: {
+        Args: { p_now?: string }
+        Returns: number
       }
       redeem_telegram_link_code: {
         Args: { p_code: string; p_telegram_id: number }
