@@ -7,7 +7,12 @@ import {
 
 Deno.test('claim errors map to friendly messages (OQ3)', () => {
   assertMatch(mapClaimError('DEVICE_NOT_FOUND'), /do not know that device/i)
-  assertMatch(mapClaimError('DEVICE_ALREADY_CLAIMED'), /another account/i)
+  // A claimed station is usually the same person arriving from the other
+  // side, so the message has to point at linking rather than dead-ending.
+  assertMatch(
+    mapClaimError('DEVICE_ALREADY_CLAIMED'),
+    /already registered.*link Telegram/is,
+  )
   assertMatch(mapClaimError('connection reset'), /could not register/i)
 })
 

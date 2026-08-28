@@ -29,7 +29,14 @@ const inputSchema = z.object({
 
 const MESSAGES = {
   DEVICE_NOT_FOUND: "We don't recognise that ID — check the label",
-  DEVICE_ALREADY_CLAIMED: 'This station is already linked to another account',
+  // The commonest way to hit this is not someone else's station: it is your
+  // own, registered earlier through the Telegram bot, which created a separate
+  // telegram-only account. Linking Telegram in Settings merges the two and
+  // brings the station across, so the message has to name that route — saying
+  // only "another account" sent people to a dead end that was factually wrong
+  // about their own device.
+  DEVICE_ALREADY_CLAIMED:
+    'This station is already registered. If you added it from the Telegram bot, link Telegram in Settings to bring it across.',
 } as const
 
 /**

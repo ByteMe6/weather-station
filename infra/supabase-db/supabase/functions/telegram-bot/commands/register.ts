@@ -12,8 +12,12 @@ export const normaliseDeviceId = (raw: string): string =>
 export const mapClaimError = (message: string): string => {
   if (message.includes('DEVICE_NOT_FOUND'))
     return 'I do not know that device id. Check the label on your station and try again.'
+  // Usually this is the same person arriving from the other side: they
+  // registered the station on the web, and this chat is a separate
+  // telegram-only account. Linking the two from Settings merges them, so name
+  // that route instead of dead-ending on "belongs to someone else".
   if (message.includes('DEVICE_ALREADY_CLAIMED'))
-    return 'That device is already linked to another account.'
+    return 'That station is already registered. If it is yours, open Settings on the web and link Telegram — this chat will then see it.'
   return 'Could not register right now. Please try again in a minute.'
 }
 
