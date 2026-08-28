@@ -35,8 +35,13 @@ export const useTelegramLinkStatusQuery = (code: string | null) =>
     retry: false,
     // Keep polling while the user is over in the Telegram app / another window.
     refetchIntervalInBackground: true,
-    refetchInterval: (q) =>
-      q.state.data?.state === 'pending' ? POLL_MS : false,
+    refetchInterval: (q) => {
+      // A failed poll used to stop polling for good — `data` stayed undefined,
+      // so this returned false — while the card went on claiming "retrying".
+      // The link the user is waiting on is still in flight, so keep asking.
+      if (q.state.status === 'error') return POLL_MS
+      return q.state.data?.state === 'pending' ? POLL_MS : false
+    },
   })
 
 /** Mints a link code + deep link; the card then polls `useTelegramLinkStatusQuery`. */

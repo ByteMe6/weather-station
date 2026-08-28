@@ -114,16 +114,64 @@ describe('telegram actions', () => {
     expect(maybeSingle).not.toHaveBeenCalled()
   })
 
-  it('reports failed, not linked, when the code was claimed but the link never landed', async () => {
-    // The bot marks the code consumed before writing users.telegram_id; if that
-    // second write dies the row still reads as consumed.
+  it('keeps polling, rather than failing, if a spent code has no link yet', async () => {
+    // redeem_telegram_link_code() consumes and merges in one transaction, so
+    // this state should not occur. It used to be reported as a terminal
+    // "Linking did not finish", which stopped the poll for good and condemned
+    // links that had in fact succeeded — so if it ever recurs, treat it as
+    // still in flight.
     maybeSingle.mockResolvedValue({
-      data: { consumed_at: 't', expires_at: 'x', failed_reason: null },
+      data: {
+        consumed_at: 't',
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        failed_reason: null,
+      },
     })
     userRow.mockResolvedValue({ data: { telegram_id: null }, error: null })
     await expect(
       getTelegramLinkStatusAction({ code: CODE }),
-    ).resolves.toMatchObject({ ok: true, data: { state: 'failed' } })
+    ).resolves.toMatchObject({ ok: true, data: { state: 'pending' } })
+  })
+
+  it('an expired spent code with no link reports expired, not pending forever', async () => {
+    maybeSingle.mockResolvedValue({
+      data: {
+        consumed_at: 't',
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+        failed_reason: null,
+      },
+    })
+    userRow.mockResolvedValue({ data: { telegram_id: null }, error: null })
+    await expect(
+      getTelegramLinkStatusAction({ code: CODE }),
+    ).resolves.toMatchObject({ ok: true, data: { state: 'expired' } })
+  })
+
+  it('translates the machine failure reason the RPC recorded', async () => {
+    maybeSingle.mockResolvedValue({
+      data: {
+        consumed_at: null,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        failed_reason: 'ALREADY_LINKED_OTHER',
+      },
+    })
+    const result = await getTelegramLinkStatusAction({ code: CODE })
+    expect(result).toMatchObject({ ok: true, data: { state: 'failed' } })
+    expect(result.ok && result.data.reason).toMatch(
+      /already linked to a different Telegram account/i,
+    )
+  })
+
+  it('an unrecognised failure reason still reads as English', async () => {
+    maybeSingle.mockResolvedValue({
+      data: {
+        consumed_at: null,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        failed_reason: 'SOMETHING_NEW',
+      },
+    })
+    const result = await getTelegramLinkStatusAction({ code: CODE })
+    expect(result.ok && result.data.reason).toMatch(/could not finish linking/i)
   })
 
   it('unlink nulls telegram_id for the current user only', async () => {

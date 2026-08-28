@@ -64,7 +64,11 @@ bot.command('start', async (ctx) => {
   // Deep link from the web app's Telegram-linking flow (MRP-37).
   if (payload.startsWith(LINK_PREFIX) && ctx.from) {
     return ctx.reply(
-      await handleLinkCode(payload.slice(LINK_PREFIX.length), ctx.from.id),
+      await handleLinkCode(
+        serviceClient(),
+        payload.slice(LINK_PREFIX.length),
+        ctx.from.id,
+      ),
     )
   }
   return send(ctx, startReply())

@@ -358,6 +358,16 @@ export type Database = {
           total_precipitation: number
         }[]
       }
+      redeem_telegram_link_code: {
+        Args: { p_code: string; p_telegram_id: number }
+        Returns: Database["public"]["CompositeTypes"]["telegram_redeem_result"]
+        SetofOptions: {
+          from: "*"
+          to: "telegram_redeem_result"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_admin_org_id: { Args: { p_org_id: string }; Returns: undefined }
       set_alert_cron_config: {
         Args: { p_secret: string; p_url: string }
@@ -369,6 +379,13 @@ export type Database = {
     }
     CompositeTypes: {
       telegram_merge_result: {
+        merged: boolean | null
+        devices_moved: number | null
+        schedules_moved: number | null
+      }
+      telegram_redeem_result: {
+        outcome: string | null
+        reason: string | null
         merged: boolean | null
         devices_moved: number | null
         schedules_moved: number | null

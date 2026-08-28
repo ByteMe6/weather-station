@@ -23,6 +23,20 @@ const codeSchema = z.object({
   code: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{20}$/),
 })
 
+// redeem_telegram_link_code() stores the machine reason it raised, so the copy
+// lives here rather than being whatever string the bot happened to reply with.
+// Both refusals are fixable, and the code stays redeemable — so each message
+// says what to do, not just what went wrong.
+const FAILURE_COPY: Record<string, string> = {
+  ALREADY_LINKED_OTHER:
+    'Your account is already linked to a different Telegram account. Unlink it below, then open the link again.',
+  TELEGRAM_BELONGS_TO_ACCOUNT:
+    'That Telegram account is already linked to another Weather Station account.',
+}
+
+const describeFailure = (reason: string): string =>
+  FAILURE_COPY[reason] ?? 'Could not finish linking. Try again from settings.'
+
 /** MRP-37: mint a one-time code; the user opens the deep link and the bot verifies ownership. */
 export const startTelegramLinkAction = async (): Promise<
   ActionResult<{ code: string; deepLink: string; expiresAt: string }>
@@ -84,15 +98,18 @@ export const getTelegramLinkStatusAction = async (input: {
     return actionError('UNKNOWN', 'Could not check the link. Try again.')
   }
   if (!data) return actionError('NOT_FOUND', 'Unknown link code')
-  // The bot claims the code (consumed_at) before writing users.telegram_id, so
-  // a failure leaves both set — check the failure first.
+  const expired = new Date(data.expires_at).getTime() < Date.now()
+  // redeem_telegram_link_code() records the machine reason and leaves the code
+  // unspent, so the user can fix the cause and reuse the same deep link.
   if (data.failed_reason)
-    return actionOk({ state: 'failed', reason: data.failed_reason })
+    return actionOk({
+      state: 'failed',
+      reason: describeFailure(data.failed_reason),
+    })
   if (data.consumed_at) {
-    // "Claimed" is not "linked". If the bot died between claiming the code and
-    // writing users.telegram_id — or the failed_reason write itself failed —
-    // the row still reads as consumed. Report the fact, not the claim, or the
-    // card says "Telegram linked" while alerts never arrive.
+    // Redemption is atomic, so a spent code means the merge committed. The
+    // cross-check stays as a belt-and-braces read: reporting "linked" off the
+    // code alone would say "Telegram linked" while alerts never arrive.
     const { data: linked, error: linkedError } = await service
       .from('users')
       .select('telegram_id')
@@ -107,13 +124,13 @@ export const getTelegramLinkStatusAction = async (input: {
     }
     if (linked?.telegram_id !== null && linked?.telegram_id !== undefined)
       return actionOk({ state: 'linked' })
-    return actionOk({
-      state: 'failed',
-      reason: 'Linking did not finish. Start again from settings.',
-    })
+    // Consumed but not linked is now unreachable. If it ever happens again,
+    // it is transient, not terminal — this used to answer "Linking did not
+    // finish. Start again from settings.", which stopped the poll for good and
+    // condemned links that had actually succeeded a moment later.
+    return actionOk({ state: expired ? 'expired' : 'pending' })
   }
-  if (new Date(data.expires_at).getTime() < Date.now())
-    return actionOk({ state: 'expired' })
+  if (expired) return actionOk({ state: 'expired' })
   return actionOk({ state: 'pending' })
 }
 

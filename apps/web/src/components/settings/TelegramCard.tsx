@@ -228,8 +228,10 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
                 {status.isError
                   ? "Couldn't check the link — retrying"
                   : state === 'failed'
-                    ? (failReason ??
-                      'That Telegram account is linked to another user')
+                    ? // The action always supplies a reason; the fallback stays
+                      // vague on purpose rather than naming a cause it cannot
+                      // know, which is what the old copy did.
+                      (failReason ?? 'Could not finish linking — try again')
                     : state === 'expired'
                       ? 'Code expired — start again'
                       : `Waiting for Telegram… code expires in ${countdown}`}

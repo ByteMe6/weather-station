@@ -10,7 +10,13 @@
 // duplicate row is deleted — inside one transaction. Before that, this
 // finished with a bare `update users set telegram_id`, which tripped the
 // unique index and dead-ended the user with "already linked to another user".
-import { serviceClient } from '../_shared/db.ts'
+//
+// Redemption is one RPC, therefore one transaction. It used to be two round
+// trips — claim the code, then merge — and the row between them read as
+// "consumed but not linked", which the web reported as a terminal
+// "Linking did not finish." A poll landing in that gap, or this function
+// dying between the calls, permanently failed a link that had worked.
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const LINK_PREFIX = 'link_'
 
@@ -45,6 +51,33 @@ const toMergeResult = (row: unknown): MergeResult | null => {
   }
 }
 
+/** Shape of the `telegram_redeem_result` composite the RPC returns. */
+interface RedeemResult extends MergeResult {
+  outcome: 'linked' | 'expired' | 'invalid' | 'refused'
+  reason: string | null
+}
+
+const OUTCOMES = ['linked', 'expired', 'invalid', 'refused'] as const
+
+const isOutcome = (v: unknown): v is RedeemResult['outcome'] =>
+  typeof v === 'string' && (OUTCOMES as readonly string[]).includes(v)
+
+// rpc() rows cannot be aliased in the query string (CLAUDE.md), so the
+// snake_case composite is mapped here instead.
+const toRedeemResult = (row: unknown): RedeemResult | null => {
+  if (typeof row !== 'object' || row === null) return null
+  const r = row as Record<string, unknown>
+  if (!isOutcome(r.outcome)) return null
+  const merge = toMergeResult(row)
+  return {
+    outcome: r.outcome,
+    reason: typeof r.reason === 'string' ? r.reason : null,
+    merged: merge?.merged ?? false,
+    devicesMoved: merge?.devicesMoved ?? 0,
+    schedulesMoved: merge?.schedulesMoved ?? 0,
+  }
+}
+
 const plural = (n: number, one: string, many: string): string =>
   `${n} ${n === 1 ? one : many}`
 
@@ -69,82 +102,59 @@ export const linkedText = (merge: MergeResult | null): string => {
   return `${base}\n\nI brought ${carried.join(' and ')} from this chat across to it.`
 }
 
-/** Postgres raises these as P0001; the text is what reaches the user. */
+/**
+ * Postgres raises these as P0001; the text is what reaches the user. A refusal
+ * no longer spends the code, so these say to come back to the same link rather
+ * than to start over.
+ */
 export const mapMergeError = (message: string): string => {
   if (message.includes('ALREADY_LINKED_OTHER'))
-    return 'Your Weather Station account is already linked to a different Telegram account. Unlink it on the web first.'
+    return 'Your Weather Station account is already linked to a different Telegram account. Unlink it on the web, then open this link again.'
   if (message.includes('TELEGRAM_BELONGS_TO_ACCOUNT'))
     return 'This Telegram account is already linked to another user.'
   return GENERIC
 }
 
+/**
+ * Redeem `/start link_<code>`. Validation, the identity merge and spending the
+ * code all happen inside redeem_telegram_link_code(), so there is no
+ * intermediate state for the web poll to misread.
+ *
+ * A refusal deliberately leaves the code unspent: both refusals mean "fix
+ * something and come back", and burning the code would strand the user the way
+ * the old flow did. The reason is recorded on the row for the web to show.
+ */
 export const handleLinkCode = async (
+  db: SupabaseClient,
   code: string,
   telegramId: number,
 ): Promise<string> => {
-  const db = serviceClient()
-  const now = new Date().toISOString()
-
-  // Claim the code in one statement: only an unconsumed, unexpired row is
-  // updated, so two taps of the same link (or a forwarded link) cannot both
-  // pass a read-then-check and overwrite users.telegram_id twice.
-  const { data: claimed, error: claimError } = await db
-    .from('telegram_link_codes')
-    .update({ consumed_at: now })
-    .eq('code', code)
-    .is('consumed_at', null)
-    .gt('expires_at', now)
-    .select('user_id')
-    .maybeSingle()
-  if (claimError) {
-    // Logged, not swallowed: this is the only trace a DB outage leaves, and
-    // without it the web polls "pending" until the code expires while nobody
-    // learns Postgres refused the update.
-    console.error('handleLinkCode: claim failed', { code, error: claimError })
-    return 'Could not link right now.'
-  }
-  if (!claimed) {
-    // Nothing claimed — tell the user why, without changing anything.
-    const { data: row, error: rowError } = await db
-      .from('telegram_link_codes')
-      .select('expires_at, consumed_at')
-      .eq('code', code)
-      .maybeSingle()
-    if (rowError) {
-      // Discarding this told the user "invalid or already used" for what was
-      // actually a transient failure, sending them to retry into the same wall.
-      console.error('handleLinkCode: lookup failed', { code, error: rowError })
-      return 'Could not link right now.'
-    }
-    const expired =
-      row &&
-      !row.consumed_at &&
-      new Date(row.expires_at as string).getTime() < Date.now()
-    return expired ? EXPIRED : INVALID
-  }
-
-  // One transaction: absorb any telegram-only duplicate, then claim the id.
-  const { data, error } = await db.rpc('merge_telegram_identity', {
-    p_user_id: claimed.user_id,
+  const { data, error } = await db.rpc('redeem_telegram_link_code', {
+    p_code: code,
     p_telegram_id: telegramId,
   })
   if (error) {
-    const reason = mapMergeError(error.message)
-    // The claim stands (the code is spent); the web polls failed_reason
-    // before consumed_at, so it shows the failure instead of "linked".
-    // This write is what stops a claimed-but-unlinked code from reading as
-    // "linked" on the web, so its own failure has to be visible.
-    const { error: markError } = await db
-      .from('telegram_link_codes')
-      .update({ failed_reason: reason })
-      .eq('code', code)
-    if (markError) {
-      console.error('handleLinkCode: could not record failure', {
-        code,
-        error: markError,
-      })
-    }
-    return reason
+    // Logged, not swallowed: this is the only trace a DB outage leaves, and
+    // without it the web polls "pending" until the code expires while nobody
+    // learns Postgres refused the call.
+    console.error('handleLinkCode: redeem failed', { error })
+    return GENERIC
   }
-  return linkedText(toMergeResult(data))
+
+  const result = toRedeemResult(data)
+  if (!result) {
+    console.error('handleLinkCode: unreadable redeem payload', { data })
+    return GENERIC
+  }
+
+  switch (result.outcome) {
+    case 'linked':
+      return linkedText(result)
+    case 'expired':
+      return EXPIRED
+    case 'refused':
+      return mapMergeError(result.reason ?? '')
+    default:
+      return INVALID
+  }
 }
