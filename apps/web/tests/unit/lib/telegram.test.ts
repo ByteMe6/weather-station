@@ -1,4 +1,5 @@
 import {
+  botChatUrl,
   generateLinkCode,
   isValidBotUsername,
   normalizeBotUsername,
@@ -44,5 +45,18 @@ describe('telegram link helpers', () => {
     expect(isValidBotUsername('@WsWeatherBot')).toBe(false)
     expect(isValidBotUsername('has space')).toBe(false)
     expect(isValidBotUsername('a'.repeat(33))).toBe(false)
+  })
+
+  // The card renders this next to the deep link. It used to interpolate the
+  // env value raw, so a pasted `@name` produced `https://t.me/@name` — a link
+  // that does nothing when tapped.
+  it('builds the bot chat link through the same normalisation', () => {
+    expect(botChatUrl('@WsWeatherBot')).toBe('https://t.me/WsWeatherBot')
+    expect(botChatUrl('https://t.me/WsWeatherBot')).toBe(
+      'https://t.me/WsWeatherBot',
+    )
+    expect(botChatUrl('WsWeatherBot')).toBe('https://t.me/WsWeatherBot')
+    expect(botChatUrl('')).toBeNull()
+    expect(botChatUrl('not a username')).toBeNull()
   })
 })

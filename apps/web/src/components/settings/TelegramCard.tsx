@@ -15,6 +15,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Dialog } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/Toast'
+import { botChatUrl } from '@/lib/telegram'
 import {
   useStartTelegramLinkMutation,
   useTelegramLinkStatusQuery,
@@ -32,8 +33,12 @@ const maskTelegram = (id: number): string => `tg · …${String(id).slice(-4)}`
 
 // Public env, so the chat link can be built in the browser; the linking deep
 // link still comes from the server action, which owns the one-time code.
-const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-const BOT_CHAT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
+// Normalised through the same pair the deep link uses: `@name` and full t.me
+// URLs are what people paste, and interpolating either straight in produced
+// `https://t.me/@name` — a link that silently does nothing when tapped.
+const BOT_CHAT_URL = botChatUrl(
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? '',
+)
 
 const useCountdown = (expiresAt: string | null): string => {
   const [label, setLabel] = useState('')

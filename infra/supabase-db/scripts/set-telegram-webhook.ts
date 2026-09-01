@@ -50,7 +50,12 @@ await call('setWebhook', {
   url,
   secret_token: BOT_WEBHOOK_SECRET,
   allowed_updates: ['message', 'callback_query'],
-  drop_pending_updates: true,
+  // Deliberately NOT dropping the backlog. The reason to run this script is
+  // usually that the secret drifted and Telegram has been getting 401s, so the
+  // queue is exactly the `/start link_<code>` taps that never arrived. Dropping
+  // them would discard the users this is meant to rescue; Telegram redelivers
+  // them to the now-correct webhook instead.
+  drop_pending_updates: false,
 })
 
 const info = await call('getWebhookInfo')

@@ -34,3 +34,15 @@ export const isValidBotUsername = (username: string): boolean =>
 
 export const telegramDeepLink = (botUsername: string, code: string): string =>
   `https://t.me/${normalizeBotUsername(botUsername)}?start=${TELEGRAM_LINK_PREFIX}${code}`
+
+/**
+ * Public chat link for the configured bot, or null when the value is unusable.
+ * Shares the normalisation with `telegramDeepLink` on purpose: the two links
+ * sit next to each other in the settings card, and fixing only one of them
+ * left the other rendering `https://t.me/@WsWeatherBot`, which silently does
+ * nothing when tapped.
+ */
+export const botChatUrl = (configured: string): string | null => {
+  const username = normalizeBotUsername(configured)
+  return isValidBotUsername(username) ? `https://t.me/${username}` : null
+}
