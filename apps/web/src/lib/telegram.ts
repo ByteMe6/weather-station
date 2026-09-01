@@ -10,5 +10,27 @@ export const generateLinkCode = (): string => {
   return out
 }
 
+/**
+ * BotFather shows the username as `@WsWeatherBot` and links the bot as a t.me
+ * URL, and both get pasted verbatim into NEXT_PUBLIC_TELEGRAM_BOT_USERNAME.
+ * Either one used to go straight into the deep link, and
+ * `https://t.me/@WsWeatherBot?start=link_…` does not open the bot — the user
+ * tapped "Open in Telegram", nothing happened, and the settings card waited
+ * out the whole TTL with no error on any side. Normalise to the bare username
+ * here; `isValidBotUsername` decides whether what is left is usable.
+ */
+export const normalizeBotUsername = (raw: string): string =>
+  raw
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^(?:t|telegram)\.me\//i, '')
+    .replace(/^@/, '')
+    .replace(/[?#/].*$/, '')
+    .trim()
+
+/** Telegram usernames are 5–32 characters of `[A-Za-z0-9_]`. */
+export const isValidBotUsername = (username: string): boolean =>
+  /^[A-Za-z0-9_]{5,32}$/.test(username)
+
 export const telegramDeepLink = (botUsername: string, code: string): string =>
-  `https://t.me/${botUsername}?start=${TELEGRAM_LINK_PREFIX}${code}`
+  `https://t.me/${normalizeBotUsername(botUsername)}?start=${TELEGRAM_LINK_PREFIX}${code}`

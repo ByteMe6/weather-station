@@ -11,10 +11,30 @@ import { resolveCurrentUserId } from './_helpers'
 
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
-import { generateLinkCode, telegramDeepLink } from '@/lib/telegram'
+import {
+  generateLinkCode,
+  isValidBotUsername,
+  normalizeBotUsername,
+  telegramDeepLink,
+} from '@/lib/telegram'
 
-const botUsername = (): string | null =>
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? null
+/**
+ * The configured bot username, normalised, or null when it is unusable.
+ * `@name` and full t.me URLs are what actually get pasted in, and both used to
+ * sail through into a deep link that never opens the bot — so a bad value now
+ * fails loudly at "Link Telegram" instead of silently at the tap.
+ */
+const botUsername = (): string | null => {
+  const raw = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? ''
+  const username = normalizeBotUsername(raw)
+  if (isValidBotUsername(username)) return username
+  if (raw.trim())
+    console.error(
+      'NEXT_PUBLIC_TELEGRAM_BOT_USERNAME is not a Telegram username',
+      { normalized: username },
+    )
+  return null
+}
 
 export type TelegramLinkState = 'pending' | 'linked' | 'expired' | 'failed'
 
