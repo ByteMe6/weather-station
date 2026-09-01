@@ -1,7 +1,7 @@
 -- Dispatcher tick health: the tick outcome is recorded and judged, instead of
 -- being discarded the way it was when two 520s and a 403 passed unnoticed.
 begin;
-select plan(21);
+select plan(22);
 
 -- Real ticks may already be recorded (a local stack with the cron job running,
 -- or a developer calling invoke_alert_dispatcher() by hand). The counting
@@ -112,6 +112,31 @@ select is(
 select is(
   public.reconcile_alert_dispatch_ticks(),
   0, 'a second pass finds nothing new to report'
+);
+
+-- ---------------------------------------------------------------------------
+-- Monitoring must not be able to take dispatch down with it. reconcile reads
+-- net._http_response, a pg_net-owned table whose schema and grants are not
+-- ours; when it ran unguarded in the tick's transaction, anything it raised
+-- rolled back the dispatch too, so the function added to make a failing
+-- dispatcher visible was itself able to silence alerts every minute.
+create or replace function public.reconcile_alert_dispatch_ticks(p_now timestamptz default now())
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $reconcile_stub$
+begin
+  raise exception 'simulated pg_net breakage';
+end;
+$reconcile_stub$;
+
+-- No vault secrets in the test database, so the dispatcher warns and returns
+-- before net.http_post — which is exactly the reach we need: had the reconcile
+-- exception escaped, it would have aborted the call before that point.
+select lives_ok(
+  $$ select public.invoke_alert_dispatcher() $$,
+  'a throwing reconcile does not abort the dispatch tick'
 );
 
 select * from finish();

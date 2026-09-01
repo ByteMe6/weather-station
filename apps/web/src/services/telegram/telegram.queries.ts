@@ -2,12 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import type { TelegramLinkState } from '@/actions/telegram.action'
 import {
   getTelegramLinkStatusAction,
   startTelegramLinkAction,
   unlinkTelegramAction,
 } from '@/actions/telegram.action'
-import { unwrapAction } from '@/lib/actions/unwrap'
+import { ActionError, unwrapAction } from '@/lib/actions/unwrap'
 import { userKeys } from '@/services/users/users.queries'
 
 export const telegramKeys = {
@@ -17,6 +18,31 @@ export const telegramKeys = {
 }
 
 const POLL_MS = 3_000
+
+// A code that is not ours and a session that is gone cannot start resolving on
+// the next tick; a dropped request or a DB blip can.
+const TERMINAL_ERROR_CODES = new Set(['NOT_FOUND', 'UNAUTHORIZED'])
+
+/**
+ * Whether the status query should tick again.
+ *
+ * A failed poll used to stop the polling for good - `data` stayed undefined, so
+ * the interval read false - while the card went on claiming "retrying". Keeping
+ * every error polling fixed that but replaced it with the opposite problem:
+ * `retry: false` sends every failure here, so an expired Clerk session polled
+ * the server action every three seconds forever, background tabs included. Poll
+ * through what can recover, stop on what cannot.
+ */
+export const shouldPollLinkStatus = (
+  state: TelegramLinkState | undefined,
+  error: unknown,
+): boolean => {
+  if (error)
+    return !(
+      error instanceof ActionError && TERMINAL_ERROR_CODES.has(error.code)
+    )
+  return state === 'pending'
+}
 
 /**
  * Polls the pending link code through the server action (telegram_link_codes
@@ -35,13 +61,10 @@ export const useTelegramLinkStatusQuery = (code: string | null) =>
     retry: false,
     // Keep polling while the user is over in the Telegram app / another window.
     refetchIntervalInBackground: true,
-    refetchInterval: (q) => {
-      // A failed poll used to stop polling for good — `data` stayed undefined,
-      // so this returned false — while the card went on claiming "retrying".
-      // The link the user is waiting on is still in flight, so keep asking.
-      if (q.state.status === 'error') return POLL_MS
-      return q.state.data?.state === 'pending' ? POLL_MS : false
-    },
+    refetchInterval: (q) =>
+      shouldPollLinkStatus(q.state.data?.state, q.state.error)
+        ? POLL_MS
+        : false,
   })
 
 /** Mints a link code + deep link; the card then polls `useTelegramLinkStatusQuery`. */

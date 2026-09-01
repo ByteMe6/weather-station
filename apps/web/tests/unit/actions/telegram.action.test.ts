@@ -92,6 +92,28 @@ describe('telegram actions', () => {
       },
       'pending',
     ],
+    // A refusal leaves the code unspent, so failed_reason outlives the TTL.
+    // Both refusal messages say to open the same link again — which the RPC
+    // stops honouring at expiry, so past it the card was telling the user to
+    // do something that could not work. Expiry wins on an unspent code.
+    [
+      {
+        consumed_at: null,
+        expires_at: '2000-01-01T00:00:00Z',
+        failed_reason: 'ALREADY_LINKED_OTHER',
+      },
+      'expired',
+    ],
+    // ...but a code that WAS spent keeps reporting its failure, expired or not:
+    // there is nothing to reopen, and the reason is the whole explanation.
+    [
+      {
+        consumed_at: 't',
+        expires_at: '2000-01-01T00:00:00Z',
+        failed_reason: 'TELEGRAM_BELONGS_TO_ACCOUNT',
+      },
+      'failed',
+    ],
   ])('status maps %j → %s', async (row, state) => {
     maybeSingle.mockResolvedValue({ data: row })
     await expect(

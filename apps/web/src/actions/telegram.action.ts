@@ -119,6 +119,11 @@ export const getTelegramLinkStatusAction = async (input: {
   }
   if (!data) return actionError('NOT_FOUND', 'Unknown link code')
   const expired = new Date(data.expires_at).getTime() < Date.now()
+  // Expiry outranks a recorded refusal on an unspent code. A refusal leaves the
+  // code redeemable and both refusal messages say to open the same link again -
+  // advice redeem_telegram_link_code() stops honouring at the TTL, so past it
+  // the card would be telling the user to do something that cannot work.
+  if (expired && !data.consumed_at) return actionOk({ state: 'expired' })
   // redeem_telegram_link_code() records the machine reason and leaves the code
   // unspent, so the user can fix the cause and reuse the same deep link.
   if (data.failed_reason)
