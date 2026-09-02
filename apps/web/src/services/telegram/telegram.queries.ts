@@ -20,37 +20,45 @@ export const telegramKeys = {
 const POLL_MS = 3_000
 
 // NOT_FOUND is the only failure here that cannot resolve itself. UNAUTHORIZED
-// deliberately is not: Clerk rotates its session cookie, and resolveCurrentUserId
-// returns null whenever the users row is briefly absent (EnsureUser repairs it) —
-// both map to UNAUTHORIZED and both succeed on the next tick.
+// deliberately is not: Clerk rotates its session cookie, so a poll landing in
+// the refresh window fails and the next one succeeds. (An earlier comment also
+// credited EnsureUser with repairing a missing users row — it does not: it is a
+// one-shot gate in the (app) layout that has already run by the time this card
+// mounts and never re-runs. The failure ceiling below is what bounds that case,
+// not a repair.)
 const TERMINAL_ERROR_CODES = new Set(['NOT_FOUND'])
+
+// ~1 minute at POLL_MS. Long enough to ride out a deploy or a dropped
+// connection, short enough that a hidden tab is not re-issuing a server action
+// for the rest of the code's lifetime.
+const MAX_CONSECUTIVE_FAILURES = 20
 
 /**
  * Whether the status query should tick again.
  *
- * Order matters. Reading the error first meant a settled query that hit a
- * transient failure — a focus refetch of an already-linked code going offline —
- * re-armed the 3s background poll indefinitely, which is the loop this is meant
- * to bound. A settled state ends the polling whatever else is true.
+ * Order matters: reading the error first meant a settled query that hit a
+ * transient failure re-armed the poll indefinitely — a focus refetch of an
+ * already-linked code going offline reaches it. A settled state ends the
+ * polling whatever else is true.
  *
- * The code's own expiry is the backstop: naming terminal error codes only
- * covers the failures we can name, so a Supabase outage would otherwise poll
- * for hours after the code stopped being redeemable.
+ * Bounded by consecutive failures rather than by the code's expiry. Judging a
+ * server-minted deadline with the browser's clock made a skewed client stop
+ * watching a still-redeemable code, and — because the predicate only ever
+ * cancels the timer — the poll that would have rendered "Code expired" was
+ * cleared before it could run, leaving the card on "Waiting for Telegram… 0:00"
+ * instead. The server decides expiry; this only decides when to stop asking.
  */
 export const shouldPollLinkStatus = (
   state: TelegramLinkState | undefined,
   error: unknown,
-  expiresAt?: string | null,
+  consecutiveFailures = 0,
 ): boolean => {
   if (state && state !== 'pending') return false
-  if (expiresAt) {
-    const deadline = Date.parse(expiresAt)
-    if (Number.isFinite(deadline) && deadline < Date.now()) return false
+  if (error) {
+    if (error instanceof ActionError && TERMINAL_ERROR_CODES.has(error.code))
+      return false
+    return consecutiveFailures < MAX_CONSECUTIVE_FAILURES
   }
-  if (error)
-    return !(
-      error instanceof ActionError && TERMINAL_ERROR_CODES.has(error.code)
-    )
   return state === 'pending'
 }
 
@@ -59,10 +67,7 @@ export const shouldPollLinkStatus = (
  * has no client grants, so this read is legitimately on the server path).
  * Stops polling once the state leaves 'pending'.
  */
-export const useTelegramLinkStatusQuery = (
-  code: string | null,
-  expiresAt?: string | null,
-) =>
+export const useTelegramLinkStatusQuery = (code: string | null) =>
   useQuery({
     queryKey: telegramKeys.linkStatus(code),
     // Unwraps like every other hook: returning the raw ActionResult left
@@ -75,7 +80,11 @@ export const useTelegramLinkStatusQuery = (
     // Keep polling while the user is over in the Telegram app / another window.
     refetchIntervalInBackground: true,
     refetchInterval: (q) =>
-      shouldPollLinkStatus(q.state.data?.state, q.state.error, expiresAt)
+      shouldPollLinkStatus(
+        q.state.data?.state,
+        q.state.error,
+        q.state.fetchFailureCount,
+      )
         ? POLL_MS
         : false,
   })

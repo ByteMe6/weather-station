@@ -43,17 +43,21 @@ describe('shouldPollLinkStatus', () => {
     expect(shouldPollLinkStatus('expired', new Error('offline'))).toBe(false)
   })
 
-  // Naming terminal codes only covers failures we can name; the code's own TTL
-  // bounds the rest, so a Supabase outage cannot poll for hours after the code
-  // stopped being redeemable.
-  it('stops once the code itself has expired, whatever the error', () => {
-    const past = new Date(Date.now() - 60_000).toISOString()
-    const future = new Date(Date.now() + 60_000).toISOString()
-    expect(shouldPollLinkStatus('pending', null, past)).toBe(false)
-    expect(shouldPollLinkStatus(undefined, new Error('down'), past)).toBe(false)
-    expect(shouldPollLinkStatus('pending', null, future)).toBe(true)
-    expect(shouldPollLinkStatus(undefined, new Error('down'), future)).toBe(
-      true,
-    )
+  // The expiry backstop used to judge a server-minted deadline with the
+  // browser's clock, and could only ever cancel the timer — never produce the
+  // 'expired' state — so a skewed client stopped watching a live code and a
+  // correct one showed "Waiting… 0:00" instead of "Code expired". The server
+  // decides expiry now; this bounds the error case by consecutive failures.
+  it('keeps polling through failures until the ceiling, then stops', () => {
+    const err = new Error('supabase down')
+    expect(shouldPollLinkStatus(undefined, err, 0)).toBe(true)
+    expect(shouldPollLinkStatus(undefined, err, 19)).toBe(true)
+    expect(shouldPollLinkStatus(undefined, err, 20)).toBe(false)
+    expect(shouldPollLinkStatus(undefined, err, 500)).toBe(false)
+  })
+
+  it('never bounds a healthy pending poll by the failure ceiling', () => {
+    expect(shouldPollLinkStatus('pending', null, 0)).toBe(true)
+    expect(shouldPollLinkStatus('pending', null, 999)).toBe(true)
   })
 })

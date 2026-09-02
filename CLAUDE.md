@@ -124,11 +124,11 @@ policy may ever expose it to any user path.
 
 ## Supabase Clients — which one, where
 
-| Context                     | Client                                             | Key                                     | RLS          |
-| --------------------------- | -------------------------------------------------- | --------------------------------------- | ------------ |
-| Browser (hooks)             | `useSupabaseClient()`                              | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`  | Enforced     |
-| Server actions / API routes | `createServiceRoleClient()` from `@ws/supabase-db` | `SUPABASE_SECRET_KEY`                   | **Bypassed** |
-| Edge function (bot)         | service-role client created in-function            | `SUPABASE_SECRET_KEY` (function secret) | **Bypassed** |
+| Context                     | Client                                             | Key                                    | RLS          |
+| --------------------------- | -------------------------------------------------- | -------------------------------------- | ------------ |
+| Browser (hooks)             | `useSupabaseClient()`                              | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Enforced     |
+| Server actions / API routes | `createServiceRoleClient()` from `@ws/supabase-db` | `SUPABASE_SECRET_KEY`                  | **Bypassed** |
+| Edge function (bot)         | `serviceClient()` from `_shared/db.ts`             | injected `SUPABASE_SERVICE_ROLE_KEY`   | **Bypassed** |
 
 Realtime uses the same browser client: `readings` is in the
 `supabase_realtime` publication and RLS filters every delivery per
@@ -606,21 +606,22 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 
 ## Environment Variables
 
-| Variable                               | Scope         | Description                                                                                   |
-| -------------------------------------- | ------------- | --------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | Client        | Clerk publishable key                                                                         |
-| `CLERK_SECRET_KEY`                     | Server        | Clerk secret key                                                                              |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Client        | Supabase API URL                                                                              |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client        | Supabase publishable key (RLS)                                                                |
-| `SUPABASE_URL`                         | Server        | Supabase API URL                                                                              |
-| `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                                                           |
-| `BOT_TOKEN`                            | Edge function | Telegram bot token                                                                            |
-| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token — must match the one passed to `setWebhook`                     |
-| `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)                                           |
-| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username for the Telegram-linking deep link (`@` / t.me URL stripped, then validated)     |
-| `CLERK_WEBHOOK_SIGNING_SECRET`         | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                |
-| `ADMIN_ORG_ID`                         | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id` |
-| `E2E_CLERK_USER_EMAIL`                 | Test          | Address the Playwright suite signs in as (Clerk Testing Token — no password involved)         |
+| Variable                                     | Scope         | Description                                                                                   |
+| -------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`          | Client        | Clerk publishable key                                                                         |
+| `CLERK_SECRET_KEY`                           | Server        | Clerk secret key                                                                              |
+| `NEXT_PUBLIC_SUPABASE_URL`                   | Client        | Supabase API URL                                                                              |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`       | Client        | Supabase publishable key (RLS)                                                                |
+| `SUPABASE_URL`                               | Server        | Supabase API URL                                                                              |
+| `SUPABASE_SECRET_KEY`                        | Server        | Service-role key — **bypasses RLS**                                                           |
+| `BOT_TOKEN`                                  | Edge function | Telegram bot token                                                                            |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Edge function | Injected by the platform — `supabase secrets set` rejects the reserved `SUPABASE_` prefix     |
+| `BOT_WEBHOOK_SECRET`                         | Edge function | Telegram webhook secret token — must match the one passed to `setWebhook`                     |
+| `API_DOCS_ENABLED`                           | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)                                           |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`          | Client        | Bot username for the Telegram-linking deep link (`@` / t.me URL stripped, then validated)     |
+| `CLERK_WEBHOOK_SIGNING_SECRET`               | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                |
+| `ADMIN_ORG_ID`                               | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id` |
+| `E2E_CLERK_USER_EMAIL`                       | Test          | Address the Playwright suite signs in as (Clerk Testing Token — no password involved)         |
 
 Clerk routing (`/sign-in`, `/sign-up`, fallback `/dashboard`) is set in code
 (`apps/web/src/proxy.ts` + `RootProviders`), not env vars. Two dashboard-side

@@ -82,6 +82,16 @@ export const startTelegramLinkAction = async (): Promise<
   if (!userId) return actionError('UNAUTHORIZED', 'Sign in to continue')
 
   const code = generateLinkCode()
+  // Built before the insert, not after. The builder validates independently of
+  // botUsername(), so refusing here once the row exists would leave an orphan
+  // code behind on every click if the two ever diverged — and the refusal copy
+  // is already above.
+  const deepLink = telegramDeepLink(bot, code)
+  if (!deepLink)
+    return actionError(
+      'NOT_CONFIGURED',
+      'Telegram linking is not configured yet',
+    )
   const expiresAt = new Date(Date.now() + TELEGRAM_LINK_TTL_MS).toISOString()
   const { error } = await service
     .from('telegram_link_codes')
@@ -90,14 +100,6 @@ export const startTelegramLinkAction = async (): Promise<
     console.error('startTelegramLinkAction failed', error)
     return actionError('UNKNOWN', 'Could not start linking. Try again.')
   }
-  // botUsername() already validated, so this cannot be null — but the builder
-  // reports it structurally rather than trusting the caller, so honour it.
-  const deepLink = telegramDeepLink(bot, code)
-  if (!deepLink)
-    return actionError(
-      'NOT_CONFIGURED',
-      'Telegram linking is not configured yet',
-    )
   return actionOk({ code, deepLink, expiresAt })
 }
 
@@ -128,7 +130,11 @@ export const getTelegramLinkStatusAction = async (input: {
     return actionError('UNKNOWN', 'Could not check the link. Try again.')
   }
   if (!data) return actionError('NOT_FOUND', 'Unknown link code')
-  const expired = new Date(data.expires_at).getTime() < Date.now()
+  // One expiry decision for the whole function. `Number.isFinite` matches the
+  // hook's guard: a malformed timestamp used to read as "not expired" here and
+  // as "keep polling" there, so the two disagreed on the same row.
+  const deadline = new Date(data.expires_at).getTime()
+  const expired = Number.isFinite(deadline) && deadline < Date.now()
   // Expiry outranks a recorded refusal on an unspent code. A refusal leaves the
   // code redeemable and both refusal messages say to open the same link again -
   // advice redeem_telegram_link_code() stops honouring at the TTL, so past it
@@ -165,7 +171,9 @@ export const getTelegramLinkStatusAction = async (input: {
     // condemned links that had actually succeeded a moment later.
     return actionOk({ state: expired ? 'expired' : 'pending' })
   }
-  if (expired) return actionOk({ state: 'expired' })
+  // Unspent-and-expired already returned above, so anything reaching here is
+  // unspent and live. (A second `if (expired)` used to sit here and could never
+  // fire — a later reader adjusting it would have seen no effect.)
   return actionOk({ state: 'pending' })
 }
 

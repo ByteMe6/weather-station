@@ -25,12 +25,42 @@ export const normalizeBotUsername = (raw: string): string =>
     .replace(/^https?:\/\//i, '')
     .replace(/^(?:t|telegram)\.me\//i, '')
     .replace(/^@/, '')
-    .replace(/[?#/].*$/, '')
+    // Query and hash only. Dropping everything after the first `/` too meant a
+    // t.me route came out as a plausible username — `t.me/joinchat/AAA` became
+    // `joinchat`, which passes validation and links to the wrong place, exactly
+    // the silent-wrong-link failure this is here to prevent. A leftover `/` now
+    // reaches isValidBotUsername and is rejected there, loudly.
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
     .trim()
+
+// Single-segment t.me paths that are Telegram's own routes, not usernames.
+// Shape alone cannot tell them apart — `t.me/proxy?server=x` normalises to
+// `proxy`, which is a perfectly well-formed username — so a pasted route would
+// otherwise become a valid-looking link to the wrong place. Telegram reserves
+// these, so no real bot can hold one and rejecting them costs nothing.
+const RESERVED_TME_ROUTES = new Set([
+  'addemoji',
+  'addlist',
+  'addstickers',
+  'addtheme',
+  'boost',
+  'confirmphone',
+  'contact',
+  'giftcode',
+  'invoice',
+  'joinchat',
+  'login',
+  'proxy',
+  'setlanguage',
+  'share',
+  'socks',
+])
 
 /** Telegram usernames are 5–32 characters of `[A-Za-z0-9_]`. */
 export const isValidBotUsername = (username: string): boolean =>
-  /^[A-Za-z0-9_]{5,32}$/.test(username)
+  /^[A-Za-z0-9_]{5,32}$/.test(username) &&
+  !RESERVED_TME_ROUTES.has(username.toLowerCase())
 
 /**
  * The linking deep link, or null when the configured username is unusable.
@@ -53,18 +83,6 @@ export const telegramDeepLink = (
 }
 
 /**
- * Public chat link for the configured bot, or null when the value is unusable.
- * Shares the normalisation with `telegramDeepLink` on purpose: the two links
- * sit next to each other in the settings card, and fixing only one of them
- * left the other rendering `https://t.me/@WsWeatherBot`, which silently does
- * nothing when tapped.
- */
-export const botChatUrl = (configured: string): string | null => {
-  const username = normalizeBotUsername(configured)
-  return isValidBotUsername(username) ? `https://t.me/${username}` : null
-}
-
-/**
  * The configured bot username, normalised and validated, or null.
  *
  * Both the server action (deep link) and the settings card (chat link) need
@@ -79,4 +97,18 @@ export const configuredBotUsername = (): string | null => {
     process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? '',
   )
   return isValidBotUsername(username) ? username : null
+}
+
+/**
+ * Public chat link for the configured bot, or null when it is unusable.
+ *
+ * Takes no argument and is the only place this URL is built: the previous
+ * version accepted the raw value and had no callers at all, because the card
+ * re-implemented the template inline. Seven assertions covered a function
+ * nothing rendered while the rendered link was untested — the same split-fix
+ * drift the chat-link normalisation was written to end.
+ */
+export const botChatUrl = (): string | null => {
+  const username = configuredBotUsername()
+  return username ? `https://t.me/${username}` : null
 }
