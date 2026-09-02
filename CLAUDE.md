@@ -49,7 +49,8 @@ yarn migrate:new <name>   # new migration (UTC timestamp: YYYYMMDDHHmmss_<name>.
 yarn migrate:up           # apply pending migrations locally
 yarn db-reset:local       # drop + re-run all migrations + seeds (use before tests)
 yarn regenerate:types     # REQUIRED after every migration → src/types/database.ts
-yarn deploy:functions     # deploy telegram-bot edge function
+yarn deploy:functions     # deploy both edge functions
+yarn bot:set-webhook <url> # point Telegram at telegram-bot (URL + webhook secret)
 ```
 
 `db-reset:local` vs `migrate:up`: reset guarantees a clean state and picks up
@@ -70,6 +71,20 @@ commands T1–T5) and `alert-dispatcher/` (pg_cron → `invoke_alert_dispatcher(
 `yarn deploy:functions` deploys both. `yarn cron:set-secret <url> <secret>`
 writes the dispatcher URL + cron secret to Vault; the same secret must be set
 as the `CRON_SECRET` function secret.
+
+After deploying, point Telegram at the bot — the URL and `BOT_WEBHOOK_SECRET`
+are registered in the same call, because grammY answers 401 to any update
+without a matching `X-Telegram-Bot-Api-Secret-Token`. A webhook set without the
+secret makes the bot look dead rather than broken: `/start` never runs and
+account linking waits out its TTL.
+
+```bash
+cd infra/supabase-db   # the script lives in this workspace, not the root
+yarn bot:set-webhook https://<ref>.supabase.co/functions/v1/telegram-bot
+```
+
+It prints Telegram's `last_error_message`, which is the first thing to read
+when the bot stops answering.
 
 ### Firmware
 
@@ -600,9 +615,9 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 | `SUPABASE_URL`                         | Server        | Supabase API URL                                                                              |
 | `SUPABASE_SECRET_KEY`                  | Server        | Service-role key — **bypasses RLS**                                                           |
 | `BOT_TOKEN`                            | Edge function | Telegram bot token                                                                            |
-| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token                                                                 |
+| `BOT_WEBHOOK_SECRET`                   | Edge function | Telegram webhook secret token — must match the one passed to `setWebhook`                     |
 | `API_DOCS_ENABLED`                     | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)                                           |
-| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username (no @) for the Telegram-linking deep link                                        |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`    | Client        | Bot username for the Telegram-linking deep link (`@` / t.me URL stripped, then validated)     |
 | `CLERK_WEBHOOK_SIGNING_SECRET`         | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                |
 | `ADMIN_ORG_ID`                         | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id` |
 | `E2E_CLERK_USER_EMAIL`                 | Test          | Address the Playwright suite signs in as (Clerk Testing Token — no password involved)         |

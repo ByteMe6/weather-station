@@ -11,10 +11,27 @@ import { resolveCurrentUserId } from './_helpers'
 
 import type { ActionResult } from '@/lib/actions/result'
 import { actionError, actionOk } from '@/lib/actions/result'
-import { generateLinkCode, telegramDeepLink } from '@/lib/telegram'
+import {
+  configuredBotUsername,
+  generateLinkCode,
+  telegramDeepLink,
+} from '@/lib/telegram'
 
-const botUsername = (): string | null =>
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? null
+/**
+ * The configured bot username, or null when it is unusable. `@name` and full
+ * t.me URLs are what actually get pasted in, and both used to sail through
+ * into a deep link that never opens the bot — so a bad value now fails loudly
+ * at "Link Telegram" instead of silently at the tap. Shared with the settings
+ * card so both links in it resolve to the same bot.
+ */
+const botUsername = (): string | null => {
+  const username = configuredBotUsername()
+  if (!username && process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.trim())
+    console.error(
+      'NEXT_PUBLIC_TELEGRAM_BOT_USERNAME is not a Telegram username',
+    )
+  return username
+}
 
 export type TelegramLinkState = 'pending' | 'linked' | 'expired' | 'failed'
 
@@ -34,6 +51,11 @@ const FAILURE_COPY: Record<string, string> = {
     'That Telegram account is already linked to another Weather Station account.',
 }
 
+// Note on ALREADY_LINKED_OTHER: merge_telegram_identity raises it only when the
+// caller's users row already carries a different telegram_id, and the card
+// renders `failReason` solely inside the pending panel — which does not mount
+// once `linkedId !== null`. So this copy is currently unreachable in the UI;
+// it is kept correct for the day that branch gets handled in the linked state.
 const describeFailure = (reason: string): string =>
   FAILURE_COPY[reason] ?? 'Could not finish linking. Try again from settings.'
 
@@ -68,7 +90,15 @@ export const startTelegramLinkAction = async (): Promise<
     console.error('startTelegramLinkAction failed', error)
     return actionError('UNKNOWN', 'Could not start linking. Try again.')
   }
-  return actionOk({ code, deepLink: telegramDeepLink(bot, code), expiresAt })
+  // botUsername() already validated, so this cannot be null — but the builder
+  // reports it structurally rather than trusting the caller, so honour it.
+  const deepLink = telegramDeepLink(bot, code)
+  if (!deepLink)
+    return actionError(
+      'NOT_CONFIGURED',
+      'Telegram linking is not configured yet',
+    )
+  return actionOk({ code, deepLink, expiresAt })
 }
 
 export const getTelegramLinkStatusAction = async (input: {
@@ -99,6 +129,11 @@ export const getTelegramLinkStatusAction = async (input: {
   }
   if (!data) return actionError('NOT_FOUND', 'Unknown link code')
   const expired = new Date(data.expires_at).getTime() < Date.now()
+  // Expiry outranks a recorded refusal on an unspent code. A refusal leaves the
+  // code redeemable and both refusal messages say to open the same link again -
+  // advice redeem_telegram_link_code() stops honouring at the TTL, so past it
+  // the card would be telling the user to do something that cannot work.
+  if (expired && !data.consumed_at) return actionOk({ state: 'expired' })
   // redeem_telegram_link_code() records the machine reason and leaves the code
   // unspent, so the user can fix the cause and reuse the same deep link.
   if (data.failed_reason)
