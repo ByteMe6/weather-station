@@ -37,6 +37,18 @@ describe('telegram link helpers', () => {
     )
   })
 
+  // The value this was actually configured with in production. `t.me/@name`
+  // answers 302 to telegram.org — no bot, no /start, no error — so the code sat
+  // untouched in the database until it expired, on both the link and the QR.
+  it('handles the real configured value, @-prefixed', () => {
+    expect(telegramDeepLink('@weather_station2_bot', 'ABC')).toBe(
+      'https://t.me/weather_station2_bot?start=link_ABC',
+    )
+    expect(botChatUrl('@weather_station2_bot')).toBe(
+      'https://t.me/weather_station2_bot',
+    )
+  })
+
   it('validates Telegram username rules (5-32 word characters)', () => {
     expect(isValidBotUsername('WsWeatherBot')).toBe(true)
     expect(isValidBotUsername('ws_weather_bot_1')).toBe(true)
