@@ -75,9 +75,25 @@ await call('setWebhook', {
   drop_pending_updates: false,
 })
 
+// Which bot the token belongs to. BOT_TOKEN and NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+// are configured independently and nothing cross-checks them, so a dev token
+// happily wires bot A's webhook while the dashboard deep-links bot B — and
+// getWebhookInfo reports no error, because bot A is genuinely healthy. Printing
+// the resolved username is what makes that visible.
+const me = await call('getMe')
+console.error(`bot: @${me.username}`)
+
 const info = await call('getWebhookInfo')
 console.error(`webhook set to ${info.url}`)
+if (typeof info.pending_update_count === 'number')
+  console.error(`pending updates queued: ${info.pending_update_count}`)
 // last_error_message is where a wrong secret, a 401 or a cold-start failure
-// shows up; it is the first thing to read when the bot stops answering.
+// shows up. Read it as history: this call lands milliseconds after setWebhook,
+// so anything reported here describes the PREVIOUS registration — which is
+// still the useful signal when diagnosing why the bot went quiet, as long as
+// nobody reads it as a verdict on the registration just made. Re-run this
+// command after a minute to judge the new one.
 if (info.last_error_message)
-  console.error(`last error from Telegram: ${info.last_error_message}`)
+  console.error(
+    `last error from Telegram (previous registration): ${info.last_error_message}`,
+  )

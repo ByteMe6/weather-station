@@ -15,7 +15,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Dialog } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/Toast'
-import { configuredBotUsername } from '@/lib/telegram'
+import { botChatUrl } from '@/lib/telegram'
 import {
   shouldPollLinkStatus,
   useStartTelegramLinkMutation,
@@ -37,8 +37,7 @@ const maskTelegram = (id: number): string => `tg · …${String(id).slice(-4)}`
 // Normalised through the same pair the deep link uses: `@name` and full t.me
 // URLs are what people paste, and interpolating either straight in produced
 // `https://t.me/@name` — a link that silently does nothing when tapped.
-const BOT_USERNAME = configuredBotUsername()
-const BOT_CHAT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
+const BOT_CHAT_URL = botChatUrl()
 
 const useCountdown = (expiresAt: string | null): string => {
   const [label, setLabel] = useState('')
@@ -67,17 +66,17 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const [pending, setPending] = useState<PendingLink | null>(null)
   const [qr, setQr] = useState<string | null>(null)
   const [unlinkOpen, setUnlinkOpen] = useState(false)
-  const countdown = useCountdown(pending?.expiresAt ?? null)
 
   const linkedId = me.data?.telegramId ?? null
   // Derived, not cleared in an effect: a spent code left queryable is refetched
   // on window focus once staleTime lapses, and a failure there used to revive
   // the 3s background poll on a link that had already finished.
   const activeLink = linkedId === null ? pending : null
-  const status = useTelegramLinkStatusQuery(
-    activeLink?.code ?? null,
-    activeLink?.expiresAt ?? null,
-  )
+  // Keyed to activeLink, not pending: `pending` is cleared only by Cancel and
+  // Unlink, so a countdown keyed to it kept a 1 Hz setInterval re-rendering the
+  // whole card for the rest of the TTL after the link had already succeeded.
+  const countdown = useCountdown(activeLink?.expiresAt ?? null)
+  const status = useTelegramLinkStatusQuery(activeLink?.code ?? null)
   const state = status.data?.state ?? null
   const failReason = status.data?.reason
   // Same predicate the refetch interval uses, so the message and the behaviour
@@ -85,7 +84,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const stillPolling = shouldPollLinkStatus(
     state ?? undefined,
     status.error,
-    activeLink?.expiresAt ?? null,
+    status.failureCount,
   )
 
   // Once the bot consumed the code, refresh the users row; the linked state
@@ -244,22 +243,32 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
                 data-testid={`${testId}-state`}
                 className="text-slate text-[13px]"
               >
-                {status.isError
-                  ? // The interval stops for terminal failures, so a blanket
-                    // "retrying" promised something nothing was doing — the
-                    // very bug the polling change set out to remove, moved into
-                    // the copy. Follow the same split the interval uses.
-                    stillPolling
-                    ? "Couldn't check the link — retrying"
-                    : "Couldn't check the link. Start again from settings."
-                  : state === 'failed'
-                    ? // The action always supplies a reason; the fallback stays
-                      // vague on purpose rather than naming a cause it cannot
-                      // know, which is what the old copy did.
-                      (failReason ?? 'Could not finish linking — try again')
-                    : state === 'expired'
-                      ? 'Code expired — start again'
-                      : `Waiting for Telegram… code expires in ${countdown}`}
+                {/*
+                 * A settled state wins over a stale error. Testing isError
+                 * first let a later failed focus-refetch replace a delivered
+                 * diagnosis ("that Telegram account is already linked") with
+                 * terminal advice for a code the RPC still treats as
+                 * redeemable — and 'linked' had no branch at all, so a
+                 * succeeded link read "Waiting for Telegram…" until the users
+                 * refetch landed, forever if that refetch failed.
+                 */}
+                {state === 'failed'
+                  ? // The action always supplies a reason; the fallback stays
+                    // vague on purpose rather than naming a cause it cannot
+                    // know, which is what the old copy did.
+                    (failReason ?? 'Could not finish linking — try again')
+                  : state === 'expired'
+                    ? 'Code expired — start again'
+                    : state === 'linked'
+                      ? 'Linked — updating your account…'
+                      : status.isError
+                        ? // The interval stops for terminal failures and after
+                          // the failure ceiling, so a blanket "retrying"
+                          // promised something nothing was doing.
+                          stillPolling
+                          ? "Couldn't check the link — retrying"
+                          : "Couldn't check the link. Start again from settings."
+                        : `Waiting for Telegram… code expires in ${countdown}`}
               </p>
               <Button
                 testId={`${testId}-cancel`}

@@ -1,7 +1,7 @@
 -- Dispatcher tick health: the tick outcome is recorded and judged, instead of
 -- being discarded the way it was when two 520s and a 403 passed unnoticed.
 begin;
-select plan(24);
+select plan(28);
 
 -- Real ticks may already be recorded (a local stack with the cron job running,
 -- or a developer calling invoke_alert_dispatcher() by hand). The counting
@@ -131,35 +131,84 @@ begin
 end;
 $reconcile_stub$;
 
--- No vault secrets in the test database, so the dispatcher warns and returns
--- before net.http_post — which is exactly the reach we need: had the reconcile
--- exception escaped, it would have aborted the call before that point.
--- Seed the vault so the dispatcher takes its real path. Without this the
--- function returns early on missing secrets and the assertions below would
--- pass on a stack where nobody ran `yarn cron:set-secret` while meaning
--- something else entirely on one where somebody had.
-delete from public.alert_dispatch_ticks;
-select vault.create_secret('http://127.0.0.1:1/never-answers', 'alert_dispatcher_url');
-select vault.create_secret('test-cron-secret', 'alert_cron_secret');
+-- Seed the vault so the dispatcher takes its real path; without secrets it
+-- returns early and the assertions below would mean something different on a
+-- configured stack than on a fresh one. set_alert_cron_config() rather than
+-- vault.create_secret(): vault.secrets has a unique index on (name), so the
+-- raw call raises duplicate key on any stack where `yarn cron:set-secret` has
+-- been run, aborting this file and every assertion above it. CI only stayed
+-- green because it db-resets first.
+select public.set_alert_cron_config('http://127.0.0.1:1/never-answers', 'test-cron-secret');
 
+-- Scope every assertion to the tick this block causes. The alert-dispatcher-tick
+-- cron job is scheduled unconditionally (20260823145256) and fires every minute,
+-- so under READ COMMITTED an unscoped count races a row committing mid-test.
+delete from public.alert_dispatch_ticks;
+select public.invoke_alert_dispatcher();
+create temporary table seeded_tick on commit drop as
+  select request_id from public.alert_dispatch_ticks
+  where reconcile_error is not null;
+
+select is(
+  (select count(*)::int from seeded_tick),
+  1, 'the tick was still dispatched and recorded despite a throwing reconcile'
+);
+
+-- Surviving is not enough: moving `exception when others` to wrap the whole
+-- function body passes a bare lives_ok and fails this.
+select ok(
+  (select reconcile_error like 'reconcile failed:%'
+     from public.alert_dispatch_ticks
+    where request_id = (select request_id from seeded_tick)),
+  'the broken reconcile is recorded on the tick row'
+);
+
+-- error_msg stays the pg_net delivery outcome; a recovered reconcile writing
+-- NULL into it must not erase the evidence above.
+select is(
+  (select error_msg from public.alert_dispatch_ticks
+    where request_id = (select request_id from seeded_tick)),
+  null, 'the reconcile failure does not masquerade as a delivery error'
+);
+
+-- OTHERS does not match query_canceled (57014), so a reconcile cancelled by a
+-- statement_timeout used to propagate straight through the guard.
+create or replace function public.reconcile_alert_dispatch_ticks(p_now timestamptz default now())
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $cancel_stub$
+begin
+  raise exception sqlstate '57014' using message = 'simulated cancellation';
+end;
+$cancel_stub$;
+
+delete from public.alert_dispatch_ticks;
 select lives_ok(
   $$ select public.invoke_alert_dispatcher() $$,
-  'a throwing reconcile does not abort the dispatch tick'
+  'a cancelled reconcile does not abort the dispatch tick'
 );
-
--- Surviving is not enough: the point is that the dispatch still happened.
--- Moving `exception when others` to wrap the whole body would pass the
--- assertion above and fail this one.
 select is(
-  (select count(*)::int from public.alert_dispatch_ticks),
-  1, 'the tick was still dispatched and recorded'
+  (select count(*)::int from public.alert_dispatch_ticks
+    where reconcile_error like 'reconcile cancelled:%'),
+  1, 'a cancelled reconcile is recorded, and the dispatch still happened'
 );
 
--- ...and the reconcile failure is visible where an operator already looks,
--- rather than only in a warning nobody queries.
-select ok(
-  (select error_msg like 'reconcile failed:%' from public.alert_dispatch_ticks limit 1),
-  'the broken reconcile is stamped on the tick row'
+-- request_id is the primary key and net.http_post only queues inside this
+-- transaction, so a stale row holding the next sequence value used to abort the
+-- dispatch outright. Reachable after a pg_net reinstall or a restore.
+delete from public.alert_dispatch_ticks;
+insert into public.alert_dispatch_ticks (request_id, requested_at, settled_at)
+values ((select last_value + 1 from net.http_request_queue_id_seq),
+        now() - interval '1 day', now() - interval '1 day');
+select lives_ok(
+  $$ select public.invoke_alert_dispatcher() $$,
+  'a request_id colliding with a stale tick does not abort the dispatch'
+);
+select is(
+  (select count(*)::int from public.alert_dispatch_ticks where settled_at is null),
+  1, 'the colliding row is taken over by the new request rather than kept stale'
 );
 
 select * from finish();
