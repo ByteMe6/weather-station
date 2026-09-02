@@ -19,24 +19,34 @@ export const telegramKeys = {
 
 const POLL_MS = 3_000
 
-// A code that is not ours and a session that is gone cannot start resolving on
-// the next tick; a dropped request or a DB blip can.
-const TERMINAL_ERROR_CODES = new Set(['NOT_FOUND', 'UNAUTHORIZED'])
+// NOT_FOUND is the only failure here that cannot resolve itself. UNAUTHORIZED
+// deliberately is not: Clerk rotates its session cookie, and resolveCurrentUserId
+// returns null whenever the users row is briefly absent (EnsureUser repairs it) —
+// both map to UNAUTHORIZED and both succeed on the next tick.
+const TERMINAL_ERROR_CODES = new Set(['NOT_FOUND'])
 
 /**
  * Whether the status query should tick again.
  *
- * A failed poll used to stop the polling for good - `data` stayed undefined, so
- * the interval read false - while the card went on claiming "retrying". Keeping
- * every error polling fixed that but replaced it with the opposite problem:
- * `retry: false` sends every failure here, so an expired Clerk session polled
- * the server action every three seconds forever, background tabs included. Poll
- * through what can recover, stop on what cannot.
+ * Order matters. Reading the error first meant a settled query that hit a
+ * transient failure — a focus refetch of an already-linked code going offline —
+ * re-armed the 3s background poll indefinitely, which is the loop this is meant
+ * to bound. A settled state ends the polling whatever else is true.
+ *
+ * The code's own expiry is the backstop: naming terminal error codes only
+ * covers the failures we can name, so a Supabase outage would otherwise poll
+ * for hours after the code stopped being redeemable.
  */
 export const shouldPollLinkStatus = (
   state: TelegramLinkState | undefined,
   error: unknown,
+  expiresAt?: string | null,
 ): boolean => {
+  if (state && state !== 'pending') return false
+  if (expiresAt) {
+    const deadline = Date.parse(expiresAt)
+    if (Number.isFinite(deadline) && deadline < Date.now()) return false
+  }
   if (error)
     return !(
       error instanceof ActionError && TERMINAL_ERROR_CODES.has(error.code)
@@ -49,7 +59,10 @@ export const shouldPollLinkStatus = (
  * has no client grants, so this read is legitimately on the server path).
  * Stops polling once the state leaves 'pending'.
  */
-export const useTelegramLinkStatusQuery = (code: string | null) =>
+export const useTelegramLinkStatusQuery = (
+  code: string | null,
+  expiresAt?: string | null,
+) =>
   useQuery({
     queryKey: telegramKeys.linkStatus(code),
     // Unwraps like every other hook: returning the raw ActionResult left
@@ -62,7 +75,7 @@ export const useTelegramLinkStatusQuery = (code: string | null) =>
     // Keep polling while the user is over in the Telegram app / another window.
     refetchIntervalInBackground: true,
     refetchInterval: (q) =>
-      shouldPollLinkStatus(q.state.data?.state, q.state.error)
+      shouldPollLinkStatus(q.state.data?.state, q.state.error, expiresAt)
         ? POLL_MS
         : false,
   })

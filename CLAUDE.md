@@ -49,7 +49,8 @@ yarn migrate:new <name>   # new migration (UTC timestamp: YYYYMMDDHHmmss_<name>.
 yarn migrate:up           # apply pending migrations locally
 yarn db-reset:local       # drop + re-run all migrations + seeds (use before tests)
 yarn regenerate:types     # REQUIRED after every migration → src/types/database.ts
-yarn deploy:functions     # deploy telegram-bot edge function
+yarn deploy:functions     # deploy both edge functions
+yarn bot:set-webhook <url> # point Telegram at telegram-bot (URL + webhook secret)
 ```
 
 `db-reset:local` vs `migrate:up`: reset guarantees a clean state and picks up
@@ -78,6 +79,7 @@ secret makes the bot look dead rather than broken: `/start` never runs and
 account linking waits out its TTL.
 
 ```bash
+cd infra/supabase-db   # the script lives in this workspace, not the root
 yarn bot:set-webhook https://<ref>.supabase.co/functions/v1/telegram-bot
 ```
 

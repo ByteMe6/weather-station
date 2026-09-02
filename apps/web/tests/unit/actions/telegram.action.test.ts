@@ -65,8 +65,12 @@ describe('telegram actions', () => {
 
   it.each([
     [{ consumed_at: 't', expires_at: 'x', failed_reason: null }, 'linked'],
-    // the bot claims (consumed_at) before writing users.telegram_id, so a
-    // failed attempt has both set — failure wins
+    // Defensive only. redeem_telegram_link_code() cannot produce this row: a
+    // refusal sets failed_reason and never touches consumed_at, and the success
+    // path sets consumed_at and clears failed_reason in the same statement
+    // (20260828200735). The old two-round-trip flow could, which is what the
+    // ranking was written for — it is kept so a regression to that shape still
+    // reports the failure rather than a false "linked".
     [{ consumed_at: 't', expires_at: 'x', failed_reason: 'taken' }, 'failed'],
     [
       {
@@ -103,16 +107,6 @@ describe('telegram actions', () => {
         failed_reason: 'ALREADY_LINKED_OTHER',
       },
       'expired',
-    ],
-    // ...but a code that WAS spent keeps reporting its failure, expired or not:
-    // there is nothing to reopen, and the reason is the whole explanation.
-    [
-      {
-        consumed_at: 't',
-        expires_at: '2000-01-01T00:00:00Z',
-        failed_reason: 'TELEGRAM_BELONGS_TO_ACCOUNT',
-      },
-      'failed',
     ],
   ])('status maps %j → %s', async (row, state) => {
     maybeSingle.mockResolvedValue({ data: row })

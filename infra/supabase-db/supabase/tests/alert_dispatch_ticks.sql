@@ -1,7 +1,7 @@
 -- Dispatcher tick health: the tick outcome is recorded and judged, instead of
 -- being discarded the way it was when two 520s and a 403 passed unnoticed.
 begin;
-select plan(22);
+select plan(24);
 
 -- Real ticks may already be recorded (a local stack with the cron job running,
 -- or a developer calling invoke_alert_dispatcher() by hand). The counting
@@ -134,9 +134,32 @@ $reconcile_stub$;
 -- No vault secrets in the test database, so the dispatcher warns and returns
 -- before net.http_post — which is exactly the reach we need: had the reconcile
 -- exception escaped, it would have aborted the call before that point.
+-- Seed the vault so the dispatcher takes its real path. Without this the
+-- function returns early on missing secrets and the assertions below would
+-- pass on a stack where nobody ran `yarn cron:set-secret` while meaning
+-- something else entirely on one where somebody had.
+delete from public.alert_dispatch_ticks;
+select vault.create_secret('http://127.0.0.1:1/never-answers', 'alert_dispatcher_url');
+select vault.create_secret('test-cron-secret', 'alert_cron_secret');
+
 select lives_ok(
   $$ select public.invoke_alert_dispatcher() $$,
   'a throwing reconcile does not abort the dispatch tick'
+);
+
+-- Surviving is not enough: the point is that the dispatch still happened.
+-- Moving `exception when others` to wrap the whole body would pass the
+-- assertion above and fail this one.
+select is(
+  (select count(*)::int from public.alert_dispatch_ticks),
+  1, 'the tick was still dispatched and recorded'
+);
+
+-- ...and the reconcile failure is visible where an operator already looks,
+-- rather than only in a warning nobody queries.
+select ok(
+  (select error_msg like 'reconcile failed:%' from public.alert_dispatch_ticks limit 1),
+  'the broken reconcile is stamped on the tick row'
 );
 
 select * from finish();

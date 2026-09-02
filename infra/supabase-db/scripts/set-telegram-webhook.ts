@@ -26,7 +26,9 @@ if (!url?.startsWith('https://')) {
 interface TelegramResponse {
   ok: boolean
   description?: string
-  result?: Record<string, unknown>
+  // `setWebhook` answers `result: true` while `getWebhookInfo` answers an
+  // object, so this cannot be narrowed here without lying about one of them.
+  result?: unknown
 }
 
 const call = async (
@@ -41,14 +43,29 @@ const call = async (
       body: JSON.stringify(body ?? {}),
     },
   )
+  // Not res.json() straight away: a 502 from Telegram, or a proxy block page,
+  // is HTML, and parsing it would fail with `Unexpected token '<'` in the one
+  // script written to make "why is the bot dead" easy to answer.
+  if (!res.ok) {
+    throw new Error(
+      `${method} failed: HTTP ${res.status} — ${await res.text()}`,
+    )
+  }
   const json = (await res.json()) as TelegramResponse
   if (!json.ok) throw new Error(`${method} failed: ${json.description}`)
-  return json.result ?? {}
+  return typeof json.result === 'object' && json.result !== null
+    ? (json.result as Record<string, unknown>)
+    : {}
 }
 
 await call('setWebhook', {
   url,
   secret_token: BOT_WEBHOOK_SECRET,
+  // Telegram delivers only what is listed here, so this list — not the code —
+  // decides what reaches the bot. It must stay in step with the handlers
+  // registered in supabase/functions/telegram-bot/index.ts; adding one there
+  // without adding it here makes the new handler look broken with no error on
+  // either side.
   allowed_updates: ['message', 'callback_query'],
   // Deliberately NOT dropping the backlog. The reason to run this script is
   // usually that the secret drifted and Telegram has been getting 401s, so the

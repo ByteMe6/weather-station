@@ -15,8 +15,9 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Dialog } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/Toast'
-import { botChatUrl } from '@/lib/telegram'
+import { configuredBotUsername } from '@/lib/telegram'
 import {
+  shouldPollLinkStatus,
   useStartTelegramLinkMutation,
   useTelegramLinkStatusQuery,
   useUnlinkTelegramMutation,
@@ -36,9 +37,8 @@ const maskTelegram = (id: number): string => `tg · …${String(id).slice(-4)}`
 // Normalised through the same pair the deep link uses: `@name` and full t.me
 // URLs are what people paste, and interpolating either straight in produced
 // `https://t.me/@name` — a link that silently does nothing when tapped.
-const BOT_CHAT_URL = botChatUrl(
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? '',
-)
+const BOT_USERNAME = configuredBotUsername()
+const BOT_CHAT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
 
 const useCountdown = (expiresAt: string | null): string => {
   const [label, setLabel] = useState('')
@@ -69,9 +69,24 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
   const [unlinkOpen, setUnlinkOpen] = useState(false)
   const countdown = useCountdown(pending?.expiresAt ?? null)
 
-  const status = useTelegramLinkStatusQuery(pending?.code ?? null)
+  const linkedId = me.data?.telegramId ?? null
+  // Derived, not cleared in an effect: a spent code left queryable is refetched
+  // on window focus once staleTime lapses, and a failure there used to revive
+  // the 3s background poll on a link that had already finished.
+  const activeLink = linkedId === null ? pending : null
+  const status = useTelegramLinkStatusQuery(
+    activeLink?.code ?? null,
+    activeLink?.expiresAt ?? null,
+  )
   const state = status.data?.state ?? null
   const failReason = status.data?.reason
+  // Same predicate the refetch interval uses, so the message and the behaviour
+  // cannot drift apart.
+  const stillPolling = shouldPollLinkStatus(
+    state ?? undefined,
+    status.error,
+    activeLink?.expiresAt ?? null,
+  )
 
   // Once the bot consumed the code, refresh the users row; the linked state
   // is derived from `me.data.telegramId`, so no local state needs resetting here.
@@ -131,8 +146,7 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
     toast({ title: 'Telegram unlinked', tone: 'success' })
   }, [unlinkTelegram, toast])
 
-  const linkedId = me.data?.telegramId ?? null
-  const showPending = linkedId === null ? pending : null
+  const showPending = activeLink
 
   return (
     <Card testId={testId}>
@@ -231,7 +245,13 @@ export const TelegramCard = ({ testId }: { testId: string }): ReactElement => {
                 className="text-slate text-[13px]"
               >
                 {status.isError
-                  ? "Couldn't check the link — retrying"
+                  ? // The interval stops for terminal failures, so a blanket
+                    // "retrying" promised something nothing was doing — the
+                    // very bug the polling change set out to remove, moved into
+                    // the copy. Follow the same split the interval uses.
+                    stillPolling
+                    ? "Couldn't check the link — retrying"
+                    : "Couldn't check the link. Start again from settings."
                   : state === 'failed'
                     ? // The action always supplies a reason; the fallback stays
                       // vague on purpose rather than naming a cause it cannot
