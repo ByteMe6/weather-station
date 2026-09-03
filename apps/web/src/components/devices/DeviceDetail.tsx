@@ -81,7 +81,10 @@ export const DeviceDetail = ({
       />
     )
   }
-  const canManage = link.role === 'owner'
+  // Two different authorities, deliberately not one flag. Editing the station's
+  // details is open to editors; anything that changes who has access is not.
+  const canManageMembers = link.role === 'owner'
+  const canEditProfile = link.role === 'owner' || link.role === 'editor'
   return (
     <div data-testid={testId} className="flex flex-col gap-6">
       <DeviceHeader
@@ -92,7 +95,7 @@ export const DeviceDetail = ({
         status={link.device?.status ?? null}
         role={link.role}
         action={
-          canManage ? (
+          canEditProfile ? (
             <Button
               testId={`${testId}-edit`}
               variant="ghost"
@@ -110,14 +113,14 @@ export const DeviceDetail = ({
             People with access
           </CardTitle>
           <span className="flex-1" />
-          {canManage ? (
+          {canManageMembers ? (
             <Button testId={`${testId}-share`} size="sm" onClick={openShare}>
               Share access
             </Button>
           ) : null}
         </CardHeader>
         <CardBody testId={`${testId}-members-body`}>
-          {canManage ? null : (
+          {canManageMembers ? null : (
             <p className="text-slate mb-2 text-[13px]">
               Only owners can share this station.
             </p>
@@ -128,7 +131,7 @@ export const DeviceDetail = ({
             members={members.data ?? []}
             profiles={profiles.data}
             viewerUserId={me.data?.id ?? null}
-            canManage={canManage}
+            canManage={canManageMembers}
           />
         </CardBody>
       </Card>

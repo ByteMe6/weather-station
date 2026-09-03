@@ -122,6 +122,30 @@ Server paths in this project are exactly (PRD B1/B2, W5):
 The `devices.secret` column (HMAC keys) is **service-role only** — no RLS
 policy may ever expose it to any user path.
 
+### Device roles
+
+`device_users.role` is `owner` / `editor` / `viewer`. Two authorities, and they
+are deliberately separate checks rather than one flag:
+
+| Capability                                            | owner | editor | viewer |
+| ----------------------------------------------------- | :---: | :----: | :----: |
+| See the station and its readings                      |   ✓   |   ✓    |   ✓    |
+| Edit station details (nickname, address, coordinates) |   ✓   |   ✓    |        |
+| Share, change a role, remove a member                 |   ✓   |        |        |
+
+The station's details are a property of the device that every member already
+sees, so changing them grants nobody access to anything. Membership does grant
+access, which is why it stays with the owner: an editor who could share or
+promote would be an owner under another name.
+
+Enforced in `actions/devices.action.ts` via `requireRole(deviceId, allowed,
+message)` — `requireOwner` for anything touching `device_users`,
+`requireProfileEditor` for `updateDeviceProfileAction`. **Never widen one
+shared flag**: until MRP-48 a single `role === 'owner'` check guarded both, so
+`editor` was a label the UI offered that granted nothing at all. The gates are
+mutation-tested in both directions (`tests/unit/actions/devices.action.test.ts`
+— "membership stays owner-only").
+
 ## Supabase Clients — which one, where
 
 | Context                     | Client                                             | Key                                    | RLS          |

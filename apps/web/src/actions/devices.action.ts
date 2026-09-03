@@ -98,12 +98,25 @@ const ROLES = [
 ] as const satisfies readonly DeviceRole[]
 type Service = ReturnType<typeof createServiceRoleClient>
 
-const requireOwner = async (
-  deviceId: string,
-): Promise<
-  | { ok: true; service: Service; userId: string }
+type Gate =
+  | { ok: true; service: Service; userId: string; role: DeviceRole }
   | { ok: false; result: ActionResult<never> }
-> => {
+
+/**
+ * Resolve the caller and assert their role on the device is one of `allowed`.
+ *
+ * RLS is bypassed on this path, so every entry point has to check membership in
+ * code. Taking the allowed set as a parameter is what lets the two levels of
+ * authority differ: managing people is owner-only, while editing the station's
+ * own details is something an editor may do. `forbidden` is passed in because
+ * a shared message would have to be vague enough to fit both, and "Only owners
+ * can manage sharing" is the sentence that tells someone what to do next.
+ */
+const requireRole = async (
+  deviceId: string,
+  allowed: readonly DeviceRole[],
+  forbidden: string,
+): Promise<Gate> => {
   const { userId: clerkUserId } = await auth()
   if (!clerkUserId) {
     return {
@@ -121,18 +134,35 @@ const requireOwner = async (
       }
     }
     const role = await resolveMemberRole(service, userId, deviceId)
-    if (role !== 'owner') {
-      return {
-        ok: false,
-        result: actionError('FORBIDDEN', 'Only owners can manage sharing'),
-      }
+    if (!role || !allowed.includes(role)) {
+      return { ok: false, result: actionError('FORBIDDEN', forbidden) }
     }
-    return { ok: true, service, userId }
+    return { ok: true, service, userId, role }
   } catch (err) {
-    console.error('requireOwner failed', err)
+    console.error('requireRole failed', err)
     return { ok: false, result: actionError('UNKNOWN', UNKNOWN_MSG) }
   }
 }
+
+/** Membership changes — sharing, role changes, removals — are owner-only. */
+const requireOwner = async (deviceId: string): Promise<Gate> =>
+  requireRole(deviceId, ['owner'], 'Only owners can manage sharing')
+
+// Editing the station's own details (nickname, address, coordinates) is a
+// property of the device that every member sees, not a grant of authority over
+// anyone — so an editor may do it. Everything that changes who has access stays
+// with the owner.
+const PROFILE_ROLES = [
+  'owner',
+  'editor',
+] as const satisfies readonly DeviceRole[]
+
+const requireProfileEditor = async (deviceId: string): Promise<Gate> =>
+  requireRole(
+    deviceId,
+    PROFILE_ROLES,
+    'Only owners and editors can edit this station',
+  )
 
 const UNKNOWN_MSG = 'Something went wrong. Try again.'
 const deviceIdSchema = z.string().min(1).max(64)
@@ -411,7 +441,7 @@ export const updateDeviceProfileAction = async (input: {
       fieldErrors,
     )
   }
-  const gate = await requireOwner(parsed.data.deviceId)
+  const gate = await requireProfileEditor(parsed.data.deviceId)
   if (!gate.ok) return gate.result
   // Return the row the database actually holds rather than echoing the input:
   // a zero-row update reports no error, so echoing would show values that were

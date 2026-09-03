@@ -332,18 +332,59 @@ describe('updateDeviceProfileAction', () => {
       fieldErrors: { label: expect.any(String) as string },
     })
   })
-  it('rejects non-owners', async () => {
-    helpers.resolveMemberRole.mockResolvedValue('viewer')
-    await expect(
-      updateDeviceProfileAction({
-        deviceId: 'ws-1',
+  const PROFILE = {
+    deviceId: 'ws-1',
+    label: 'Backyard',
+    address: '',
+    latitude: '',
+    longitude: '',
+  }
+  const rowUpdate = () => {
+    const single = jest.fn(async () => ({
+      data: {
         label: 'Backyard',
-        address: '',
-        latitude: '',
-        longitude: '',
+        address: null,
+        latitude: null,
+        longitude: null,
+      },
+      error: null,
+    }))
+    from.mockReturnValue({
+      update: () => ({
+        eq: () => ({ select: () => ({ maybeSingle: single }) }),
       }),
-    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
-  })
+    })
+    return single
+  }
+
+  // The station's details belong to the device and every member already sees
+  // them; changing them grants nobody access to anything. Membership does grant
+  // access, which is why that stays with the owner (asserted below).
+  it.each(['owner', 'editor'])(
+    'lets a %s edit the station details',
+    async (role) => {
+      helpers.resolveMemberRole.mockResolvedValue(role)
+      const single = rowUpdate()
+      await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+        ok: true,
+        data: { label: 'Backyard' },
+      })
+      expect(single).toHaveBeenCalled()
+    },
+  )
+
+  it.each(['viewer', null])(
+    'refuses a %s, without touching the row',
+    async (role) => {
+      helpers.resolveMemberRole.mockResolvedValue(role)
+      const single = rowUpdate()
+      await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+        ok: false,
+        code: 'FORBIDDEN',
+      })
+      expect(single).not.toHaveBeenCalled()
+    },
+  )
 
   it('rejects an out-of-range latitude and a half-filled pair', async () => {
     helpers.resolveMemberRole.mockResolvedValue('owner')
@@ -386,6 +427,52 @@ describe('updateDeviceProfileAction', () => {
         longitude: '24.0297',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+  })
+})
+
+// Editors gained the right to edit a station's details. The point of splitting
+// the gate rather than widening one flag is that nothing about membership moved
+// with it — an editor who could share, promote or remove would be an owner by
+// another name, and `editor` was a label with no meaning until now precisely
+// because a single `role === 'owner'` check guarded both concerns.
+describe('membership stays owner-only', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    auth.mockResolvedValue({ userId: 'user_1' })
+    helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
+    helpers.resolveMemberRole.mockResolvedValue('editor')
+  })
+
+  it('refuses an editor sharing the station', async () => {
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: 'someone@example.com',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('refuses an editor changing a role', async () => {
+    await expect(
+      updateMemberRoleAction({
+        deviceId: 'ws-1',
+        userId: '00000000-0000-0000-0000-0000000000b2',
+        role: 'owner',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('refuses an editor removing a member', async () => {
+    await expect(
+      removeMemberAction({
+        deviceId: 'ws-1',
+        userId: '00000000-0000-0000-0000-0000000000b2',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(from).not.toHaveBeenCalled()
   })
 })
 

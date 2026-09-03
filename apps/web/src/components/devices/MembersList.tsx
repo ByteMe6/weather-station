@@ -21,6 +21,9 @@ import {
 } from '@/services/devices/devices.queries'
 import type { DeviceMember } from '@/services/devices/devices.service'
 
+// Kept short: this list sits in a per-row Select, where ShareDialog's fuller
+// wording would wrap. The distinction it stands for is that an editor may edit
+// the station's details but not its membership.
 const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
   { value: 'owner', label: 'Owner' },
   { value: 'editor', label: 'Editor' },

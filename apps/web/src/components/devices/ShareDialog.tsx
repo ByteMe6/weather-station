@@ -15,7 +15,7 @@ import { useShareDeviceMutation } from '@/services/devices/devices.queries'
 
 const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
   { value: 'viewer', label: 'Viewer — can see readings' },
-  { value: 'editor', label: 'Editor' },
+  { value: 'editor', label: 'Editor — can also edit station details' },
   { value: 'owner', label: 'Owner — can share and manage' },
 ]
 
