@@ -417,10 +417,10 @@ export type Database = {
           p_user_id: string
         }
         Returns: {
-          address: string
-          label: string
-          latitude: number
-          longitude: number
+          out_address: string
+          out_label: string
+          out_latitude: number
+          out_longitude: number
         }[]
       }
     }

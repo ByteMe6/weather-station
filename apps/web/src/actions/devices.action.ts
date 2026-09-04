@@ -466,12 +466,24 @@ export const updateDeviceProfileAction = async (input: {
     p_longitude: parsed.data.longitude ?? undefined,
   })
   if (error) {
-    // The function raises this when the caller is not an owner or editor. The
-    // gate above should already have refused, so reaching it means the two
-    // disagree — report the refusal, and log it as the anomaly it is.
-    if (error.message.includes('DEVICE_PROFILE_FORBIDDEN')) {
+    // Matched on the SQL error code plus the exact token, not a substring of
+    // the message: the function sets `using errcode = 'P0001'`, and matching
+    // loosely would let a renamed token silently downgrade a real authority
+    // refusal to UNKNOWN.
+    if (
+      error.code === 'P0001' &&
+      error.message === 'DEVICE_PROFILE_FORBIDDEN'
+    ) {
+      // Fires only when the TypeScript gate and the SQL check reached opposite
+      // conclusions — the anomaly this whole path exists to detect. Both the id
+      // that was passed and the role the gate believed are needed to tell a
+      // wrong user from a stale role from a drifted SQL list; deviceId alone
+      // leaves reproducing it as the only way to find out. userId is the
+      // internal uuid, so no Clerk identifier leaks into the log.
       console.error('updateDeviceProfileAction: gate and RPC disagree', {
         deviceId: parsed.data.deviceId,
+        userId: gate.userId,
+        role: gate.role,
       })
       return actionError(
         'FORBIDDEN',
@@ -484,8 +496,8 @@ export const updateDeviceProfileAction = async (input: {
       'Could not save the station details. Try again.',
     )
   }
-  // rpc() rows cannot be aliased in the query string (CLAUDE.md); the function
-  // returns these four column names unchanged, so no mapping is needed.
+  // rpc() rows cannot be aliased in the query string (CLAUDE.md), so the
+  // out_-prefixed columns are mapped here.
   const row = data?.[0]
   // Defensive, and unreachable today: device_users.device_id cascades on
   // delete, so a caller that passed the membership check cannot then find the
@@ -494,7 +506,18 @@ export const updateDeviceProfileAction = async (input: {
   if (!row) {
     return actionError('DEVICE_NOT_FOUND', 'That station no longer exists')
   }
-  return actionOk(row)
+  // `?? null` is not redundant. `supabase gen types` cannot infer nullability
+  // for RETURNS TABLE, so all four arrive typed non-null while every one of
+  // them is nullable in the database — a station with a cleared nickname
+  // returns null. Without this, `row.out_label.trim()` would typecheck here and
+  // throw at runtime; the `.select()` this replaced produced correct types from
+  // the table definition.
+  return actionOk({
+    label: row.out_label ?? null,
+    address: row.out_address ?? null,
+    latitude: row.out_latitude ?? null,
+    longitude: row.out_longitude ?? null,
+  })
 }
 
 export type MemberProfiles = Record<string, ClerkProfile>

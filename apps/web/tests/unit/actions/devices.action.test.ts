@@ -357,7 +357,12 @@ describe('updateDeviceProfileAction', () => {
       helpers.resolveMemberRole.mockResolvedValue(role)
       rpc.mockResolvedValue({
         data: [
-          { label: 'Backyard', address: null, latitude: null, longitude: null },
+          {
+            out_label: 'Backyard',
+            out_address: null,
+            out_latitude: null,
+            out_longitude: null,
+          },
         ],
         error: null,
       })
@@ -395,6 +400,8 @@ describe('updateDeviceProfileAction', () => {
     helpers.resolveMemberRole.mockResolvedValue('editor')
     rpc.mockResolvedValue({
       data: null,
+      // Matched on code + exact token, so a renamed token cannot quietly
+      // downgrade an authority refusal to UNKNOWN.
       error: {
         message: 'DEVICE_PROFILE_FORBIDDEN',
         code: 'P0001',
@@ -404,6 +411,25 @@ describe('updateDeviceProfileAction', () => {
     await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
       ok: false,
       code: 'FORBIDDEN',
+    })
+  })
+
+  // A refusal is recognised by code AND token. A message that merely contains
+  // the token, or the token under a different code, is not an authority
+  // refusal and must not be reported as one.
+  it('does not treat a lookalike error as a refusal', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'could not find the function public.update_device_profile',
+        code: 'PGRST202',
+        details: null,
+      },
+    })
+    await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+      ok: false,
+      code: 'UNKNOWN',
     })
   })
 

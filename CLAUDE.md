@@ -147,11 +147,20 @@ UI copy still renders the button is exactly how `editor` became a label the UI
 offered that granted nothing (until MRP-48 one `role === 'owner'` check guarded
 both authorities).
 
+There is a **third copy, deliberately**: `update_device_profile()`
+(`20260904065515`) re-spells `canEditDeviceProfile` in SQL as a backstop on the
+service-role write path, the way `device_users_owner_guard` backstops the app's
+ownership checks. It is not a fourth place to edit by hand —
+`tests/unit/lib/sqlRolePredicateParity.test.ts` reads the migration and fails if
+the SQL list and the predicate disagree in either direction.
+
 Mutating either predicate must fail tests on both sides — currently 1 shared +
-3 web for narrowing `canEditDeviceProfile`, 1 + 4 for widening
-`canManageDeviceMembers` (`packages/shared/tests/unit/device-roles.test.ts`,
+4 web for narrowing `canEditDeviceProfile` (the fourth being the SQL-parity
+test), 1 + 4 for widening `canManageDeviceMembers`
+(`packages/shared/tests/unit/device-roles.test.ts`,
 `tests/unit/actions/devices.action.test.ts` "membership stays owner-only",
-`tests/unit/components/devices/DeviceDetail.test.tsx`).
+`tests/unit/components/devices/DeviceDetail.test.tsx`,
+`tests/unit/lib/sqlRolePredicateParity.test.ts`).
 
 Gate helpers, and what each actually covers: `requireOwner` (sharing, role
 changes, removals), `requireProfileEditor` (`updateDeviceProfileAction`),
@@ -159,7 +168,17 @@ changes, removals), `requireProfileEditor` (`updateDeviceProfileAction`),
 `gate.role`). **Not** every `device_users` write goes through them —
 `registerDeviceAction` inserts the owner row inside the `claim_device` RPC,
 where the check is in SQL. Grepping for `requireOwner` alone will therefore
-miss a membership write; grep the RPC too.
+miss a membership write; grep the RPCs too — `claim_device` for membership,
+`update_device_profile` for station details.
+
+**Neither RPC is a trigger, and the difference matters.** `device_users_owner_guard`
+fires for every writer; an RPC only guards callers that choose it, and
+`service_role` holds `all on all tables` (`init_schema:232`). A trigger cannot
+close that for an _authority_ check, because on the service-role path SQL has
+no acting user — no JWT, `current_user` is `service_role`. The identity arrives
+only as an argument, which a caller skipping the function would equally skip.
+So routing every profile write through `update_device_profile()` is a
+convention held up by review, not something the database enforces.
 
 ## Supabase Clients — which one, where
 
