@@ -9,7 +9,7 @@ insert into public.device_users (device_id, user_id, role) values ('ws-profile00
 select ok(has_column_privilege('authenticated', 'public.devices', 'label', 'select'), 'authenticated can read devices.label');
 select ok(has_column_privilege('authenticated', 'public.devices', 'address', 'select'), 'authenticated can read devices.address');
 select ok(not has_column_privilege('authenticated', 'public.devices', 'secret', 'select'), 'devices.secret is still unreadable');
-select ok(not has_column_privilege('authenticated', 'public.devices', 'label', 'update'), 'label is read-only for clients (owners write through the server action)');
+select ok(not has_column_privilege('authenticated', 'public.devices', 'label', 'update'), 'label is read-only for clients (owners and editors write through the server action)');
 select throws_ok(
   $$ update public.devices set label = '' where device_id = 'ws-profile00001' $$,
   '23514', null, 'empty label is rejected by the check constraint'

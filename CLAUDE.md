@@ -138,13 +138,28 @@ sees, so changing them grants nobody access to anything. Membership does grant
 access, which is why it stays with the owner: an editor who could share or
 promote would be an owner under another name.
 
-Enforced in `actions/devices.action.ts` via `requireRole(deviceId, allowed,
-message)` — `requireOwner` for anything touching `device_users`,
-`requireProfileEditor` for `updateDeviceProfileAction`. **Never widen one
-shared flag**: until MRP-48 a single `role === 'owner'` check guarded both, so
-`editor` was a label the UI offered that granted nothing at all. The gates are
-mutation-tested in both directions (`tests/unit/actions/devices.action.test.ts`
-— "membership stays owner-only").
+**The predicates live in `@ws/shared`** (`canEditDeviceProfile`,
+`canManageDeviceMembers`) and are called from both sides of the trust boundary:
+`requireRole(deviceId, predicate, message)` in `actions/devices.action.ts`, and
+the components that render the control (`DeviceDetail`, `DevicesIndex`). Do not
+re-spell the condition locally — narrowing the server copy while a hard-coded
+UI copy still renders the button is exactly how `editor` became a label the UI
+offered that granted nothing (until MRP-48 one `role === 'owner'` check guarded
+both authorities).
+
+Mutating either predicate must fail tests on both sides — currently 1 shared +
+3 web for narrowing `canEditDeviceProfile`, 1 + 4 for widening
+`canManageDeviceMembers` (`packages/shared/tests/unit/device-roles.test.ts`,
+`tests/unit/actions/devices.action.test.ts` "membership stays owner-only",
+`tests/unit/components/devices/DeviceDetail.test.tsx`).
+
+Gate helpers, and what each actually covers: `requireOwner` (sharing, role
+changes, removals), `requireProfileEditor` (`updateDeviceProfileAction`),
+`requireMember` (`getDeviceMemberProfilesAction`, which then branches on
+`gate.role`). **Not** every `device_users` write goes through them —
+`registerDeviceAction` inserts the owner row inside the `claim_device` RPC,
+where the check is in SQL. Grepping for `requireOwner` alone will therefore
+miss a membership write; grep the RPC too.
 
 ## Supabase Clients — which one, where
 
@@ -391,7 +406,10 @@ if (!isUserLoaded || isLoading) {
 
 Server actions use the **service-role** client (bypasses RLS) with Clerk
 `auth()` for authorization. In this project that means: device registration,
-device sharing, Telegram linking, account settings, CSV export (PRD B2, W5).
+device sharing, **device profile writes** (nickname, address, coordinates),
+Telegram linking, account settings, CSV export (PRD B2, W5) — the same list as
+the right-hand column of the table above, which is the one to trust if these
+two ever disagree.
 
 - **File pattern**: `apps/web/src/actions/{domain}.action.ts`
 - Always start with `'use server'`; `import 'server-only'` first in any module

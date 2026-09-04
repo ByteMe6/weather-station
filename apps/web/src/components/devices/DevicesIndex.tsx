@@ -1,6 +1,7 @@
 'use client'
 
 import { useUser } from '@clerk/nextjs'
+import { canEditDeviceProfile } from '@ws/shared'
 import Link from 'next/link'
 import type { ReactElement } from 'react'
 
@@ -59,7 +60,11 @@ export const DevicesIndex = ({ testId }: { testId: string }): ReactElement => {
                     <span className="font-sans"> · {d.device.address}</span>
                   ) : null}
                 </span>
-                {d.role === 'owner' &&
+                {/* Coordinates are station details, so this hint follows the
+                    same predicate as the control it points at. Gated on
+                    `role === 'owner'` it left an editor with an unlocated
+                    station missing from the map and nothing explaining why. */}
+                {canEditDeviceProfile(d.role) &&
                 (d.device?.latitude === null ||
                   d.device?.latitude === undefined) ? (
                   <span

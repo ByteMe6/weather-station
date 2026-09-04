@@ -104,6 +104,14 @@ const deviceUsersInsert = jest.fn<
   Promise<{ error: unknown }>,
   [Record<string, unknown>]
 >()
+// Captures the payload AND the filter. The previous profile stub discarded the
+// table name, the update values and the eq() arguments, so pointing the action
+// at device_users, or dropping the .eq('device_id', …) so it rewrote every row,
+// still passed.
+const devicesUpdate = jest.fn<
+  Promise<{ data: Record<string, unknown> | null; error: unknown }>,
+  [Record<string, unknown>, [string, unknown]]
+>()
 
 const stubTables = (): void => {
   from.mockImplementation((table: string) => {
@@ -121,6 +129,16 @@ const stubTables = (): void => {
     if (table === 'device_users')
       return {
         insert: (row: Record<string, unknown>) => deviceUsersInsert(row),
+      }
+    if (table === 'devices')
+      return {
+        update: (values: Record<string, unknown>) => ({
+          eq: (column: string, value: unknown) => ({
+            select: () => ({
+              maybeSingle: () => devicesUpdate(values, [column, value]),
+            }),
+          }),
+        }),
       }
     throw new Error(`unexpected table ${table}`)
   })
@@ -314,7 +332,12 @@ describe('member actions input validation', () => {
 
 describe('updateDeviceProfileAction', () => {
   beforeEach(() => {
+    // resetMocks is not set in jest.config.mjs and clearAllMocks only clears
+    // calls, so a mockImplementation set here would survive into the describes
+    // below and fail there with a cause sourced from this setup.
+    from.mockReset()
     jest.clearAllMocks()
+    stubTables()
     auth.mockResolvedValue({ userId: 'user_1' })
     helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
   })
@@ -339,37 +362,30 @@ describe('updateDeviceProfileAction', () => {
     latitude: '',
     longitude: '',
   }
-  const rowUpdate = () => {
-    const single = jest.fn(async () => ({
-      data: {
-        label: 'Backyard',
-        address: null,
-        latitude: null,
-        longitude: null,
-      },
-      error: null,
-    }))
-    from.mockReturnValue({
-      update: () => ({
-        eq: () => ({ select: () => ({ maybeSingle: single }) }),
-      }),
-    })
-    return single
-  }
-
   // The station's details belong to the device and every member already sees
   // them; changing them grants nobody access to anything. Membership does grant
   // access, which is why that stays with the owner (asserted below).
   it.each(['owner', 'editor'])(
-    'lets a %s edit the station details',
+    'lets a %s edit the station details, scoped to that one device',
     async (role) => {
       helpers.resolveMemberRole.mockResolvedValue(role)
-      const single = rowUpdate()
+      devicesUpdate.mockResolvedValue({
+        data: {
+          label: 'Backyard',
+          address: null,
+          latitude: null,
+          longitude: null,
+        },
+        error: null,
+      })
       await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
         ok: true,
         data: { label: 'Backyard' },
       })
-      expect(single).toHaveBeenCalled()
+      expect(devicesUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ label: 'Backyard' }),
+        ['device_id', 'ws-1'],
+      )
     },
   )
 
@@ -377,12 +393,11 @@ describe('updateDeviceProfileAction', () => {
     'refuses a %s, without touching the row',
     async (role) => {
       helpers.resolveMemberRole.mockResolvedValue(role)
-      const single = rowUpdate()
       await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
         ok: false,
         code: 'FORBIDDEN',
       })
-      expect(single).not.toHaveBeenCalled()
+      expect(devicesUpdate).not.toHaveBeenCalled()
     },
   )
 

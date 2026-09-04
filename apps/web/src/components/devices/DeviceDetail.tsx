@@ -1,6 +1,7 @@
 'use client'
 
 import { useUser } from '@clerk/nextjs'
+import { canEditDeviceProfile, canManageDeviceMembers } from '@ws/shared'
 import Link from 'next/link'
 import type { ReactElement } from 'react'
 import { useCallback, useMemo, useState } from 'react'
@@ -81,10 +82,13 @@ export const DeviceDetail = ({
       />
     )
   }
-  // Two different authorities, deliberately not one flag. Editing the station's
-  // details is open to editors; anything that changes who has access is not.
-  const canManageMembers = link.role === 'owner'
-  const canEditProfile = link.role === 'owner' || link.role === 'editor'
+  // Two different authorities, deliberately not one flag — and both predicates
+  // come from @ws/shared, the same ones the server gates with. Hard-coding the
+  // role set here let the server narrow independently: the button would still
+  // render, the dialog would still submit, and the action would answer
+  // FORBIDDEN.
+  const canManageMembers = canManageDeviceMembers(link.role)
+  const canEditProfile = canEditDeviceProfile(link.role)
   return (
     <div data-testid={testId} className="flex flex-col gap-6">
       <DeviceHeader

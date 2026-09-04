@@ -4,6 +4,7 @@ import 'server-only'
 
 import { auth } from '@clerk/nextjs/server'
 import type { DeviceRole } from '@ws/shared'
+import { canEditDeviceProfile, canManageDeviceMembers } from '@ws/shared'
 import { createServiceRoleClient } from '@ws/supabase-db'
 import { z } from 'zod'
 
@@ -88,8 +89,9 @@ export const registerDeviceAction = async (input: {
 }
 
 // ---------------------------------------------------------------------------
-// Sharing (MRP-38): owner-only server actions; RLS is bypassed, so every entry
-// point resolves the caller's role explicitly.
+// Sharing (MRP-38) and station details (MRP-48). RLS is bypassed here, so every
+// entry point resolves the caller's role explicitly — membership changes stay
+// owner-only, station details are open to editors.
 
 const ROLES = [
   'owner',
@@ -106,15 +108,16 @@ type Gate =
  * Resolve the caller and assert their role on the device is one of `allowed`.
  *
  * RLS is bypassed on this path, so every entry point has to check membership in
- * code. Taking the allowed set as a parameter is what lets the two levels of
- * authority differ: managing people is owner-only, while editing the station's
- * own details is something an editor may do. `forbidden` is passed in because
- * a shared message would have to be vague enough to fit both, and "Only owners
- * can manage sharing" is the sentence that tells someone what to do next.
+ * code. The predicate comes from @ws/shared, shared with the components that
+ * render the corresponding control: two independent copies of the same
+ * condition is how `editor` became a label the UI offered that granted nothing.
+ * `forbidden` is passed in because a shared message would have to be vague
+ * enough to fit both authorities, and "Only owners can manage sharing" is the
+ * sentence that tells someone what to do next.
  */
 const requireRole = async (
   deviceId: string,
-  allowed: readonly DeviceRole[],
+  allows: (role: DeviceRole) => boolean,
   forbidden: string,
 ): Promise<Gate> => {
   const { userId: clerkUserId } = await auth()
@@ -134,7 +137,7 @@ const requireRole = async (
       }
     }
     const role = await resolveMemberRole(service, userId, deviceId)
-    if (!role || !allowed.includes(role)) {
+    if (!role || !allows(role)) {
       return { ok: false, result: actionError('FORBIDDEN', forbidden) }
     }
     return { ok: true, service, userId, role }
@@ -146,23 +149,23 @@ const requireRole = async (
 
 /** Membership changes — sharing, role changes, removals — are owner-only. */
 const requireOwner = async (deviceId: string): Promise<Gate> =>
-  requireRole(deviceId, ['owner'], 'Only owners can manage sharing')
+  requireRole(
+    deviceId,
+    canManageDeviceMembers,
+    'Only owners can manage sharing',
+  )
 
-// Editing the station's own details (nickname, address, coordinates) is a
-// property of the device that every member sees, not a grant of authority over
-// anyone — so an editor may do it. Everything that changes who has access stays
-// with the owner.
-const PROFILE_ROLES = [
-  'owner',
-  'editor',
-] as const satisfies readonly DeviceRole[]
-
+/** Station details. Open to editors — see canEditDeviceProfile for why. */
 const requireProfileEditor = async (deviceId: string): Promise<Gate> =>
   requireRole(
     deviceId,
-    PROFILE_ROLES,
+    canEditDeviceProfile,
     'Only owners and editors can edit this station',
   )
+
+/** Any member; the caller then branches on `gate.role` for what they may see. */
+const requireMember = async (deviceId: string): Promise<Gate> =>
+  requireRole(deviceId, () => true, "You don't have access to this station")
 
 const UNKNOWN_MSG = 'Something went wrong. Try again.'
 const deviceIdSchema = z.string().min(1).max(64)
@@ -413,7 +416,7 @@ const profileSchema = z
     })
   })
 
-/** Owner sets the station's nickname and address (free text; geocoding/map is a later ticket). */
+/** Owners and editors set the station's nickname, address and coordinates. */
 export const updateDeviceProfileAction = async (input: {
   deviceId: string
   label: string
@@ -483,23 +486,21 @@ const profilesSchema = z.object({ deviceId: deviceIdSchema })
 export const getDeviceMemberProfilesAction = async (input: {
   deviceId: string
 }): Promise<ActionResult<MemberProfiles>> => {
-  const { userId: clerkUserId } = await auth()
-  if (!clerkUserId) return actionError('UNAUTHORIZED', 'Sign in to continue')
   const parsed = profilesSchema.safeParse(input)
   if (!parsed.success) return actionError('INVALID_INPUT', 'Unknown station')
   const { deviceId } = parsed.data
-  const service = createServiceRoleClient()
+  // Through the same gate as every other entry point. This used to re-implement
+  // auth() -> resolveCurrentUserId -> resolveMemberRole -> error mapping inline,
+  // so a later change to how membership is resolved (a suspended-account check,
+  // say) would have silently skipped this action alone.
+  const gate = await requireMember(deviceId)
+  if (!gate.ok) return gate.result
+  const { service, userId } = gate
   try {
-    const userId = await resolveCurrentUserId(service, clerkUserId)
-    if (!userId) return actionError('UNAUTHORIZED', 'Sign in to continue')
-    const role = await resolveMemberRole(service, userId, deviceId)
-    if (!role)
-      return actionError('FORBIDDEN', "You don't have access to this station")
     const identities = await fetchDeviceMemberIdentities(service, { deviceId })
-    const visible =
-      role === 'owner'
-        ? identities
-        : identities.filter((m) => m.userId === userId)
+    const visible = canManageDeviceMembers(gate.role)
+      ? identities
+      : identities.filter((m) => m.userId === userId)
     const profiles = await fetchClerkProfiles(
       visible.flatMap((m) => (m.clerkUserId ? [m.clerkUserId] : [])),
     )

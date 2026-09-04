@@ -68,3 +68,4 @@ export const TELEGRAM_LINK_TTL_MS = 10 * 60_000
 // provisioning CLI can import it under bare `node --experimental-strip-types`
 // (which cannot follow this barrel's extensionless directory imports).
 export * from './device-identity.ts'
+export * from './device-roles.ts'
