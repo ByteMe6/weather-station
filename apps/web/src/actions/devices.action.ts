@@ -446,31 +446,55 @@ export const updateDeviceProfileAction = async (input: {
   }
   const gate = await requireProfileEditor(parsed.data.deviceId)
   if (!gate.ok) return gate.result
-  // Return the row the database actually holds rather than echoing the input:
-  // a zero-row update reports no error, so echoing would show values that were
-  // never stored.
-  const { data, error } = await gate.service
-    .from('devices')
-    .update({
-      label: parsed.data.label,
-      address: parsed.data.address,
-      latitude: parsed.data.latitude,
-      longitude: parsed.data.longitude,
-    })
-    .eq('device_id', parsed.data.deviceId)
-    .select('label, address, latitude, longitude')
-    .maybeSingle()
+  // Through update_device_profile(), not a direct UPDATE: the function
+  // re-checks membership in SQL, so this authority has a database-side backstop
+  // the way membership writes have device_users_owner_guard. The gate above is
+  // still what produces the user-facing refusal; this is the layer that holds
+  // if the gate is ever wrong.
+  //
+  // Returns the row the database actually holds rather than echoing the input,
+  // so a write that stored nothing cannot be reported as success.
+  const { data, error } = await gate.service.rpc('update_device_profile', {
+    p_device_id: parsed.data.deviceId,
+    p_user_id: gate.userId,
+    // `?? undefined`, not null: the generated Args type cannot express a
+    // nullable argument, so the four clearable fields are defaulted in SQL and
+    // omitting the key is how null is sent. Same stored result either way.
+    p_label: parsed.data.label ?? undefined,
+    p_address: parsed.data.address ?? undefined,
+    p_latitude: parsed.data.latitude ?? undefined,
+    p_longitude: parsed.data.longitude ?? undefined,
+  })
   if (error) {
+    // The function raises this when the caller is not an owner or editor. The
+    // gate above should already have refused, so reaching it means the two
+    // disagree — report the refusal, and log it as the anomaly it is.
+    if (error.message.includes('DEVICE_PROFILE_FORBIDDEN')) {
+      console.error('updateDeviceProfileAction: gate and RPC disagree', {
+        deviceId: parsed.data.deviceId,
+      })
+      return actionError(
+        'FORBIDDEN',
+        'Only owners and editors can edit this station',
+      )
+    }
     console.error('updateDeviceProfileAction failed', error)
     return actionError(
       'UNKNOWN',
       'Could not save the station details. Try again.',
     )
   }
-  if (!data) {
+  // rpc() rows cannot be aliased in the query string (CLAUDE.md); the function
+  // returns these four column names unchanged, so no mapping is needed.
+  const row = data?.[0]
+  // Defensive, and unreachable today: device_users.device_id cascades on
+  // delete, so a caller that passed the membership check cannot then find the
+  // devices row gone. Kept because "the write proves it hit a row" is the rule,
+  // not because this branch has a known trigger.
+  if (!row) {
     return actionError('DEVICE_NOT_FOUND', 'That station no longer exists')
   }
-  return actionOk(data)
+  return actionOk(row)
 }
 
 export type MemberProfiles = Record<string, ClerkProfile>
