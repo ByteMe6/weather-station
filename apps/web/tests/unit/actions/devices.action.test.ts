@@ -104,6 +104,14 @@ const deviceUsersInsert = jest.fn<
   Promise<{ error: unknown }>,
   [Record<string, unknown>]
 >()
+// Captures the payload AND the filter. The previous profile stub discarded the
+// table name, the update values and the eq() arguments, so pointing the action
+// at device_users, or dropping the .eq('device_id', …) so it rewrote every row,
+// still passed.
+const devicesUpdate = jest.fn<
+  Promise<{ data: Record<string, unknown> | null; error: unknown }>,
+  [Record<string, unknown>, [string, unknown]]
+>()
 
 const stubTables = (): void => {
   from.mockImplementation((table: string) => {
@@ -121,6 +129,16 @@ const stubTables = (): void => {
     if (table === 'device_users')
       return {
         insert: (row: Record<string, unknown>) => deviceUsersInsert(row),
+      }
+    if (table === 'devices')
+      return {
+        update: (values: Record<string, unknown>) => ({
+          eq: (column: string, value: unknown) => ({
+            select: () => ({
+              maybeSingle: () => devicesUpdate(values, [column, value]),
+            }),
+          }),
+        }),
       }
     throw new Error(`unexpected table ${table}`)
   })
@@ -314,7 +332,12 @@ describe('member actions input validation', () => {
 
 describe('updateDeviceProfileAction', () => {
   beforeEach(() => {
+    // resetMocks is not set in jest.config.mjs and clearAllMocks only clears
+    // calls, so a mockImplementation set here would survive into the describes
+    // below and fail there with a cause sourced from this setup.
+    from.mockReset()
     jest.clearAllMocks()
+    stubTables()
     auth.mockResolvedValue({ userId: 'user_1' })
     helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
   })
@@ -332,18 +355,51 @@ describe('updateDeviceProfileAction', () => {
       fieldErrors: { label: expect.any(String) as string },
     })
   })
-  it('rejects non-owners', async () => {
-    helpers.resolveMemberRole.mockResolvedValue('viewer')
-    await expect(
-      updateDeviceProfileAction({
-        deviceId: 'ws-1',
-        label: 'Backyard',
-        address: '',
-        latitude: '',
-        longitude: '',
-      }),
-    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
-  })
+  const PROFILE = {
+    deviceId: 'ws-1',
+    label: 'Backyard',
+    address: '',
+    latitude: '',
+    longitude: '',
+  }
+  // The station's details belong to the device and every member already sees
+  // them; changing them grants nobody access to anything. Membership does grant
+  // access, which is why that stays with the owner (asserted below).
+  it.each(['owner', 'editor'])(
+    'lets a %s edit the station details, scoped to that one device',
+    async (role) => {
+      helpers.resolveMemberRole.mockResolvedValue(role)
+      devicesUpdate.mockResolvedValue({
+        data: {
+          label: 'Backyard',
+          address: null,
+          latitude: null,
+          longitude: null,
+        },
+        error: null,
+      })
+      await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+        ok: true,
+        data: { label: 'Backyard' },
+      })
+      expect(devicesUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ label: 'Backyard' }),
+        ['device_id', 'ws-1'],
+      )
+    },
+  )
+
+  it.each(['viewer', null])(
+    'refuses a %s, without touching the row',
+    async (role) => {
+      helpers.resolveMemberRole.mockResolvedValue(role)
+      await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+        ok: false,
+        code: 'FORBIDDEN',
+      })
+      expect(devicesUpdate).not.toHaveBeenCalled()
+    },
+  )
 
   it('rejects an out-of-range latitude and a half-filled pair', async () => {
     helpers.resolveMemberRole.mockResolvedValue('owner')
@@ -386,6 +442,52 @@ describe('updateDeviceProfileAction', () => {
         longitude: '24.0297',
       }),
     ).resolves.toMatchObject({ ok: false, code: 'INVALID_INPUT' })
+  })
+})
+
+// Editors gained the right to edit a station's details. The point of splitting
+// the gate rather than widening one flag is that nothing about membership moved
+// with it — an editor who could share, promote or remove would be an owner by
+// another name, and `editor` was a label with no meaning until now precisely
+// because a single `role === 'owner'` check guarded both concerns.
+describe('membership stays owner-only', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    auth.mockResolvedValue({ userId: 'user_1' })
+    helpers.resolveCurrentUserId.mockResolvedValue('uuid-1')
+    helpers.resolveMemberRole.mockResolvedValue('editor')
+  })
+
+  it('refuses an editor sharing the station', async () => {
+    await expect(
+      shareDeviceAction({
+        deviceId: 'ws-1',
+        identifier: 'someone@example.com',
+        role: 'viewer',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('refuses an editor changing a role', async () => {
+    await expect(
+      updateMemberRoleAction({
+        deviceId: 'ws-1',
+        userId: '00000000-0000-0000-0000-0000000000b2',
+        role: 'owner',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('refuses an editor removing a member', async () => {
+    await expect(
+      removeMemberAction({
+        deviceId: 'ws-1',
+        userId: '00000000-0000-0000-0000-0000000000b2',
+      }),
+    ).resolves.toMatchObject({ ok: false, code: 'FORBIDDEN' })
+    expect(from).not.toHaveBeenCalled()
   })
 })
 

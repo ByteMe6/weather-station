@@ -18,7 +18,7 @@ export const DeviceHeader = ({
   address: string | null
   status: string | null
   role: DeviceRole
-  /** Owner-only "Edit details" control, rendered to the right. */
+  /** "Edit details" control (owners and editors), rendered to the right. */
   action?: ReactNode
   testId: string
 }): ReactElement => (

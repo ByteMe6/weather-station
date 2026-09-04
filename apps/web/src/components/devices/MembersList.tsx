@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react'
 
 import { MemberAvatar } from './MemberAvatar'
 import { memberHandle } from './memberHandle'
+import { ROLE_OPTIONS_COMPACT as ROLE_OPTIONS } from './roleOptions'
 
 import type { MemberProfiles } from '@/actions/devices.action'
 import { springs } from '@/components/motion/variants'
@@ -20,12 +21,6 @@ import {
   useUpdateMemberRoleMutation,
 } from '@/services/devices/devices.queries'
 import type { DeviceMember } from '@/services/devices/devices.service'
-
-const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
-  { value: 'owner', label: 'Owner' },
-  { value: 'editor', label: 'Editor' },
-  { value: 'viewer', label: 'Viewer' },
-]
 
 interface MemberRowProps {
   member: DeviceMember

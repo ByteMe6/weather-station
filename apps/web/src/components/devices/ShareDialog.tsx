@@ -4,6 +4,8 @@ import type { DeviceRole } from '@ws/shared'
 import type { FormEvent, ReactElement } from 'react'
 import { useCallback, useState } from 'react'
 
+import { ROLE_OPTIONS_WITH_CAPABILITY as ROLE_OPTIONS } from './roleOptions'
+
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { Field } from '@/components/ui/Field'
@@ -12,12 +14,6 @@ import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { ActionError } from '@/lib/actions/unwrap'
 import { useShareDeviceMutation } from '@/services/devices/devices.queries'
-
-const ROLE_OPTIONS: { value: DeviceRole; label: string }[] = [
-  { value: 'viewer', label: 'Viewer — can see readings' },
-  { value: 'editor', label: 'Editor' },
-  { value: 'owner', label: 'Owner — can share and manage' },
-]
 
 export const ShareDialog = ({
   testId,

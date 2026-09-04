@@ -26,7 +26,7 @@ const device = (
   deviceId: string,
   latitude: number | null,
   longitude: number | null,
-  role: 'owner' | 'viewer' = 'owner',
+  role: 'owner' | 'editor' | 'viewer' = 'owner',
 ): MyDevice => ({
   deviceId,
   role,
@@ -62,9 +62,19 @@ describe('DevicesIndex map card', () => {
     expect(screen.getByTestId('devices-hint-ws-2')).toBeInTheDocument()
   })
 
-  it('does not hint a viewer who cannot edit the station', () => {
+  // The hint points at "station details", which editors may now change, so it
+  // follows canEditDeviceProfile rather than a hard-coded 'owner'. Named for
+  // the role rather than the capability: the old name said "cannot edit" while
+  // only ever rendering a viewer, so an editor slipped through it silently.
+  it('does not hint a viewer, who cannot open station details', () => {
     devices.data = [device('ws-3', null, null, 'viewer')]
     render(<DevicesIndex testId="devices" />)
     expect(screen.queryByTestId('devices-hint-ws-3')).not.toBeInTheDocument()
+  })
+
+  it('hints an editor, who can open station details', () => {
+    devices.data = [device('ws-4', null, null, 'editor')]
+    render(<DevicesIndex testId="devices" />)
+    expect(screen.getByTestId('devices-hint-ws-4')).toBeInTheDocument()
   })
 })
