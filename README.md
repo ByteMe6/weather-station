@@ -15,6 +15,7 @@ infra/
   supabase-db/        Database package: migrations, generated types, service-role
                       client, and Supabase Edge Functions (telegram-bot)
 firmware/             ESP32 firmware (Arduino core + PlatformIO)
+case/                 3D-printed enclosure (STL/3MF at 101 %, wiring, assembly guide)
 docs/                 Project documentation
 ```
 
@@ -168,6 +169,12 @@ remains the way to emit a flashable NVS image.
 
 See [`firmware/README.md`](firmware/README.md) for toolchain setup, the
 `secrets.ini` flash-time config workflow, and flash instructions.
+
+### Case
+
+See [`case/README.md`](case/README.md) for the 3D-printed enclosure: model
+files (already scaled to 101 % for the 50 × 50 mm perfboard), print settings,
+wiring diagram and the assembly guide.
 
 ## CI
 
