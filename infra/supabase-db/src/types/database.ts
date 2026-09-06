@@ -47,6 +47,7 @@ export type Database = {
       alert_dispatch_ticks: {
         Row: {
           error_msg: string | null
+          reconcile_error: string | null
           request_id: number
           requested_at: string
           settled_at: string | null
@@ -55,6 +56,7 @@ export type Database = {
         }
         Insert: {
           error_msg?: string | null
+          reconcile_error?: string | null
           request_id: number
           requested_at?: string
           settled_at?: string | null
@@ -63,6 +65,7 @@ export type Database = {
         }
         Update: {
           error_msg?: string | null
+          reconcile_error?: string | null
           request_id?: number
           requested_at?: string
           settled_at?: string | null
@@ -403,6 +406,22 @@ export type Database = {
       set_alert_cron_config: {
         Args: { p_secret: string; p_url: string }
         Returns: undefined
+      }
+      update_device_profile: {
+        Args: {
+          p_address?: string
+          p_device_id: string
+          p_label?: string
+          p_latitude?: number
+          p_longitude?: number
+          p_user_id: string
+        }
+        Returns: {
+          out_address: string
+          out_label: string
+          out_latitude: number
+          out_longitude: number
+        }[]
       }
     }
     Enums: {

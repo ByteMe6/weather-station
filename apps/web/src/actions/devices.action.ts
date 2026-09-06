@@ -446,31 +446,78 @@ export const updateDeviceProfileAction = async (input: {
   }
   const gate = await requireProfileEditor(parsed.data.deviceId)
   if (!gate.ok) return gate.result
-  // Return the row the database actually holds rather than echoing the input:
-  // a zero-row update reports no error, so echoing would show values that were
-  // never stored.
-  const { data, error } = await gate.service
-    .from('devices')
-    .update({
-      label: parsed.data.label,
-      address: parsed.data.address,
-      latitude: parsed.data.latitude,
-      longitude: parsed.data.longitude,
-    })
-    .eq('device_id', parsed.data.deviceId)
-    .select('label, address, latitude, longitude')
-    .maybeSingle()
+  // Through update_device_profile(), not a direct UPDATE: the function
+  // re-checks membership in SQL, so this authority has a database-side backstop
+  // the way membership writes have device_users_owner_guard. The gate above is
+  // still what produces the user-facing refusal; this is the layer that holds
+  // if the gate is ever wrong.
+  //
+  // Returns the row the database actually holds rather than echoing the input,
+  // so a write that stored nothing cannot be reported as success.
+  const { data, error } = await gate.service.rpc('update_device_profile', {
+    p_device_id: parsed.data.deviceId,
+    p_user_id: gate.userId,
+    // `?? undefined`, not null: the generated Args type cannot express a
+    // nullable argument, so the four clearable fields are defaulted in SQL and
+    // omitting the key is how null is sent. Same stored result either way.
+    p_label: parsed.data.label ?? undefined,
+    p_address: parsed.data.address ?? undefined,
+    p_latitude: parsed.data.latitude ?? undefined,
+    p_longitude: parsed.data.longitude ?? undefined,
+  })
   if (error) {
+    // Matched on the SQL error code plus the exact token, not a substring of
+    // the message: the function sets `using errcode = 'P0001'`, and matching
+    // loosely would let a renamed token silently downgrade a real authority
+    // refusal to UNKNOWN.
+    if (
+      error.code === 'P0001' &&
+      error.message === 'DEVICE_PROFILE_FORBIDDEN'
+    ) {
+      // Fires only when the TypeScript gate and the SQL check reached opposite
+      // conclusions — the anomaly this whole path exists to detect. Both the id
+      // that was passed and the role the gate believed are needed to tell a
+      // wrong user from a stale role from a drifted SQL list; deviceId alone
+      // leaves reproducing it as the only way to find out. userId is the
+      // internal uuid, so no Clerk identifier leaks into the log.
+      console.error('updateDeviceProfileAction: gate and RPC disagree', {
+        deviceId: parsed.data.deviceId,
+        userId: gate.userId,
+        role: gate.role,
+      })
+      return actionError(
+        'FORBIDDEN',
+        'Only owners and editors can edit this station',
+      )
+    }
     console.error('updateDeviceProfileAction failed', error)
     return actionError(
       'UNKNOWN',
       'Could not save the station details. Try again.',
     )
   }
-  if (!data) {
+  // rpc() rows cannot be aliased in the query string (CLAUDE.md), so the
+  // out_-prefixed columns are mapped here.
+  const row = data?.[0]
+  // Defensive, and unreachable today: device_users.device_id cascades on
+  // delete, so a caller that passed the membership check cannot then find the
+  // devices row gone. Kept because "the write proves it hit a row" is the rule,
+  // not because this branch has a known trigger.
+  if (!row) {
     return actionError('DEVICE_NOT_FOUND', 'That station no longer exists')
   }
-  return actionOk(data)
+  // `?? null` is not redundant. `supabase gen types` cannot infer nullability
+  // for RETURNS TABLE, so all four arrive typed non-null while every one of
+  // them is nullable in the database — a station with a cleared nickname
+  // returns null. Without this, `row.out_label.trim()` would typecheck here and
+  // throw at runtime; the `.select()` this replaced produced correct types from
+  // the table definition.
+  return actionOk({
+    label: row.out_label ?? null,
+    address: row.out_address ?? null,
+    latitude: row.out_latitude ?? null,
+    longitude: row.out_longitude ?? null,
+  })
 }
 
 export type MemberProfiles = Record<string, ClerkProfile>

@@ -4,7 +4,7 @@ const ensure = jest.fn<Promise<unknown>, []>()
 jest.mock('@/actions/users.action', () => ({
   ensureCurrentUserAction: () => ensure(),
 }))
-const rpc = jest.fn<Promise<{ error: unknown }>, unknown[]>()
+const rpc = jest.fn<Promise<{ data?: unknown; error: unknown }>, unknown[]>()
 const identities = jest.fn<
   Promise<unknown[]>,
   [unknown, { deviceId: string }]
@@ -104,14 +104,6 @@ const deviceUsersInsert = jest.fn<
   Promise<{ error: unknown }>,
   [Record<string, unknown>]
 >()
-// Captures the payload AND the filter. The previous profile stub discarded the
-// table name, the update values and the eq() arguments, so pointing the action
-// at device_users, or dropping the .eq('device_id', …) so it rewrote every row,
-// still passed.
-const devicesUpdate = jest.fn<
-  Promise<{ data: Record<string, unknown> | null; error: unknown }>,
-  [Record<string, unknown>, [string, unknown]]
->()
 
 const stubTables = (): void => {
   from.mockImplementation((table: string) => {
@@ -129,16 +121,6 @@ const stubTables = (): void => {
     if (table === 'device_users')
       return {
         insert: (row: Record<string, unknown>) => deviceUsersInsert(row),
-      }
-    if (table === 'devices')
-      return {
-        update: (values: Record<string, unknown>) => ({
-          eq: (column: string, value: unknown) => ({
-            select: () => ({
-              maybeSingle: () => devicesUpdate(values, [column, value]),
-            }),
-          }),
-        }),
       }
     throw new Error(`unexpected table ${table}`)
   })
@@ -365,41 +347,103 @@ describe('updateDeviceProfileAction', () => {
   // The station's details belong to the device and every member already sees
   // them; changing them grants nobody access to anything. Membership does grant
   // access, which is why that stays with the owner (asserted below).
+  //
+  // Asserting the rpc name and its arguments, not just that something was
+  // called: the write goes through update_device_profile(), which re-checks the
+  // role in SQL, and p_user_id is what it checks against.
   it.each(['owner', 'editor'])(
-    'lets a %s edit the station details, scoped to that one device',
+    'lets a %s edit the station details, through the checked RPC',
     async (role) => {
       helpers.resolveMemberRole.mockResolvedValue(role)
-      devicesUpdate.mockResolvedValue({
-        data: {
-          label: 'Backyard',
-          address: null,
-          latitude: null,
-          longitude: null,
-        },
+      rpc.mockResolvedValue({
+        data: [
+          {
+            out_label: 'Backyard',
+            out_address: null,
+            out_latitude: null,
+            out_longitude: null,
+          },
+        ],
         error: null,
       })
       await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
         ok: true,
         data: { label: 'Backyard' },
       })
-      expect(devicesUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ label: 'Backyard' }),
-        ['device_id', 'ws-1'],
-      )
+      expect(rpc).toHaveBeenCalledWith('update_device_profile', {
+        p_device_id: 'ws-1',
+        p_user_id: 'uuid-1',
+        p_label: 'Backyard',
+        p_address: undefined,
+        p_latitude: undefined,
+        p_longitude: undefined,
+      })
     },
   )
 
   it.each(['viewer', null])(
-    'refuses a %s, without touching the row',
+    'refuses a %s, without reaching the database',
     async (role) => {
       helpers.resolveMemberRole.mockResolvedValue(role)
       await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
         ok: false,
         code: 'FORBIDDEN',
       })
-      expect(devicesUpdate).not.toHaveBeenCalled()
+      expect(rpc).not.toHaveBeenCalled()
     },
   )
+
+  // The gate and the RPC check the same authority independently. If they ever
+  // disagree the RPC wins, because it is the one the database enforces — and
+  // the disagreement is logged, since it means one of the two is wrong.
+  it('reports the RPC refusal when the gate and the database disagree', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('editor')
+    rpc.mockResolvedValue({
+      data: null,
+      // Matched on code + exact token, so a renamed token cannot quietly
+      // downgrade an authority refusal to UNKNOWN.
+      error: {
+        message: 'DEVICE_PROFILE_FORBIDDEN',
+        code: 'P0001',
+        details: null,
+      },
+    })
+    await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+      ok: false,
+      code: 'FORBIDDEN',
+    })
+  })
+
+  // A refusal is recognised by code AND token. A message that merely contains
+  // the token, or the token under a different code, is not an authority
+  // refusal and must not be reported as one.
+  it('does not treat a lookalike error as a refusal', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'could not find the function public.update_device_profile',
+        code: 'PGRST202',
+        details: null,
+      },
+    })
+    await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+      ok: false,
+      code: 'UNKNOWN',
+    })
+  })
+
+  // "Writes must prove they hit a row" (CLAUDE.md): an empty return is not a
+  // silent success, even though device_users cascades on delete so this cannot
+  // currently happen.
+  it('does not report success when the RPC returns no row', async () => {
+    helpers.resolveMemberRole.mockResolvedValue('owner')
+    rpc.mockResolvedValue({ data: [], error: null })
+    await expect(updateDeviceProfileAction(PROFILE)).resolves.toMatchObject({
+      ok: false,
+      code: 'DEVICE_NOT_FOUND',
+    })
+  })
 
   it('rejects an out-of-range latitude and a half-filled pair', async () => {
     helpers.resolveMemberRole.mockResolvedValue('owner')
