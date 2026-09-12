@@ -173,6 +173,32 @@ restarts into setup mode (the access point above) as soon as the button is
 released. The release step matters: GPIO0 is an ESP32 strap pin, so the
 firmware deliberately waits for release before restarting.
 
+**If the hold only reboots the station, you are on the wrong button.** `EN`
+sits right next to `BOOT` on a DevKit V1 — and in the printed case, directly
+above it — but `EN` resets the chip without touching NVS, so the device comes
+straight back up on its old credentials. The reset reason in the serial log
+tells them apart:
+
+| Serial log after the hold                                                     | What happened                    |
+| ----------------------------------------------------------------------------- | -------------------------------- |
+| `rst:0x1 (POWERON_RESET)`, no wipe line                                       | `EN`, or a power cycle — no wipe |
+| `Reset button held 5s, wiping WiFi credentials` then `rst:0xc (SW_CPU_RESET)` | `BOOT` — the wipe ran            |
+
+`ESP.restart()` can only ever produce `SW_CPU_RESET`, so a `POWERON_RESET`
+means the reboot came from outside the firmware. To identify `BOOT` without
+reading the silkscreen, hold the candidate button and tap the other one: if the
+ROM prints `waiting for download` instead of the usual banner, the button you
+are holding is `BOOT`.
+
+A wipe that ran is confirmed by the next boot printing `No saved WiFi -
+starting setup portal`. If it instead goes back to `Connecting to <ssid>`, the
+erase did not stick.
+
+**Do not reach for `esptool erase_flash` when the button is being stubborn.**
+The WiFi credentials and the device identity share the one NVS partition at
+`0x9000` (see below), so erasing it costs a full re-provision rather than just
+the WiFi.
+
 ## Provisioning identity
 
 `DEVICE_ID` and `DEVICE_SECRET` are **not** build flags. They live in the

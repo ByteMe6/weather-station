@@ -94,8 +94,20 @@ flags are involved — see `firmware/README.md` for the full sensor notes.
 > every address, which looks exactly like a dead sensor.
 
 Power the station over the ESP32's USB-C; the case's only external opening is
-the USB-C window, so nothing else needs to leave the box. The onboard `BOOT`
-button (GPIO0) doubles as the WiFi-reset button — hold it for 5 s.
+the USB-C window, so nothing else needs to leave the box.
+
+> **The WiFi-reset button is sealed inside.** The onboard `BOOT` button (GPIO0)
+> doubles as the WiFi reset — hold it 5 s — but the case has no opening for it,
+> so resetting WiFi means taking the lid off. Worth knowing before the station
+> goes on a wall: the firmware never reopens the setup portal on its own, so a
+> renamed or replaced router makes that lid the only way back in.
+>
+> In this orientation the USB-C faces left, which stacks **both** buttons on
+> that same left edge: `EN` above the connector, `BOOT` below it. `EN` is a
+> plain chip reset — held for any length of time it reboots the station with
+> its WiFi credentials intact, which looks exactly like a reset that did not
+> work. `BOOT` is the lower one. `firmware/README.md` has the serial-log test
+> that tells them apart.
 
 ## Assembly guide
 
@@ -116,7 +128,10 @@ button (GPIO0) doubles as the WiFi-reset button — hold it for 5 s.
 4. **Bench-test before closing.** Flash the firmware, open the serial monitor,
    and confirm a line like `BME280 at 0x76 - temperature, humidity, pressure`.
    If it reports `No BME280 or BMP280 found`, fix it now — the sensor is hard
-   to reach once the lid is on.
+   to reach once the lid is on. Hold `BOOT` for 5 s in the same session and
+   watch for `Reset button held 5s, wiping WiFi credentials`: that confirms you
+   can find the right button by feel, which is what you will be doing later
+   with the lid off and the board still wired.
 
 5. **Seat the board.** Slide the perfboard into the body so its edge sits on
    the rail and the ESP32's USB-C faces the open side of the body. The board
