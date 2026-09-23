@@ -1068,8 +1068,6 @@ void handleStationConnected() {
     Serial.println("Sensor is back");
   }
 
-  static constexpr float TEMP_OFFSET_C = -3.0f;
-
   float t = NAN;
   float h = NAN;
   float p = NAN;
@@ -1081,7 +1079,7 @@ void handleStationConnected() {
     p = bme.readPressure() / 100.0f;
   } else {
     bmp.takeForcedMeasurement();
-    t = bmp.readTemperature() - 3 ;
+    t = bmp.readTemperature() - 3;
     p = bmp.readPressure() / 100.0f;
   }
 
