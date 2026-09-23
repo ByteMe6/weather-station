@@ -1068,18 +1068,20 @@ void handleStationConnected() {
     Serial.println("Sensor is back");
   }
 
+  static constexpr float TEMP_OFFSET_C = -3.0f;
+
   float t = NAN;
   float h = NAN;
   float p = NAN;
 
   if (sensorKind == SENSOR_BME280) {
     bme.takeForcedMeasurement();
-    t = bme.readTemperature();
+    t = bme.readTemperature() - 3;
     h = bme.readHumidity();
     p = bme.readPressure() / 100.0f;
   } else {
     bmp.takeForcedMeasurement();
-    t = bmp.readTemperature();
+    t = bmp.readTemperature() - 3 ;
     p = bmp.readPressure() / 100.0f;
   }
 
