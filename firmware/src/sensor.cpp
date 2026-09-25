@@ -190,12 +190,12 @@ bool sensorPoll(SensorSample &out) {
 
   if (sensorKind == SENSOR_BME280) {
     bme.takeForcedMeasurement();
-    t = bme.readTemperature() - 3;
+    t = bme.readTemperature();
     h = bme.readHumidity();
     p = bme.readPressure() / 100.0f;
   } else {
     bmp.takeForcedMeasurement();
-    t = bmp.readTemperature() - 3;
+    t = bmp.readTemperature();
     p = bmp.readPressure() / 100.0f;
   }
 
