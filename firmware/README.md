@@ -28,7 +28,14 @@ firmware/
   secrets.ini.example   # template for fleet-wide flash-time config
   secrets.ini           # your local copy (gitignored — never commit)
   src/
-    main.cpp            # entry point: WiFi provisioning state machine + sensor loop
+    main.cpp            # entry point: setup(), loop(), the connected-station tick
+    wifi_link.cpp       # credentials, phase machine, connect/back-off, reset button
+    portal.cpp          # WiFiManager skin + the LAN config portal
+    sensor.cpp          # BME280/BMP280 detection, read cadence, plausibility gate
+    device_config.cpp   # NVS-backed identity, backend URL, upload cadence
+    uploader.cpp        # sampling window, signing, delivery and retries
+    ota.cpp             # signed OTA check and install
+    clock_sync.cpp      # NTP sync, shared by ota.cpp and uploader.cpp
 ```
 
 ## Sensors — BME280 / BMP280 (I2C)
@@ -77,7 +84,7 @@ parts are supported from one image because they are pin- and
 address-compatible, so a board that has not been upgraded yet keeps working —
 a BMP280 simply reports `humidity` as `null`.
 
-`main.cpp` samples every 2 s and logs to serial at 115200 baud:
+`sensor.cpp` samples every 2 s and logs to serial at 115200 baud:
 
 ```
 BME280 at 0x76 - temperature, humidity, pressure
@@ -120,7 +127,7 @@ No BME280 or BMP280 found, retrying... scanning the I2C bus:
   through. On a 6-pin module, `CSB` floating (see the table above).
 
 Altitude is derived from pressure against a local sea-level reference
-(`SEA_LEVEL_HPA` at the top of `main.cpp`), not a separate measurement. Set it
+(`SEA_LEVEL_HPA` at the top of `src/sensor.cpp`), not a separate measurement. Set it
 to the current sea-level pressure from a nearby weather report; when the
 altitude readout drifts with the weather, update the constant and re-flash.
 
