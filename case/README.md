@@ -32,11 +32,17 @@ applied uniformly, so wall thickness and hole sizes grow by the same 1 %.
 | Part                                | W × D × H (mm)      |
 | ----------------------------------- | ------------------- |
 | Body (three walls, floor, rail)     | 63.4 × 59.4 × 32.9  |
-| Lid (top plate + fourth wall)       | 63.4 × 61.4 × 34.9  |
+| Lid (plate, fourth wall, divider)   | 63.4 × 61.4 × 34.9  |
 | Both parts as laid out on the plate | 131.9 × 61.4 × 34.9 |
 
 Inner clearance suits a 50 × 50 mm perfboard with the ESP32 DevKit V1
 (≈ 51 × 28 mm) mounted on it and a 4-pin BME280/BMP280 breakout beside it.
+
+The lid carries a **divider wall** (1.6 mm thick, 20 mm tall, running the full
+depth of the plate, ≈ 39 mm from the plate edge nearest the body on the print
+bed) that splits the inside into two chambers, each with its own 5 × 5 vent
+grid in the plate. It keeps the ESP32's heat away from the sensor, so leave
+the sensor on the far side of the divider from the ESP32.
 
 ## Print settings
 
@@ -140,7 +146,10 @@ the USB-C window, so nothing else needs to leave the box.
 6. **Fit the lid.** Line the lid's wall up with the open side of the body so
    the USB-C window sits over the connector, then push the lid down until its
    plate is flush with the top of the body walls. The wall on the lid closes
-   the fourth side; the vent grid on the plate ends up above the sensor.
+   the fourth side, and the divider drops down between the ESP32 and the
+   sensor. If the lid will not seat, the divider is landing on a part — check
+   what sits under it before forcing it. Each vent grid ends up above its own
+   chamber.
 
 7. **Plug in USB-C** through the window and watch the power LED. If the
    connector does not reach, the board is too far back on the rail — reopen and
