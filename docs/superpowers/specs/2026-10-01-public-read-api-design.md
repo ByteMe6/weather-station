@@ -31,7 +31,7 @@ readings (devices keep the HMAC ingest).
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Consumer | The user's own scripts/tools | No consent screen or OAuth flow needed; a long-lived bearer credential fits. |
-| Login | **Our own API keys** (`Authorization: Bearer wsk_live_…`) | Full control, no Clerk machine-auth dependency or billing. Email+password was rejected: Clerk has no first-class server-side password login, it breaks OAuth-only accounts and MFA, and puts the real password into scripts. Clerk session JWTs expire in ~60 s. |
+| Login | **Our own API keys** (`Authorization: Bearer wsk_live_…`) behind a **swappable provider seam** (§5.1) | Clerk API keys (GA 2026-04-17) were considered and deferred: verification is a network call to Clerk per request, and the free tier is 100k verifications/month for the whole app (~2.3 req/min across all users) with Hobby unable to exceed it — a single Grafana dashboard polling every 30 s exhausts it in about a week and the API would stop for everyone. Revisit on the Pro plan; §11 is the migration path. Email+password was rejected: Clerk has no first-class server-side password login, it breaks OAuth-only accounts and MFA, and puts the real password into scripts. Clerk session JWTs expire in ~60 s. |
 | Key scope | `read` or `read_write`, chosen at creation | A read key leaked from a Grafana config or a website cannot change anything. |
 | Expiry | User picks 30 / 90 / 365 days or never (default 90) | Bounded blast radius for forgotten keys without forcing churn on home scripts. |
 | Key cap | 10 active keys per user | Keeps the Settings list and the rate-limit table small. |
@@ -66,36 +66,46 @@ readings (devices keep the HMAC ingest).
 - The 10-active-keys cap is enforced in `createApiKeyAction` (count of rows with
   `revoked_at is null and (expires_at is null or expires_at > now())`).
 
-### 3.2 `public.api_key_rate_limits`
+### 3.2 `public.api_rate_limits`
 
 | Column | Type |
 | --- | --- |
-| `key_id` | `uuid pk references public.api_keys (id) on delete cascade` |
+| `bucket` | `text pk` — `'key:' \|\| <key id>` |
 | `window_start` | `timestamptz not null` |
 | `count` | `int not null` |
 
-One row per key; the window resets in place, so the table needs no cleanup job.
-RLS enabled, no policies, no client grants.
+Deliberately **not** a foreign key to `api_keys`: the bucket is an opaque
+string so the same limiter works unchanged for Clerk key ids (`ak_…`) if the
+provider is swapped (§11). One row per bucket; the window resets in place.
+`revokeApiKey` deletes the key's bucket row; anything left behind by deleted
+users is a few bytes and can be swept later if it ever matters. RLS enabled, no
+policies, no client grants.
 
-### 3.3 `public.api_authenticate(p_key_hash bytea)`
+Authentication and rate limiting are **two functions on purpose** — the
+limiter must not depend on where keys live. This costs one extra DB round trip
+per request (both are single-row indexed statements) and buys a provider swap
+that touches neither the limiter nor the routes.
 
-`VOLATILE` (it writes), `security invoker`, `set search_path = ''`, `execute`
-revoked from `public, anon, authenticated` and granted to `service_role` only.
-Limit and window are passed as arguments (`p_limit int`, `p_window_seconds int`)
-so the constants live in `@ws/shared`, not in SQL.
+### 3.3 `public.api_key_authenticate(p_key_hash bytea)`
 
-In one call it:
+`VOLATILE` (it writes `last_used_at`), `security invoker`,
+`set search_path = ''`, `execute` revoked from `public, anon, authenticated`
+and granted to `service_role` only.
 
-1. finds the key with `key_hash = p_key_hash and revoked_at is null and
-   (expires_at is null or expires_at > now())` — no row ⇒ returns no row;
-2. upserts `api_key_rate_limits`: if the stored `window_start` is older than
-   the current window, reset to `(current window, 1)`, else `count + 1` —
-   atomic via `insert … on conflict (key_id) do update … returning`;
-3. sets `last_used_at = now()` only when it is null or older than one minute;
-4. returns `user_id, key_id, scope, allowed (count <= p_limit), remaining,
-   reset_at`.
+1. Finds the key with `key_hash = p_key_hash and revoked_at is null and
+   (expires_at is null or expires_at > now())` — no row ⇒ returns no row.
+2. Sets `last_used_at = now()` only when it is null or older than one minute.
+3. Returns `key_id, user_id, scope`.
 
-A rejected (over-limit) request still counts; that is intended.
+### 3.4 `public.api_rate_limit_hit(p_bucket text, p_limit int, p_window_seconds int)`
+
+Same volatility, security and grants as 3.3. Limit and window are arguments so
+the constants live in `@ws/shared`, not in SQL. Atomic
+`insert … on conflict (bucket) do update … returning`: if the stored
+`window_start` is older than the current window, reset to
+`(current window, 1)`, else `count + 1`. Returns
+`allowed (count <= p_limit), remaining, reset_at`. A rejected (over-limit)
+request still counts; that is intended.
 
 Run `yarn regenerate:types` after the migration.
 
@@ -218,19 +228,75 @@ validation (400) → membership (404) → role (403).
 | Unit | Responsibility | Depends on |
 | --- | --- | --- |
 | `packages/shared` — `api-keys.ts` | `API_KEY_PREFIX = 'wsk_live_'`, `API_KEY_SCOPES`, `ApiKeyScope`, `API_RATE_LIMIT` (60/60s), `API_KEY_MAX_ACTIVE` (10), expiry choices, span/limit caps, `ApiStation` / `ApiErrorBody` DTOs | — |
-| `lib/api/key.ts` | generate key (32 random bytes, base64url), SHA-256 hash, `parseBearer(header)`; pure, no DB | node `crypto` |
+| `lib/api/bearer.ts` | `parseBearer(header)` → raw token or null (scheme check, length sanity cap); knows nothing about key formats | — |
+| `lib/api/keys/provider.ts` | the `ApiKeyProvider` interface, `ApiKeyPrincipal`, `ApiKeySummary` (§5.1) — types only | shared |
+| `lib/api/keys/own-provider.ts` | our implementation: key generation (`wsk_live_` + 32 random bytes base64url), SHA-256, prefix check before any DB call, and the calls into `api-keys.service` | node `crypto`, api-keys service |
+| `lib/api/keys/index.ts` | `getApiKeyProvider()` — **the single switch point** between implementations | provider modules |
 | `lib/api/respond.ts` | JSON success/error builders, rate-limit + CORS + `no-store` headers | shared |
-| `lib/api/with-api-key.ts` | **the only entry point for station routes**: parse key → `authenticateApiKey` → 401/429 → scope check → `handler(req, { service, userId, keyId, scope }, params)`; catches `ServiceError` ⇒ 500 | key, respond, api-keys service |
+| `lib/api/with-api-key.ts` | **the only entry point for station routes**: `parseBearer` → `provider.authenticate` → 401 → `hitRateLimit('key:' + keyId)` → 429 → scope check → `handler(req, { service, userId, keyId, scope }, params)`; catches `ServiceError` ⇒ 500. Never imports a concrete provider | bearer, provider index, rate-limit service, respond |
 | `lib/api/station-gate.ts` | `requireStationRole(ctx, stationId, predicate)` → role or 404/403 response; uses `resolveMemberRole` and the shared predicates — no local re-spelling | `actions/_helpers` resolvers, `@ws/shared` |
-| `services/api-keys/api-keys.service.ts` | `createApiKey`, `listApiKeys`, `revokeApiKey`, `countActiveApiKeys`, `authenticateApiKey` (calls `api_authenticate`) | supabase-db |
+| `services/api-keys/api-keys.service.ts` | DB access for our keys: `insertApiKey`, `fetchApiKeysForUser`, `revokeApiKey`, `countActiveApiKeys`, `authenticateApiKeyHash` (calls `api_key_authenticate`) | supabase-db |
+| `services/api-keys/rate-limit.service.ts` | `hitRateLimit(service, { bucket, limit, windowSeconds })` (calls `api_rate_limit_hit`); provider-independent | supabase-db |
 | `services/devices/devices.service.ts` — `fetchStationsForUser(service, { userId })` | stations for one user with an **explicit** `.eq('user_id', userId)` | — |
 | `services/readings` | reuse `fetchLatestReading`, `fetchReadingsPage`, `fetchReadingsBucketed` unchanged | — |
-| `actions/api-keys.action.ts` | `createApiKeyAction({ name, scope, expiresInDays })` (returns the secret once), `listApiKeysAction`, `revokeApiKeyAction` — Clerk `auth()` + service role, `ActionResult` | api-keys service |
+| `actions/api-keys.action.ts` | `createApiKeyAction({ name, scope, expiresInDays })` (returns the secret once), `listApiKeysAction`, `revokeApiKeyAction` — Clerk `auth()`, input validation and the 10-key cap, then `getApiKeyProvider()`; returns `ActionResult` of provider-neutral `ApiKeySummary` | provider index |
 | `services/api-keys/api-keys.queries.ts` | `apiKeyKeys`, `useApiKeysQuery`, `useCreateApiKeyMutation`, `useRevokeApiKeyMutation` via `unwrapAction` | actions |
 | `components/settings/ApiKeysCard.tsx` | list (name, scope, hint, created, last used, expires), create dialog, show-once secret with copy, revoke; skeleton while loading; CORS/public-key warning; link to `/reference` | queries |
 | Route handlers under `app/api/v1/stations/` | `route.ts` (GET, OPTIONS), `[stationId]/route.ts` (GET, PATCH, OPTIONS), `[stationId]/readings/route.ts`, `…/latest/route.ts`, `…/aggregate/route.ts` — each export wrapped in `withApiKey` | all of the above |
 | `lib/openapi/document.ts` | register the six operations and a `bearerAuth` security scheme in `registerV1Paths` (additive); `API_VERSION_META.v1.specVersion = '1.1.0'` | — |
 | `lib/openapi/docs-enabled.ts` | default **on** in production; `API_DOCS_ENABLED` override unchanged | — |
+
+### 5.1 The provider seam
+
+Everything that depends on *where keys live* sits behind one interface; the
+routes, the limiter, the station gate, the actions' contracts and the UI do
+not. Arrow-function properties, per the project style:
+
+```ts
+type ApiKeyPrincipal = {
+  keyId: string // opaque: our uuid today, a Clerk `ak_…` id after a swap
+  userId: string // internal users.id — a Clerk adapter maps its subject
+  scope: ApiKeyScope
+}
+
+type ApiKeySummary = {
+  id: string
+  name: string
+  scope: ApiKeyScope
+  hint: string // display tail, e.g. "a9Xk"
+  createdAt: string
+  lastUsedAt: string | null // a provider that cannot report it returns null
+  expiresAt: string | null
+  revokedAt: string | null
+}
+
+type ApiKeyOwner = { userId: string; clerkUserId: string }
+
+type ApiKeyProvider = {
+  authenticate: (token: string) => Promise<ApiKeyPrincipal | null>
+  create: (
+    owner: ApiKeyOwner,
+    input: { name: string; scope: ApiKeyScope; expiresInDays: number | null },
+  ) => Promise<{ key: ApiKeySummary; secret: string }>
+  list: (owner: ApiKeyOwner) => Promise<ApiKeySummary[]>
+  countActive: (owner: ApiKeyOwner) => Promise<number>
+  /** false when the key does not exist or is not the owner's. */
+  revoke: (owner: ApiKeyOwner, keyId: string) => Promise<boolean>
+}
+```
+
+- The owner carries **both** ids so either implementation has what it needs:
+  ours keys rows by `users.id`, Clerk's API keys use the Clerk user id as
+  `subject`.
+- `ApiKeyScope` (`read` | `read_write`) is the domain vocabulary; a provider
+  that stores scopes differently maps at its boundary.
+- Errors: implementations throw `ServiceError`; `authenticate` returns `null`
+  for every "not a valid key" case and throws only on infrastructure failure
+  (so an outage is a 500, never a misleading 401).
+- A **provider contract test suite** (`describeApiKeyProvider(makeProvider)`)
+  exercises the interface — create → authenticate → list → revoke →
+  authenticate fails, expiry, cross-user revoke refused. It runs against our
+  provider in integration tests; a Clerk adapter must pass the same suite.
 
 **Trap this design avoids:** `fetchMyDevices` has no `WHERE` clause and relies
 on RLS meaning "own rows only". On the service-role client it would return
@@ -250,8 +316,10 @@ rather than rejected.
 script ──Bearer wsk_live_…──▶ proxy.ts (public route, pass)
   ▶ withApiKey
       parseBearer ──fail──▶ 401
-      sha256 → api_authenticate(hash, 60, 60)  (one DB round trip)
-          no row ─▶ 401      allowed=false ─▶ 429 + Retry-After
+      provider.authenticate(token)          (ours: prefix → sha256 →
+          null ─▶ 401                         api_key_authenticate)
+      hitRateLimit('key:' + keyId, 60, 60)  (api_rate_limit_hit)
+          allowed=false ─▶ 429 + Retry-After
       scope check ─▶ 403 INSUFFICIENT_SCOPE
   ▶ route handler
       zod-validate params/query/body ─▶ 400
@@ -281,18 +349,24 @@ A new **API keys** card on `/settings`:
 
 **pgTAP** — `supabase/tests/api_keys.sql`:
 - `anon` / `authenticated` cannot select/insert/update/delete `api_keys` or
-  `api_key_rate_limits`, and cannot execute `api_authenticate`.
-- `api_authenticate` returns no row for unknown, revoked and expired keys.
-- Counter increments within a window, resets in a new window; the 61st call in
-  a window returns `allowed = false`.
+  `api_rate_limits`, and cannot execute `api_key_authenticate` or
+  `api_rate_limit_hit`.
+- `api_key_authenticate` returns no row for unknown, revoked and expired keys.
+- `api_rate_limit_hit`: counter increments within a window, resets in a new
+  window; the 61st call in a window returns `allowed = false`; buckets are
+  independent.
 - `last_used_at` is not rewritten within a minute.
-- Deleting a user cascades to their keys and rate-limit rows.
+- Deleting a user cascades to their keys.
 
 **Unit (Jest, `tests/unit/` mirroring `src/`)**:
-- `lib/api/key`: prefix/length/charset, hash determinism, `parseBearer`
-  (missing header, non-Bearer scheme, wrong prefix, extra whitespace).
-- `withApiKey`: 401 (one body for every failure), 429 with headers, 403
-  `INSUFFICIENT_SCOPE`, `ServiceError` ⇒ 500 without detail.
+- `lib/api/bearer`: missing header, non-Bearer scheme, extra whitespace,
+  oversize token.
+- `own-provider` key helpers: prefix/length/charset, hash determinism, a
+  wrong-prefix token is rejected without a DB call.
+- `withApiKey` (with a fake `ApiKeyProvider`): 401 (one body for every
+  failure), 429 with headers, 403 `INSUFFICIENT_SCOPE`, provider throw ⇒ 500
+  without detail. Also an import guard: `with-api-key.ts` and the route files
+  import no concrete provider module.
 - **Route registry test**: every exported handler under
   `app/api/v1/stations/**/route.ts` is produced by `withApiKey` (or is the
   shared `OPTIONS` handler); fails when a handler is added without the gate.
@@ -310,7 +384,8 @@ A new **API keys** card on `/settings`:
   `1.1.0`, `versions.test.ts` stays green.
 
 **Integration (real local Supabase)**:
-- `api-keys.service`: create/list/revoke/authenticate, expiry, error paths.
+- Provider contract suite (§5.1) against our provider.
+- `api-keys.service` and `rate-limit.service`: happy and error paths.
 - `fetchStationsForUser`: user A never sees user B's stations (owned or
   shared); shared stations appear with the right role.
 
@@ -330,7 +405,8 @@ changes.
 - `docs/privacy-data-minimisation.md`: the API exposes addresses and
   coordinates to key holders; browser-embedded keys make them public.
 - `CLAUDE.md`: a third row in the data-path picture (key-authenticated API,
-  service-role + `withApiKey` + `requireStationRole`), the `fetchMyDevices`
+  service-role + `withApiKey` + `requireStationRole`), the `ApiKeyProvider`
+  seam and its single switch point, the `fetchMyDevices`
   trap, the updated predicate-mutation counts, and the docs-in-production
   change.
 
@@ -339,3 +415,30 @@ changes.
 1. Migration → `yarn regenerate:types`.
 2. Deploy to Vercel (no new environment variables).
 3. `/reference` becomes visible in production with the new operations.
+
+## 11. Switching to Clerk API keys later
+
+When the app moves to Clerk Pro (or the request volume makes the
+verification price irrelevant), the swap is:
+
+1. Enable **User API keys** in the Clerk dashboard (dev and prod instances).
+2. Add `lib/api/keys/clerk-provider.ts` implementing `ApiKeyProvider`:
+   `authenticate` → `clerkClient.apiKeys.verify(token)`, map
+   `subject` (Clerk user id) → `users.id` via `fetchUserIdByClerkId`, map
+   `scopes` → `ApiKeyScope`, return `null` on Clerk's invalid/revoked/expired
+   error; `create` → `clerkClient.apiKeys.create({ subject: clerkUserId, name,
+   scopes, secondsUntilExpiration })`; `list` / `revoke` likewise;
+   `lastUsedAt: null`.
+3. Make it pass the provider contract suite.
+4. Flip `getApiKeyProvider()`.
+5. Decide what happens to existing `wsk_live_` keys: either a short overlap
+   where a composite provider tries ours first by prefix, then Clerk; or
+   revoke them and ask users to re-create. Then drop `api_keys` in a
+   migration.
+
+Unchanged by the swap: the routes, `withApiKey`, `api_rate_limits` /
+`api_rate_limit_hit`, `requireStationRole`, the OpenAPI document (the
+`bearerAuth` scheme stays a bearer token), the action signatures and
+`ApiKeysCard` (which already tolerates `lastUsedAt: null`). If the swap
+happens while still on the free tier, add a short-TTL verification cache inside
+the Clerk provider rather than in `withApiKey`.
