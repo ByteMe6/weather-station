@@ -74,6 +74,71 @@ export type Database = {
         }
         Relationships: []
       }
+      api_keys: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          key_hash: string
+          key_hint: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          scope: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          key_hash: string
+          key_hint: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          scope: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          key_hash?: string
+          key_hint?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          scope?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_rate_limits: {
+        Row: {
+          bucket: string
+          count: number
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          count: number
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       bot_sessions: {
         Row: {
           expires_at: string
@@ -323,6 +388,22 @@ export type Database = {
           device_count: number
           id: string
           telegram_id: number
+        }[]
+      }
+      api_key_authenticate: {
+        Args: { p_key_hash: string }
+        Returns: {
+          out_key_id: string
+          out_scope: string
+          out_user_id: string
+        }[]
+      }
+      api_rate_limit_hit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
+        Returns: {
+          out_allowed: boolean
+          out_remaining: number
+          out_reset_at: string
         }[]
       }
       claim_device: {
