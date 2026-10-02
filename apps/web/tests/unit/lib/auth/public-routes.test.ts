@@ -10,6 +10,9 @@ describe('isPublicPath', () => {
     ['/api/v1/readings', true],
     ['/api/v1/health', true],
     ['/api/v1/openapi.json', true],
+    // Key-authenticated: Clerk must let these through to withApiKey.
+    ['/api/v1/stations', true],
+    ['/api/v1/stations/ws-abc123/readings/aggregate', true],
     ['/api/webhooks/clerk', true],
     ['/reference', true],
     ['/api-docs', true],
