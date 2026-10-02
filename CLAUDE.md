@@ -103,21 +103,29 @@ CLIENT PATH (RLS enforced) ← DEFAULT, always start here
 SERVER PATH (RLS bypassed) ← Only for operations that need secrets or elevation
   Component → Server Action → Service → Supabase (service-role key)
   ↳ Clerk auth() provides userId → authorization checked in code
+
+KEY PATH (RLS bypassed) ← only /api/v1/stations… (public API for users' scripts)
+  Script → Bearer API key → withApiKey (provider → rate limit → scope)
+         → requireStation (membership + @ws/shared predicate) → Service (service-role)
 ```
 
 **CRITICAL: Always default to Client Actions.** The backend serves **no read
-endpoints** for sensor data (PRD B3) — the browser and the bot query Supabase
-directly and RLS isolates per-user data via `device_users`.
+endpoints** for sensor data to the web app or the bot (PRD B3) — the browser
+and the bot query Supabase directly and RLS isolates per-user data via
+`device_users`. The KEY PATH is the one exception, and only for users' own
+scripts; never route the dashboard through it.
 
 Server paths in this project are exactly (PRD B1/B2, W5):
 
-| Use client path when…                                                         | Use server path when…                                  |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------ |
-| **All reads** (readings, charts, devices)                                     | Device ingest `POST /api/v1/readings` (HMAC verify)    |
-| **All user-scoped writes** RLS can enforce                                    | Device registration / sharing (`device_users` writes)  |
-| Realtime subscriptions (dashboard)                                            | Telegram account linking, account settings             |
-| Station map (`/devices`) — reuses the `deviceKeys.mine` cache, no extra query | Device profile writes (nickname, address, coordinates) |
-| Paginated/filtered history queries                                            | CSV export (server action)                             |
+| Use client path when…                                                         | Use server path when…                                           |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **All reads** (readings, charts, devices)                                     | Device ingest `POST /api/v1/readings` (HMAC verify)             |
+| **All user-scoped writes** RLS can enforce                                    | Device registration / sharing (`device_users` writes)           |
+| Realtime subscriptions (dashboard)                                            | Telegram account linking, account settings                      |
+| Station map (`/devices`) — reuses the `deviceKeys.mine` cache, no extra query | Device profile writes (nickname, address, coordinates)          |
+| Paginated/filtered history queries                                            | CSV export (server action)                                      |
+|                                                                               | API key create / list / revoke (server action)                  |
+|                                                                               | Public station API `/api/v1/stations…` (`withApiKey`, key path) |
 
 The `devices.secret` column (HMAC keys) is **service-role only** — no RLS
 policy may ever expose it to any user path.
@@ -154,13 +162,21 @@ ownership checks. It is not a fourth place to edit by hand —
 `tests/unit/lib/sqlRolePredicateParity.test.ts` reads the migration and fails if
 the SQL list and the predicate disagree in either direction.
 
-Mutating either predicate must fail tests on both sides — currently 1 shared +
-4 web for narrowing `canEditDeviceProfile` (the fourth being the SQL-parity
-test), 1 + 4 for widening `canManageDeviceMembers`
-(`packages/shared/tests/unit/device-roles.test.ts`,
-`tests/unit/actions/devices.action.test.ts` "membership stays owner-only",
-`tests/unit/components/devices/DeviceDetail.test.tsx`,
-`tests/unit/lib/sqlRolePredicateParity.test.ts`).
+Mutating either predicate must fail tests on both sides (measured by mutating
+the predicate and running both suites):
+
+- Narrowing `canEditDeviceProfile` fails 1 shared + 5 web test files:
+  `packages/shared/tests/unit/device-roles.test.ts`;
+  `tests/unit/app/api/v1/stations/stations.route.test.ts` ("lets an editor
+  write"), `tests/unit/actions/devices.action.test.ts`,
+  `tests/unit/lib/sqlRolePredicateParity.test.ts`,
+  `tests/unit/components/devices/DeviceDetail.test.tsx`,
+  `tests/unit/components/devices/DevicesIndex.test.tsx`.
+- Widening `canManageDeviceMembers` fails 1 shared + 2 web test files:
+  `packages/shared/tests/unit/device-roles.test.ts`;
+  `tests/unit/actions/devices.action.test.ts` ("membership stays owner-only"),
+  `tests/unit/components/devices/DeviceDetail.test.tsx`. (The SQL-parity test
+  covers only the profile predicate: the database has no copy of this one.)
 
 Gate helpers, and what each actually covers: `requireOwner` (sharing, role
 changes, removals), `requireProfileEditor` (`updateDeviceProfileAction`),
@@ -169,7 +185,9 @@ changes, removals), `requireProfileEditor` (`updateDeviceProfileAction`),
 `registerDeviceAction` inserts the owner row inside the `claim_device` RPC,
 where the check is in SQL. Grepping for `requireOwner` alone will therefore
 miss a membership write; grep the RPCs too — `claim_device` for membership,
-`update_device_profile` for station details.
+`update_device_profile` for station details. `requireStation`
+(`lib/api/station-gate.ts`) is the public API's equivalent, taking the same
+predicates.
 
 **Neither RPC is a trigger, and the difference matters.** `device_users_owner_guard`
 fires for every writer; an RPC only guards callers that choose it, and
@@ -317,7 +335,8 @@ data.map((r) => ({ createdAt: r.created_at }))
 - Nested selects support aliasing: `device_users ( userId:user_id, role )`
 - `rpc()` rows cannot be aliased — map them in the service with a comment
   saying so (`fetchReadingsBucketed`, `fetchDeviceMembers`, `fetchAllDevices`,
-  `fetchAllUsers`); the same applies to an embedded aggregate or a nested
+  `fetchAllUsers`, `authenticateApiKeyHash`, `hitRateLimit`,
+  `writeDeviceProfile`); the same applies to an embedded aggregate or a nested
   to-one that PostgREST cannot flatten
 
 ### Query Best Practices
@@ -426,8 +445,12 @@ if (!isUserLoaded || isLoading) {
 Server actions use the **service-role** client (bypasses RLS) with Clerk
 `auth()` for authorization. In this project that means: device registration,
 device sharing, **device profile writes** (nickname, address, coordinates),
-Telegram linking, account settings, CSV export (PRD B2, W5) — the same list as
-the right-hand column of the table above, which is the one to trust if these
+Telegram linking, account settings, CSV export, API key management
+(`actions/api-keys.action.ts`) (PRD B2, W5). The public station API
+(`/api/v1/stations…`) is the key-authenticated route-handler sibling of this
+path: it also uses the service-role client, but only behind `withApiKey` +
+`requireStation`. This is the same list as the right-hand column of the table
+above, which is the one to trust if these
 two ever disagree.
 
 - **File pattern**: `apps/web/src/actions/{domain}.action.ts`
@@ -465,6 +488,41 @@ over body + `x-timestamp` with the stored secret, rejects outside the
 `REPLAY_WINDOW_MS` window (constants in `@ws/shared`), and inserts with the
 service-role client. Devices have **write-only** access — never return data
 to a device.
+
+### Public station API (`/api/v1/stations…`)
+
+Personal API keys for users' own scripts (spec
+`docs/superpowers/specs/2026-10-01-public-read-api-design.md`).
+
+- **Every route is `withApiKey({ scope, cors }, handler)`**, and every
+  `/stations/{id}` route calls `requireStation` before touching data — RLS is
+  bypassed here. `withApiKey` registers each handler's options
+  (`apiKeyHandlerOptions`); `tests/unit/app/api/v1/stations/registry.test.ts`
+  walks the folder and fails on an ungated handler **and** on any write handler
+  that is not `{ scope: 'read_write', cors: false }`. It also forbids importing
+  `lib/api/keys/(own|clerk)-*` from routes, `with-api-key.ts` and
+  `actions/api-keys.action.ts`.
+- `withApiKey` passes every handler response through `withMeta` (no-store,
+  CORS on GET routes, `RateLimit-*` headers) — handlers do not set them.
+- **Keys live behind `ApiKeyProvider`**; `getApiKeyProvider()` in
+  `lib/api/keys/index.ts` is the only switch point. Today: our hashed keys in
+  `api_keys`. Clerk API keys can replace them (spec §11) — routes, limiter and
+  UI do not change. Never import `own-provider` outside `lib/api/keys/`. A
+  replacement provider must pass the contract suite
+  `apps/web/tests/integration/helpers/api-key-provider-contract.ts` before
+  `getApiKeyProvider()` is flipped. `ApiKeySummary.hint` is `string | null`
+  (a Clerk provider cannot report a secret tail).
+- **Never call `fetchMyDevices` on the service-role client** — it has no
+  `WHERE` and returns every user's stations there. Use `fetchStationsForUser`
+  / `fetchStationForUser`.
+- Rate limit: `api_rate_limit_hit()` (60/min per key), buckets are opaque
+  strings so the limiter is provider-independent. Bucket cleanup on revoke is
+  best-effort in `revokeApiKeyAction`, not in the provider (providers know
+  nothing about the limiter).
+- CORS: GET + OPTIONS only. PATCH has none on purpose — a write key must not
+  live in browser JavaScript.
+- `update_device_profile()` now has two callers: `updateDeviceProfileAction`
+  and `writeDeviceProfile` (PATCH /stations/{id}).
 
 ### API Versioning — two axes, never conflated
 
@@ -667,22 +725,22 @@ Personal overrides belong in `.claude/settings.local.json` (gitignored).
 
 ## Environment Variables
 
-| Variable                                     | Scope         | Description                                                                                   |
-| -------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`          | Client        | Clerk publishable key                                                                         |
-| `CLERK_SECRET_KEY`                           | Server        | Clerk secret key                                                                              |
-| `NEXT_PUBLIC_SUPABASE_URL`                   | Client        | Supabase API URL                                                                              |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`       | Client        | Supabase publishable key (RLS)                                                                |
-| `SUPABASE_URL`                               | Server        | Supabase API URL                                                                              |
-| `SUPABASE_SECRET_KEY`                        | Server        | Service-role key — **bypasses RLS**                                                           |
-| `BOT_TOKEN`                                  | Edge function | Telegram bot token                                                                            |
-| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Edge function | Injected by the platform — `supabase secrets set` rejects the reserved `SUPABASE_` prefix     |
-| `BOT_WEBHOOK_SECRET`                         | Edge function | Telegram webhook secret token — must match the one passed to `setWebhook`                     |
-| `API_DOCS_ENABLED`                           | Server        | Force OpenAPI/Scalar docs on/off (auto-off in prod)                                           |
-| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`          | Client        | Bot username for the Telegram-linking deep link (`@` / t.me URL stripped, then validated)     |
-| `CLERK_WEBHOOK_SIGNING_SECRET`               | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                |
-| `ADMIN_ORG_ID`                               | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id` |
-| `E2E_CLERK_USER_EMAIL`                       | Test          | Address the Playwright suite signs in as (Clerk Testing Token — no password involved)         |
+| Variable                                     | Scope         | Description                                                                                                      |
+| -------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`          | Client        | Clerk publishable key                                                                                            |
+| `CLERK_SECRET_KEY`                           | Server        | Clerk secret key                                                                                                 |
+| `NEXT_PUBLIC_SUPABASE_URL`                   | Client        | Supabase API URL                                                                                                 |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`       | Client        | Supabase publishable key (RLS)                                                                                   |
+| `SUPABASE_URL`                               | Server        | Supabase API URL                                                                                                 |
+| `SUPABASE_SECRET_KEY`                        | Server        | Service-role key — **bypasses RLS**                                                                              |
+| `BOT_TOKEN`                                  | Edge function | Telegram bot token                                                                                               |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Edge function | Injected by the platform — `supabase secrets set` rejects the reserved `SUPABASE_` prefix                        |
+| `BOT_WEBHOOK_SECRET`                         | Edge function | Telegram webhook secret token — must match the one passed to `setWebhook`                                        |
+| `API_DOCS_ENABLED`                           | Server        | Docs are on everywhere by default (the public API needs them); `false` turns `/reference` and `openapi.json` off |
+| `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`          | Client        | Bot username for the Telegram-linking deep link (`@` / t.me URL stripped, then validated)                        |
+| `CLERK_WEBHOOK_SIGNING_SECRET`               | Server        | Verifies Clerk `user.deleted` webhooks (`/api/webhooks/clerk`)                                                   |
+| `ADMIN_ORG_ID`                               | Server        | Clerk org whose members may use `/admin`; must equal the Supabase Vault secret `admin_org_id`                    |
+| `E2E_CLERK_USER_EMAIL`                       | Test          | Address the Playwright suite signs in as (Clerk Testing Token — no password involved)                            |
 
 Clerk routing (`/sign-in`, `/sign-up`, fallback `/dashboard`) is set in code
 (`apps/web/src/proxy.ts` + `RootProviders`), not env vars. Two dashboard-side

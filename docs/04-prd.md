@@ -48,7 +48,7 @@
 |----|-------------|
 | B1 | API endpoint `POST /api/readings` — validate `device-id` against the `devices` table and verify the HMAC-SHA256 payload signature against the stored device secret; reject unknown IDs or invalid/replayed signatures with 401. Persist valid readings to the `readings` table in Supabase. |
 | B2 | Server actions for web app sensitive operations: device registration (creates or updates entry in `device_users` with role=owner), device sharing (adds users to `device_users`), account settings changes. No REST API endpoints exposed for the web frontend. |
-| B3 | The backend does **not** serve read endpoints for sensor data. The web app and Telegram bot query Supabase directly via their respective clients; RLS enforces data isolation at the database layer. |
+| B3 | The backend does **not** serve read endpoints for sensor data **to the web app or the bot**: they query Supabase directly via their respective clients; RLS enforces data isolation at the database layer. Separately, a key-authenticated public API (`/api/v1/stations…`, amended 2026-10-01) serves users' **own scripts**: personal API keys created in Settings, read access to the stations the key's user is a member of, and station-detail edits for owners/editors with a read & write key. |
 
 ### Web App (Next.js Frontend — Vercel)
 
@@ -106,9 +106,9 @@
 
 | Area | Requirement |
 |------|-------------|
-| Security | All ESP32-to-backend traffic is HTTPS only. Every device write carries an HMAC-SHA256 payload signature (per-device secret, flashed at manufacture); the backend validates the `device-id` and signature on every write, with a timestamp window against replay. Clerk JWTs are validated on every authenticated API call. Supabase RLS is the final data-isolation backstop. |
-| Authentication | Web: Clerk (session token). Bot: Telegram user ID (extracted from incoming update, not user-supplied). Device: opaque device-id header. |
-| Privacy / Compliance | Collect only what is needed (sensor readings, user identifiers). Users can delete their account and all associated data on request (right to erasure). No sensor data is shared publicly. Privacy policy required before launch. |
+| Security | All ESP32-to-backend traffic is HTTPS only. Every device write carries an HMAC-SHA256 payload signature (per-device secret, flashed at manufacture); the backend validates the `device-id` and signature on every write, with a timestamp window against replay. Clerk JWTs are validated on every authenticated web API call; public station API calls (`/api/v1/stations…`) are instead authenticated by hashed personal API keys (not Clerk JWTs). Supabase RLS is the final data-isolation backstop. |
+| Authentication | Web: Clerk (session token). Bot: Telegram user ID (extracted from incoming update, not user-supplied). Device: opaque device-id header. Public API: personal API key (bearer, hashed at rest, revocable, scoped read / read & write). |
+| Privacy / Compliance | Collect only what is needed (sensor readings, user identifiers). Users can delete their account and all associated data on request (right to erasure). No sensor data is shared publicly by the platform; the one exception is a user's own choice — a user may embed a read key in their own site, making their own stations' data public. Privacy policy required before launch. |
 | Performance | Dashboard uses Supabase Realtime WebSocket subscriptions for instant updates. Bot response p95 < 2 s. |
 | Scale | MVP targets a single device per user, single-region Vercel deployment. Database indexing on `(device_id, timestamp DESC)` for efficient range queries. |
 | Reliability | ESP32 drops readings after 3 failed retries rather than queuing indefinitely. Backend is stateless (Vercel functions); session state lives in Clerk and Supabase. Alert scheduling via pg_cron is reliable for MVP (Supabase uptime). |

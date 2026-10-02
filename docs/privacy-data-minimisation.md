@@ -12,6 +12,7 @@ Every stored personal field, why it exists, how long it lives. Reviewed
 | `telegram_link_codes` | `user_id`, code, timestamps, `failed_reason` | One-time proof of Telegram ownership | 10-minute TTL; row removed on account deletion (cascade); consumed/expired rows are inert | Required; consider a nightly purge of rows older than 1 day (nice-to-have) |
 | `devices` | `label`, `address` | Owner-entered nickname/address for a station | Until owner edits or the device is re-provisioned | Optional, user-entered, not tied to a person once the account is gone |
 | `devices` | `latitude`, `longitude` | Draw the owner's own stations on a map (`/devices`) | Until the owner clears them or the device is re-provisioned | Optional, user-entered, never geocoded or sent to a third party |
+| `api_keys` | `user_id`, `name`, `key_hash`, `key_hint`, `scope`, timestamps | Personal API keys for the user's own scripts; only a SHA-256 of the key is stored | Until account deletion (cascade); revoked keys stay listed (no secret) so Settings can show them | Required for the public API; opt-in |
 | `readings` | sensor values, `device_id`, `timestamp` | The product | 12 months raw, then daily aggregates (MRP-36) | Not personal data on its own; becomes unlinked when accounts are deleted |
 | Clerk (external) | email, name, avatar | Sign-in | Managed by Clerk; deleted with the account | Not copied into our DB |
 
@@ -36,6 +37,12 @@ the `device_members()` RPC, which returns the **last four characters** of
 `clerk_user_id` / `telegram_id` — enough to tell people apart, not enough to
 address them. The API never returns a member's full identifier to another
 user (proven in `supabase/tests/device_sharing.sql`).
+
+Public API: anyone holding a user's API key reads every station that user can
+see, including nickname, address and coordinates. A key embedded in a
+website's JavaScript is public; Settings warns about this and recommends a
+read-only key or a server-side call. Keys are revocable instantly and never
+reveal member identities.
 
 Conclusion: nothing stored is unjustified — no removal tickets. Follow-ups:
 purge stale `telegram_link_codes` nightly once pg_cron work (MRP-36) lands;

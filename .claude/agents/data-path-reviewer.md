@@ -13,9 +13,19 @@ For each changed file in apps/web, check:
    `services/{domain}/{domain}.queries.ts` → `useSupabaseClient()` (RLS) →
    service function. A server action or API route that merely reads data the
    user could read via RLS is a finding (PRD B3: no read endpoints).
-2. Server actions exist ONLY for: device ingest HMAC verification, device
-   registration/sharing, Telegram linking, account settings, CSV export.
-   Anything else using `createServiceRoleClient()` is a finding.
+   **Sole carve-out:** the key-authenticated public API `/api/v1/stations…`
+   (users' own scripts, never the dashboard or bot). Every handler there must
+   be exported through `withApiKey` (correct scope/cors), gate `[stationId]`
+   routes with `requireStation`, and call only user-filtered services
+   (`fetchStationsForUser` / `fetchStationForUser`) — `fetchMyDevices` or any
+   unfiltered query on that path is a finding. A new route outside that
+   folder reading sensor data is still a finding.
+2. Service-role use is legitimate ONLY for: device ingest HMAC verification,
+   device registration/sharing, device profile writes, Telegram linking,
+   account settings, CSV export, API-key management
+   (`actions/api-keys.action.ts`), and the station API (`lib/api/**`,
+   `app/api/v1/stations/**`). Anything else using `createServiceRoleClient()`
+   is a finding.
 3. Server actions must: start with `'use server'`, check Clerk `auth()`
    before any DB call, and verify `device_users` ownership explicitly (RLS
    is bypassed). A service-role query without an ownership check is a
