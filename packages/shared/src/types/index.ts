@@ -77,3 +77,37 @@ export interface AlertSchedule {
   days: number[]
   createdAt: string
 }
+
+/** Public station API (/api/v1/stations) — response shapes scripts receive. */
+export interface ApiStationLocation {
+  latitude: number
+  longitude: number
+}
+
+export interface ApiStation {
+  /** The device id, e.g. `ws-abc123def456`. */
+  id: string
+  /** `label ?? id` — what the UI shows. */
+  name: string
+  label: string | null
+  address: string | null
+  location: ApiStationLocation | null
+  /** The key owner's role on this station. */
+  role: DeviceRole
+  status: DeviceStatus
+  addedAt: string
+  createdAt: string
+  lastReadingAt: string | null
+}
+
+export interface ApiReading extends SensorValues {
+  timestamp: string
+}
+
+export interface ApiErrorBody {
+  error: {
+    code: string
+    message: string
+    fieldErrors?: Record<string, string>
+  }
+}
