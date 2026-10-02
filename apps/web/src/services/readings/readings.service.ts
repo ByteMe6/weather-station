@@ -144,7 +144,7 @@ const toBucketedRow = (r: BucketedSqlRow): BucketedRow => ({
 
 /**
  * Bucketed aggregates via readings_bucketed() (MRP-34). rpc() cannot alias
- * columns, so this is the one place RPC rows are mapped by hand.
+ * columns, so rows are mapped by hand here (see CLAUDE.md, Column Aliasing).
  */
 export const fetchReadingsBucketed = async (
   supabase: SupabaseClient<Database>,

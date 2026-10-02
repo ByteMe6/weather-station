@@ -22,15 +22,17 @@ export interface MyDevice {
 export const deviceDisplayName = (d: MyDevice): string =>
   d.device?.label ?? d.deviceId
 
+/** device_users row + the station it points at, aliased (CLAUDE.md). */
+const STATION_COLUMNS =
+  'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at, label, address, latitude, longitude )'
+
 /** Devices the current user is linked to (RLS on device_users + devices). Oldest link first. */
 export const fetchMyDevices = async (
   supabase: SupabaseClient<Database>,
 ): Promise<MyDevice[]> => {
   const { data, error } = await supabase
     .from('device_users')
-    .select(
-      'deviceId:device_id, role, addedAt:added_at, device:devices ( status, createdAt:created_at, label, address, latitude, longitude )',
-    )
+    .select(STATION_COLUMNS)
     .order('added_at', { ascending: true })
 
   if (error) {
@@ -58,8 +60,7 @@ export interface DeviceMember {
  * Members of a device via the `device_members` RPC (SECURITY DEFINER): owners
  * get every member, other members only themselves, non-members nothing.
  * Identifiers arrive pre-masked. rpc() rows cannot be aliased in the query,
- * so — like fetchReadingsBucketed — this is one of the two places rows are
- * mapped by hand.
+ * so rows are mapped by hand here, as CLAUDE.md (Column Aliasing) describes.
  */
 export const fetchDeviceMembers = async (
   supabase: SupabaseClient<Database>,
@@ -143,4 +144,118 @@ export const fetchDeviceMemberIdentities = async (
     userId: row.userId,
     clerkUserId: row.user?.clerkUserId ?? null,
   }))
+}
+
+/** A membership row whose station is known to exist. */
+export type StationRow = MyDevice & {
+  device: NonNullable<MyDevice['device']>
+}
+
+/**
+ * Stations one user is a member of, for the service-role path (public API).
+ *
+ * NOT interchangeable with fetchMyDevices: that one has no WHERE clause and is
+ * correct only on an RLS client, where the policies narrow device_users to the
+ * caller's rows. On the service-role client it would return every user's
+ * stations. This filters by user_id explicitly, so it is safe on either.
+ */
+export const fetchStationsForUser = async (
+  supabase: SupabaseClient<Database>,
+  params: { userId: string },
+): Promise<MyDevice[]> => {
+  const { data, error } = await supabase
+    .from('device_users')
+    .select(STATION_COLUMNS)
+    .eq('user_id', params.userId)
+    .order('added_at', { ascending: true })
+
+  if (error) {
+    throw new ServiceError(
+      `Failed to fetch stations: ${error.message}`,
+      error.code,
+      error.details,
+    )
+  }
+  // The DB check constraint guarantees role ∈ DeviceRole (see init migration).
+  return (data ?? []) as MyDevice[]
+}
+
+/** One station for one user, or null when they are not a member. Service-role safe. */
+export const fetchStationForUser = async (
+  supabase: SupabaseClient<Database>,
+  params: { userId: string; deviceId: string },
+): Promise<MyDevice | null> => {
+  const { data, error } = await supabase
+    .from('device_users')
+    .select(STATION_COLUMNS)
+    .eq('user_id', params.userId)
+    .eq('device_id', params.deviceId)
+    .maybeSingle()
+
+  if (error) {
+    throw new ServiceError(
+      `Failed to fetch station: ${error.message}`,
+      error.code,
+      error.details,
+    )
+  }
+  // The DB check constraint guarantees role ∈ DeviceRole (see init migration).
+  return data as MyDevice | null
+}
+
+export interface DeviceProfile {
+  label: string | null
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
+/** Message of the ServiceError thrown when update_device_profile() refuses the role. */
+export const DEVICE_PROFILE_FORBIDDEN = 'DEVICE_PROFILE_FORBIDDEN'
+
+/**
+ * Writes the station profile through update_device_profile(), which re-checks
+ * the caller's role in SQL. The four values REPLACE the stored ones — callers
+ * wanting patch semantics merge first. Returns the row the database holds, or
+ * null if the RPC returned none. A refusal by the SQL role check throws
+ * ServiceError(DEVICE_PROFILE_FORBIDDEN, 'P0001').
+ *
+ * updateDeviceProfileAction predates this and calls the RPC itself; the public
+ * API's PATCH /stations/{id} is the second caller and goes through here.
+ */
+export const writeDeviceProfile = async (
+  supabase: SupabaseClient<Database>,
+  params: { deviceId: string; userId: string; profile: DeviceProfile },
+): Promise<DeviceProfile | null> => {
+  const { data, error } = await supabase.rpc('update_device_profile', {
+    p_device_id: params.deviceId,
+    p_user_id: params.userId,
+    // `?? undefined`, not null: the generated Args type cannot express a
+    // nullable argument; the SQL defaults are null, so omitting the key clears.
+    p_label: params.profile.label ?? undefined,
+    p_address: params.profile.address ?? undefined,
+    p_latitude: params.profile.latitude ?? undefined,
+    p_longitude: params.profile.longitude ?? undefined,
+  })
+  if (error) {
+    if (error.code === 'P0001' && error.message === DEVICE_PROFILE_FORBIDDEN) {
+      throw new ServiceError(DEVICE_PROFILE_FORBIDDEN, 'P0001')
+    }
+    throw new ServiceError(
+      `Failed to write device profile: ${error.message}`,
+      error.code,
+      error.details,
+    )
+  }
+  // rpc() rows cannot be aliased (CLAUDE.md). `?? null` is not redundant:
+  // gen types cannot infer RETURNS TABLE nullability, so all four arrive typed
+  // non-null while every one is nullable in the database.
+  const row = data?.[0]
+  if (!row) return null
+  return {
+    label: row.out_label ?? null,
+    address: row.out_address ?? null,
+    latitude: row.out_latitude ?? null,
+    longitude: row.out_longitude ?? null,
+  }
 }
