@@ -6,34 +6,27 @@ describe('areDocsEnabled', () => {
     process.env = { ...original }
   })
 
-  it('is enabled locally (VERCEL_ENV unset)', () => {
-    delete process.env.VERCEL_ENV
+  // On in production since the public station API (spec 2026-10-01): users
+  // writing scripts need the reference.
+  it.each([
+    ['locally', undefined],
+    ['in preview', 'preview'],
+    ['in production', 'production'],
+  ])('is enabled %s by default', (_label, vercelEnv) => {
+    if (vercelEnv === undefined) delete process.env.VERCEL_ENV
+    else process.env.VERCEL_ENV = vercelEnv
     delete process.env.API_DOCS_ENABLED
     expect(areDocsEnabled()).toBe(true)
   })
 
-  it('is disabled in production', () => {
+  it('is disabled by API_DOCS_ENABLED=false', () => {
     process.env.VERCEL_ENV = 'production'
-    delete process.env.API_DOCS_ENABLED
+    process.env.API_DOCS_ENABLED = 'false'
     expect(areDocsEnabled()).toBe(false)
   })
 
-  it('is disabled in non-Vercel production', () => {
-    process.env = { ...process.env, NODE_ENV: 'production' }
-    delete process.env.VERCEL_ENV
-    delete process.env.API_DOCS_ENABLED
-    expect(areDocsEnabled()).toBe(false)
-  })
-
-  it('is enabled in preview', () => {
-    process.env.VERCEL_ENV = 'preview'
-    delete process.env.API_DOCS_ENABLED
-    expect(areDocsEnabled()).toBe(true)
-  })
-
-  it('honors the API_DOCS_ENABLED override in production', () => {
-    process.env.VERCEL_ENV = 'production'
-    process.env.API_DOCS_ENABLED = 'true'
+  it('ignores values other than "false"', () => {
+    process.env.API_DOCS_ENABLED = 'nope'
     expect(areDocsEnabled()).toBe(true)
   })
 })

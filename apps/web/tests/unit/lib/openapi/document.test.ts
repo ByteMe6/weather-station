@@ -37,4 +37,32 @@ describe('buildOpenApiDocument', () => {
     expect(doc.paths?.['/readings']).toBeDefined()
     expect(doc.paths?.['/health']).toBeDefined()
   })
+
+  it('documents the key-authenticated station API in v1', () => {
+    const doc = buildOpenApiDocument('v1')
+    expect(API_VERSION_META.v1.specVersion).toBe('1.1.0')
+    expect(doc.components?.securitySchemes?.bearerAuth).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+    })
+    expect(Object.keys(doc.paths ?? {})).toEqual(
+      expect.arrayContaining([
+        '/stations',
+        '/stations/{stationId}',
+        '/stations/{stationId}/readings',
+        '/stations/{stationId}/readings/latest',
+        '/stations/{stationId}/readings/aggregate',
+      ]),
+    )
+    expect(doc.paths?.['/stations/{stationId}']?.patch).toBeDefined()
+    expect(
+      doc.paths?.['/stations/{stationId}']?.patch?.requestBody,
+    ).toMatchObject({ required: true })
+    expect(
+      doc.paths?.['/stations/{stationId}/readings']?.get?.description,
+    ).toContain('1–1000')
+    expect(doc.paths?.['/stations']?.get?.security).toEqual([
+      { bearerAuth: [] },
+    ])
+  })
 })

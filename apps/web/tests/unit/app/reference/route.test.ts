@@ -32,9 +32,9 @@ describe('GET /reference', () => {
     expect(res.headers.get('content-type')).toContain('text/html')
   })
 
-  it('returns 404 in production', async () => {
+  it('returns 404 when docs are disabled', async () => {
     process.env.VERCEL_ENV = 'production'
-    delete process.env.API_DOCS_ENABLED
+    process.env.API_DOCS_ENABLED = 'false'
     const res = await GET()
     expect(res.status).toBe(404)
   })

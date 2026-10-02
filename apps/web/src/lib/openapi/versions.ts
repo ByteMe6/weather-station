@@ -25,5 +25,6 @@ export type ApiVersionMeta = {
 }
 
 export const API_VERSION_META: Record<ApiVersion, ApiVersionMeta> = {
-  v1: { specVersion: '1.0.0', status: 'current' },
+  // 1.1.0: key-authenticated station API (additive — /api/v1 unchanged).
+  v1: { specVersion: '1.1.0', status: 'current' },
 }

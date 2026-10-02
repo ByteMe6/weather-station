@@ -22,9 +22,9 @@ describe('GET /api/v1/openapi.json', () => {
     expect(doc.servers[0]?.url).toBe('/api/v1')
   })
 
-  it('returns 404 in production', async () => {
+  it('returns 404 when docs are disabled', async () => {
     process.env.VERCEL_ENV = 'production'
-    delete process.env.API_DOCS_ENABLED
+    process.env.API_DOCS_ENABLED = 'false'
     const res = await GET()
     expect(res.status).toBe(404)
   })

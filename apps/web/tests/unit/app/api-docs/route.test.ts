@@ -18,9 +18,9 @@ describe('GET /api-docs', () => {
     )
   })
 
-  it('returns 404 in production rather than redirecting to a 404', () => {
+  it('returns 404 when docs are disabled rather than redirecting to a 404', () => {
     process.env.VERCEL_ENV = 'production'
-    delete process.env.API_DOCS_ENABLED
+    process.env.API_DOCS_ENABLED = 'false'
     const res = GET(request())
     expect(res.status).toBe(404)
   })
