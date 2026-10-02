@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import type { ReactElement } from 'react'
 
+import { ApiKeysCard } from '@/components/settings/ApiKeysCard'
 import { AppearanceCard } from '@/components/settings/AppearanceCard'
 import { DeleteAccountCard } from '@/components/settings/DeleteAccountCard'
 import { TelegramCard } from '@/components/settings/TelegramCard'
@@ -12,6 +13,7 @@ const SettingsPage = (): ReactElement => (
     <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
     <AppearanceCard testId="settings-appearance" />
     <TelegramCard testId="settings-telegram" />
+    <ApiKeysCard testId="settings-api-keys" />
     <DeleteAccountCard testId="settings-delete" />
   </div>
 )

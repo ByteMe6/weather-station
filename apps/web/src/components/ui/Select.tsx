@@ -10,6 +10,7 @@ interface Option<T extends string> {
 }
 interface SelectProps<T extends string> {
   testId: string
+  id?: string
   value: T | undefined
   onValueChange: (v: T) => void
   options: Option<T>[]
@@ -20,6 +21,7 @@ interface SelectProps<T extends string> {
 
 export const Select = <T extends string>({
   testId,
+  id,
   value,
   onValueChange,
   options,
@@ -33,6 +35,7 @@ export const Select = <T extends string>({
     disabled={disabled}
   >
     <RadixSelect.Trigger
+      id={id}
       data-testid={testId}
       aria-label={ariaLabel}
       className="rounded-control border-line bg-card inline-flex h-9 min-w-32 items-center justify-between gap-2 border px-3 text-sm disabled:opacity-60 max-lg:h-11"
