@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-01
 **Branch:** `feat/public-read-api`
-**Status:** approved for planning
+**Status:** implemented (branch feat/public-read-api)
 
 ## 1. Goal
 
@@ -50,8 +50,8 @@ readings (devices keep the HMAC ingest).
 | `id` | `uuid pk default gen_random_uuid()` | |
 | `user_id` | `uuid not null references public.users (id) on delete cascade` | btree index `api_keys_user_id_idx` |
 | `name` | `text not null check (char_length(name) between 1 and 60)` | e.g. "Grafana" |
-| `key_hash` | `bytea not null unique` | SHA-256 of the full key string; the key itself is never stored |
-| `key_hint` | `text not null check (char_length(key_hint) = 4)` | last 4 chars, shown as `wsk_live_…a9Xk` |
+| `key_hash` | `text not null unique check (key_hash ~ '^[0-9a-f]{64}$')` | lowercase hex SHA-256 of the full key; the key itself is never stored. Text rather than bytea so supabase-js passes it without bytea escaping |
+| `key_hint` | `text not null check (char_length(key_hint) = 4)` | last 4 chars, shown as `…a9Xk` (provider-neutral: no prefix) |
 | `scope` | `text not null check (scope in ('read', 'read_write'))` | mirrors `API_KEY_SCOPES` in `@ws/shared` |
 | `expires_at` | `timestamptz null` | null = never |
 | `last_used_at` | `timestamptz null` | throttled to ≤ 1 write/min |
@@ -77,7 +77,7 @@ readings (devices keep the HMAC ingest).
 Deliberately **not** a foreign key to `api_keys`: the bucket is an opaque
 string so the same limiter works unchanged for Clerk key ids (`ak_…`) if the
 provider is swapped (§11). One row per bucket; the window resets in place.
-`revokeApiKey` deletes the key's bucket row; anything left behind by deleted
+`revokeApiKeyAction` deletes the key's bucket row best-effort after a successful revoke (a failure is logged, never reported as a failed revoke); providers know nothing about the limiter. Anything left behind by deleted
 users is a few bytes and can be swept later if it ever matters. RLS enabled, no
 policies, no client grants.
 
@@ -86,7 +86,7 @@ limiter must not depend on where keys live. This costs one extra DB round trip
 per request (both are single-row indexed statements) and buys a provider swap
 that touches neither the limiter nor the routes.
 
-### 3.3 `public.api_key_authenticate(p_key_hash bytea)`
+### 3.3 `public.api_key_authenticate(p_key_hash text)`
 
 `VOLATILE` (it writes `last_used_at`), `security invoker`,
 `set search_path = ''`, `execute` revoked from `public, anon, authenticated`
@@ -95,7 +95,7 @@ and granted to `service_role` only.
 1. Finds the key with `key_hash = p_key_hash and revoked_at is null and
    (expires_at is null or expires_at > now())` — no row ⇒ returns no row.
 2. Sets `last_used_at = now()` only when it is null or older than one minute.
-3. Returns `key_id, user_id, scope`.
+3. Returns `out_key_id, out_user_id, out_scope` (out_-prefixed like `update_device_profile`, so they cannot shadow `api_keys` columns inside plpgsql).
 
 ### 3.4 `public.api_rate_limit_hit(p_bucket text, p_limit int, p_window_seconds int)`
 
@@ -104,7 +104,7 @@ the constants live in `@ws/shared`, not in SQL. Atomic
 `insert … on conflict (bucket) do update … returning`: if the stored
 `window_start` is older than the current window, reset to
 `(current window, 1)`, else `count + 1`. Returns
-`allowed (count <= p_limit), remaining, reset_at`. A rejected (over-limit)
+`out_allowed (count <= p_limit), out_remaining, out_reset_at`. A rejected (over-limit)
 request still counts; that is intended.
 
 Run `yarn regenerate:types` after the migration.
@@ -227,17 +227,22 @@ validation (400) → membership (404) → role (403).
 
 | Unit | Responsibility | Depends on |
 | --- | --- | --- |
-| `packages/shared` — `api-keys.ts` | `API_KEY_PREFIX = 'wsk_live_'`, `API_KEY_SCOPES`, `ApiKeyScope`, `API_RATE_LIMIT` (60/60s), `API_KEY_MAX_ACTIVE` (10), expiry choices, span/limit caps, `ApiStation` / `ApiErrorBody` DTOs | — |
+| `packages/shared` — `constants/public-api.ts` + `types/index.ts` | `API_KEY_SCOPES`, `ApiKeyScope`, `API_RATE_LIMIT` (60/60s), `API_KEY_MAX_ACTIVE` (10), expiry choices, span/limit caps, `ApiStation` / `ApiErrorBody` DTOs | — |
 | `lib/api/bearer.ts` | `parseBearer(header)` → raw token or null (scheme check, length sanity cap); knows nothing about key formats | — |
 | `lib/api/keys/provider.ts` | the `ApiKeyProvider` interface, `ApiKeyPrincipal`, `ApiKeySummary` (§5.1) — types only | shared |
 | `lib/api/keys/own-provider.ts` | our implementation: key generation (`wsk_live_` + 32 random bytes base64url), SHA-256, prefix check before any DB call, and the calls into `api-keys.service` | node `crypto`, api-keys service |
 | `lib/api/keys/index.ts` | `getApiKeyProvider()` — **the single switch point** between implementations | provider modules |
 | `lib/api/respond.ts` | JSON success/error builders, rate-limit + CORS + `no-store` headers | shared |
-| `lib/api/with-api-key.ts` | **the only entry point for station routes**: `parseBearer` → `provider.authenticate` → 401 → `hitRateLimit('key:' + keyId)` → 429 → scope check → `handler(req, { service, userId, keyId, scope }, params)`; catches `ServiceError` ⇒ 500. Never imports a concrete provider | bearer, provider index, rate-limit service, respond |
-| `lib/api/station-gate.ts` | `requireStationRole(ctx, stationId, predicate)` → role or 404/403 response; uses `resolveMemberRole` and the shared predicates — no local re-spelling | `actions/_helpers` resolvers, `@ws/shared` |
+| `lib/api/with-api-key.ts` | **the only entry point for station routes**: `parseBearer` → `provider.authenticate` → 401 → `hitRateLimit('key:' + keyId)` → 429 → scope check → `handler(req, { service, userId, keyId, scope, meta }, params)`; catches **any** error ⇒ 500 (logged server-side, bare body). Never imports a concrete provider | bearer, provider index, rate-limit service, respond |
+| `lib/api/station-gate.ts` | `requireStation(ctx, stationId, allows?, forbidden?)` → the station row (role + device) or a 404/403 response, in **one** query (`fetchStationForUser`); malformed ids are 404. Uses the shared predicates — no local re-spelling. | `fetchStationForUser`, `@ws/shared` |
 | `services/api-keys/api-keys.service.ts` | DB access for our keys: `insertApiKey`, `fetchApiKeysForUser`, `revokeApiKey`, `countActiveApiKeys`, `authenticateApiKeyHash` (calls `api_key_authenticate`) | supabase-db |
 | `services/api-keys/rate-limit.service.ts` | `hitRateLimit(service, { bucket, limit, windowSeconds })` (calls `api_rate_limit_hit`); provider-independent | supabase-db |
 | `services/devices/devices.service.ts` — `fetchStationsForUser(service, { userId })` | stations for one user with an **explicit** `.eq('user_id', userId)` | — |
+| `services/devices/devices.service.ts` — `fetchStationForUser` / `writeDeviceProfile` | one station + the caller's role in a single user-filtered query; the PATCH profile write (calls `update_device_profile`) | — |
+| `services/api-keys/rate-limit.service.ts` — `deleteRateLimitBucket` | drops a revoked key's bucket (called by `revokeApiKeyAction`) | supabase-db |
+| `lib/api/cursor.ts`, `lib/api/schemas.ts`, `lib/api/stations.ts` | opaque readings cursor (encode/verify), zod query/body schemas, station DTO mapping | shared |
+| `lib/api/keys/own-key-format.ts` | key generation, prefix/shape check and SHA-256 — own-provider internals | node `crypto` |
+| `lib/openapi/station-schemas.ts` | zod schemas shared by the OpenAPI document and route validation | zod |
 | `services/readings` | reuse `fetchLatestReading`, `fetchReadingsPage`, `fetchReadingsBucketed` unchanged | — |
 | `actions/api-keys.action.ts` | `createApiKeyAction({ name, scope, expiresInDays })` (returns the secret once), `listApiKeysAction`, `revokeApiKeyAction` — Clerk `auth()`, input validation and the 10-key cap, then `getApiKeyProvider()`; returns `ActionResult` of provider-neutral `ApiKeySummary` | provider index |
 | `services/api-keys/api-keys.queries.ts` | `apiKeyKeys`, `useApiKeysQuery`, `useCreateApiKeyMutation`, `useRevokeApiKeyMutation` via `unwrapAction` | actions |
@@ -263,7 +268,7 @@ type ApiKeySummary = {
   id: string
   name: string
   scope: ApiKeyScope
-  hint: string // display tail, e.g. "a9Xk"
+  hint: string | null // display tail, e.g. "a9Xk"; null when the provider cannot report it (Clerk's list returns no secret tail)
   createdAt: string
   lastUsedAt: string | null // a provider that cannot report it returns null
   expiresAt: string | null
@@ -295,7 +300,10 @@ type ApiKeyProvider = {
   (so an outage is a 500, never a misleading 401).
 - A **provider contract test suite** (`describeApiKeyProvider(makeProvider)`)
   exercises the interface — create → authenticate → list → revoke →
-  authenticate fails, expiry, cross-user revoke refused. It runs against our
+  authenticate fails, cross-user revoke refused. It has **no expired-key
+  case**: there is no clock seam to create one through the interface. Expiry
+  is covered by pgTAP for our provider; a Clerk adapter must be checked for
+  expiry separately. It runs against our
   provider in integration tests; a Clerk adapter must pass the same suite.
 
 **Trap this design avoids:** `fetchMyDevices` has no `WHERE` clause and relies
@@ -306,9 +314,7 @@ pins user isolation.
 
 **Proxy:** `src/proxy.ts` already lists `/api/v(.*)` in `PUBLIC_ROUTES`, so
 Clerk middleware lets key-authenticated requests through to `withApiKey`
-unchanged. A test pins that a `Bearer wsk_live_…` header is treated as
-signed-out by Clerk (our prefix does not match Clerk machine-token prefixes)
-rather than rejected.
+unchanged. Verified end-to-end in the manual check (Task 16): a `Bearer wsk_live_…` request to a station route reaches `withApiKey` and gets our JSON 401/200, not a Clerk redirect. A unit test pins that `/api/v1/stations/**` is in `PUBLIC_ROUTES`.
 
 ## 6. Request flow
 
@@ -323,17 +329,21 @@ script ──Bearer wsk_live_…──▶ proxy.ts (public route, pass)
       scope check ─▶ 403 INSUFFICIENT_SCOPE
   ▶ route handler
       zod-validate params/query/body ─▶ 400
-      requireStationRole(ctx, id, predicate) ─▶ 404 / 403
+      requireStation(ctx, id, predicate) ─▶ 404 / 403
       existing service (service-role client, filtered by device_id)
       (PATCH: read current row → merge → update_device_profile RPC)
   ◀ JSON + RateLimit-* + CORS(GET) + no-store
 ```
 
+Requests that fail authentication are not rate-limited: each well-formed token
+costs one indexed lookup, brute force is infeasible against 256-bit keys, and
+Vercel's firewall handles floods.
+
 ## 7. Settings UI
 
 A new **API keys** card on `/settings`:
 
-- Table of keys: name, scope badge, `wsk_live_…XXXX`, created, last used,
+- Table of keys: name, scope badge, hint (`…XXXX`), created, last used,
   expires (or "Never"), revoked state; Revoke button per active key.
 - "Create key" dialog: name, scope (`Read` / `Read & write`), expiry
   (30 / 90 / 365 days / Never, default 90). Disabled at 10 active keys with an
@@ -370,21 +380,20 @@ A new **API keys** card on `/settings`:
 - **Route registry test**: every exported handler under
   `app/api/v1/stations/**/route.ts` is produced by `withApiKey` (or is the
   shared `OPTIONS` handler); fails when a handler is added without the gate.
-- `requireStationRole`: non-member ⇒ 404, viewer on PATCH ⇒ 403; added to the
+- `requireStation`: non-member ⇒ 404, viewer on PATCH ⇒ 403; added to the
   CLAUDE.md predicate-mutation list (narrowing `canEditDeviceProfile` must now
   fail 1 shared + 5 web tests).
 - Route handlers: query validation and span caps, cursor round-trip and
   tamper rejection, PATCH merge (omitted keeps / null clears / half pair 400 /
   empty body 400), CORS present on GET + OPTIONS and absent on PATCH.
-- Proxy: a request with `Authorization: Bearer wsk_live_…` to a station route
-  is not redirected or rejected by Clerk middleware.
+- Proxy: verified end-to-end in the manual check (Task 16): a `Bearer wsk_live_…` request to a station route reaches `withApiKey` and gets our JSON 401/200, not a Clerk redirect. A unit test pins that `/api/v1/stations/**` is in `PUBLIC_ROUTES`.
 - `ApiKeysCard`: skeleton, create flow shows the secret once, revoke, cap
   message.
 - OpenAPI: the six operations and `bearerAuth` are present, `specVersion` is
   `1.1.0`, `versions.test.ts` stays green.
 
 **Integration (real local Supabase)**:
-- Provider contract suite (§5.1) against our provider.
+- Provider contract suite (§5.1) against our provider (no expiry case — see §5.1; pgTAP covers it).
 - `api-keys.service` and `rate-limit.service`: happy and error paths.
 - `fetchStationsForUser`: user A never sees user B's stations (owned or
   shared); shared stations appear with the right role.
@@ -405,7 +414,7 @@ changes.
 - `docs/privacy-data-minimisation.md`: the API exposes addresses and
   coordinates to key holders; browser-embedded keys make them public.
 - `CLAUDE.md`: a third row in the data-path picture (key-authenticated API,
-  service-role + `withApiKey` + `requireStationRole`), the `ApiKeyProvider`
+  service-role + `withApiKey` + `requireStation`), the `ApiKeyProvider`
   seam and its single switch point, the `fetchMyDevices`
   trap, the updated predicate-mutation counts, and the docs-in-production
   change.
@@ -437,8 +446,18 @@ verification price irrelevant), the swap is:
    migration.
 
 Unchanged by the swap: the routes, `withApiKey`, `api_rate_limits` /
-`api_rate_limit_hit`, `requireStationRole`, the OpenAPI document (the
+`api_rate_limit_hit`, `requireStation`, the OpenAPI document (the
 `bearerAuth` scheme stays a bearer token), the action signatures and
 `ApiKeysCard` (which already tolerates `lastUsedAt: null`). If the swap
 happens while still on the free tier, add a short-TTL verification cache inside
 the Clerk provider rather than in `withApiKey`.
+
+## 12. Follow-ups
+
+- Route `updateDeviceProfileAction` through `writeDeviceProfile` so both
+  profile-write paths share one implementation.
+- Move the profile length limits to `@ws/shared` (currently spelled in the
+  route schema and the action separately).
+- Aggregate on `readings_daily` once it lands, instead of bucketing `readings`.
+- Sweep rate-limit buckets of expired keys (revocation drops them; expiry does not).
+- The limit is per key, not per user: 10 keys = 600 req/min for one user.
